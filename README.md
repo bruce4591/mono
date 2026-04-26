@@ -98,17 +98,18 @@ Sync daily bars for Binance USDT quoteVolume Top50:
 ```
 
 Sync the crypto board in one command. If no `--symbol` is provided, the command
-selects a Binance USDT quoteVolume candidate pool before syncing 1m bars,
-aggregating local 5m/15m/8h/1d bars, and refreshing the board. The default
-candidate pool is larger than 50 so stale or inactive symbols do not shrink the
-final Top50 output:
+selects a Binance USDT quoteVolume candidate pool before refreshing 24h
+snapshots and the board. Use `--skip-kline-sync` when WebSocket 1m collection is
+running; it avoids REST K line pulls while still aggregating existing local 1m
+bars into 5m/15m/8h/1d:
 
 ```bash
 .venv/bin/market sync-crypto-board \
   --db-path ./data/market.sqlite3 \
   --interval 1m \
   --limit 96 \
-  --top-usdt-limit 60
+  --top-usdt-limit 60 \
+  --skip-kline-sync
 ```
 
 Run the optional Binance 1m kline WebSocket collector after installing
@@ -117,9 +118,17 @@ Run the optional Binance 1m kline WebSocket collector after installing
 ```bash
 .venv/bin/market run-binance-kline-ws \
   --db-path ./data/market.sqlite3 \
-  --symbol BTCUSDT \
-  --symbol ETHUSDT \
+  --top-usdt-limit 60 \
   --interval 1m
+```
+
+Fill missing 1m crypto K line windows with REST only when gaps exist:
+
+```bash
+.venv/bin/market fill-crypto-kline-gaps \
+  --db-path ./data/market.sqlite3 \
+  --lookback-minutes 180 \
+  --top-usdt-limit 60
 ```
 
 Apply one Binance ticker WebSocket event payload to the latest snapshot path:
@@ -204,9 +213,9 @@ http://127.0.0.1:8000/api/bars/intraday?market=CRYPTO&symbol=BTCUSDT&interval=15
   violations; a failure records `job_state` and `source_health`, then stops the
   job so it does not hammer the source.
 - Future AKShare collectors should use the same collector wrapper and start with small focus pools before expanding coverage.
-- Historical K lines, turnover, and ranking refresh jobs stay on REST /
-  scheduled collectors. Ranking refresh does not need sub-second latency and can
-  run every few minutes.
+- Historical K lines and missing 1m windows are filled by REST / scheduled jobs.
+  Ranking refresh uses scheduled 24h snapshots and does not need sub-second
+  latency, so it can run every few minutes.
 - Real-time crypto 1m K lines use Binance WebSocket combined streams through
   `run-binance-kline-ws`. The collector writes `bar_intraday(interval='1m',
   source='binance_ws_kline')`; local aggregation derives 5m/15m/8h/1d bars.

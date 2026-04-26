@@ -12,4 +12,5 @@ cd "$APP_DIR"
   --limit 96 \
   --board-name CRYPTO_TURNOVER_TOP50 \
   --board-limit 50 \
-  --top-usdt-limit 60
+  --top-usdt-limit 60 \
+  --skip-kline-sync

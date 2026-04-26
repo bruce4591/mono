@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from market.alerts import evaluate_alert_rules
@@ -19,7 +19,8 @@ from market.binance import (
 )
 from market.collectors.binance import BinanceCollector
 from market.collectors.binance_ws import BinanceKlineWebSocketCollector
-from market.collectors.base import run_collector_job
+from market.collectors.base import CollectorResult, run_collector_job
+from market.crypto_gaps import fill_binance_1m_gaps
 from market.db import connect, init_database
 from market.models import AlertRule
 from market.realtime import apply_binance_ticker_event
@@ -110,7 +111,24 @@ def build_parser() -> argparse.ArgumentParser:
     sync_crypto_board.add_argument("--top-usdt-limit", type=int, default=60)
     sync_crypto_board.add_argument("--snapshot-ts-utc", default=None)
     sync_crypto_board.add_argument("--trade-date-local", default=None)
+    sync_crypto_board.add_argument("--skip-kline-sync", action="store_true")
     sync_crypto_board.add_argument("--dry-run", action="store_true")
+
+    fill_crypto_gaps = subparsers.add_parser(
+        "fill-crypto-kline-gaps",
+        help="Fill missing Binance 1m crypto bars with REST and aggregate local periods",
+    )
+    fill_crypto_gaps.add_argument("--db-path", type=Path, default=None)
+    fill_crypto_gaps.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="Crypto symbol to check; can be provided multiple times",
+    )
+    fill_crypto_gaps.add_argument("--lookback-minutes", type=int, default=180)
+    fill_crypto_gaps.add_argument("--top-usdt-limit", type=int, default=60)
+    fill_crypto_gaps.add_argument("--end-ts-utc", default=None)
+    fill_crypto_gaps.add_argument("--dry-run", action="store_true")
 
     sync_crypto_daily = subparsers.add_parser(
         "sync-crypto-daily",
@@ -148,6 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_kline_ws.add_argument("--interval", default="1m")
     run_kline_ws.add_argument("--max-streams-per-connection", type=int, default=200)
+    run_kline_ws.add_argument("--top-usdt-limit", type=int, default=0)
     run_kline_ws.add_argument("--dry-run", action="store_true")
 
     add_alert_rule = subparsers.add_parser(
@@ -304,12 +323,23 @@ def main(argv: list[str] | None = None) -> int:
 
             def sync_and_rank():
                 nonlocal ranking_count
-                result = BinanceCollector().sync_intraday_bars(
-                    connection,
-                    normalized_symbols,
-                    interval=args.interval,
-                    limit=args.limit,
-                )
+                if args.skip_kline_sync:
+                    result = CollectorResult(
+                        source_name="binance",
+                        items_synced=0,
+                        metadata={
+                            "symbols": normalized_symbols,
+                            "interval": args.interval,
+                            "skip_kline_sync": True,
+                        },
+                    )
+                else:
+                    result = BinanceCollector().sync_intraday_bars(
+                        connection,
+                        normalized_symbols,
+                        interval=args.interval,
+                        limit=args.limit,
+                    )
                 sync_binance_24hr_snapshots(
                     connection,
                     tickers=tickers,
@@ -341,6 +371,42 @@ def main(argv: list[str] | None = None) -> int:
             "crypto board synced: "
             f"{len(normalized_symbols)} symbols, {ranking_count} ranking rows, "
             f"snapshot={snapshot_ts_utc}"
+        )
+        return 0
+
+    if args.command == "fill-crypto-kline-gaps":
+        end = _parse_utc_arg(args.end_ts_utc) if args.end_ts_utc else datetime.now(tz=UTC)
+        start = end - timedelta(minutes=args.lookback_minutes)
+        start_ts_utc = _format_utc_arg(start)
+        end_ts_utc = _format_utc_arg(end)
+        symbols = args.symbol or fetch_top_binance_usdt_symbols(limit=args.top_usdt_limit)
+        normalized_symbols = [symbol.upper() for symbol in symbols]
+        if args.dry_run:
+            symbol_text = ",".join(normalized_symbols) or "none"
+            print(
+                "crypto gap fill ready: "
+                f"{symbol_text} 1m lookback={args.lookback_minutes}m"
+            )
+            return 0
+        with connect(db_path) as connection:
+            checkpoint = ",".join(normalized_symbols) + f":1m:{start_ts_utc}:{end_ts_utc}"
+            result = run_collector_job(
+                connection,
+                job_name="fill-crypto-kline-gaps",
+                source_name="binance",
+                checkpoint=checkpoint,
+                started_at_utc=end_ts_utc,
+                operation=lambda: fill_binance_1m_gaps(
+                    connection,
+                    symbols=normalized_symbols,
+                    start_ts_utc=start_ts_utc,
+                    end_ts_utc=end_ts_utc,
+                ),
+            )
+        print(
+            "crypto gaps filled: "
+            f"{result.symbols_checked} symbols, {result.gaps_filled} missing minutes, "
+            f"{result.bars_written} bars, {result.aggregate_bars_written} aggregate bars"
         )
         return 0
 
@@ -389,7 +455,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run-binance-kline-ws":
-        normalized_symbols = [symbol.upper() for symbol in args.symbol]
+        symbols = args.symbol or (
+            fetch_top_binance_usdt_symbols(limit=args.top_usdt_limit)
+            if args.top_usdt_limit > 0
+            else []
+        )
+        normalized_symbols = [symbol.upper() for symbol in symbols]
         if args.dry_run:
             symbol_text = ",".join(normalized_symbols) or "none"
             print(
@@ -469,6 +540,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     return 0
+
+
+def _parse_utc_arg(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def _format_utc_arg(value: datetime) -> str:
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 if __name__ == "__main__":

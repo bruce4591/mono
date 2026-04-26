@@ -268,6 +268,75 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
 
+    def test_run_binance_kline_ws_can_use_top_usdt_symbols(self):
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout), patch(
+            "market.cli.fetch_top_binance_usdt_symbols",
+            return_value=["BTCUSDT", "ETHUSDT"],
+        ):
+            exit_code = main(
+                [
+                    "run-binance-kline-ws",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--top-usdt-limit",
+                    "2",
+                    "--interval",
+                    "1m",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("BTCUSDT,ETHUSDT interval=1m", stdout.getvalue())
+
+    def test_fill_crypto_kline_gaps_uses_top_symbols_and_lookback_window(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+            calls = []
+
+            class FakeGapResult:
+                symbols_checked = 2
+                gaps_filled = 3
+                bars_written = 3
+                aggregate_bars_written = 6
+
+            def fill_gaps(connection, **kwargs):
+                calls.append(kwargs)
+                return FakeGapResult()
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.fetch_top_binance_usdt_symbols",
+                return_value=["BTCUSDT", "ETHUSDT"],
+            ), patch(
+                "market.cli.fill_binance_1m_gaps",
+                side_effect=fill_gaps,
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "fill-crypto-kline-gaps",
+                        "--db-path",
+                        str(db_path),
+                        "--lookback-minutes",
+                        "3",
+                        "--end-ts-utc",
+                        "2026-04-24T00:03:30Z",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["symbols"], ["BTCUSDT", "ETHUSDT"])
+        self.assertEqual(calls[0]["start_ts_utc"], "2026-04-24T00:00:30Z")
+        self.assertEqual(calls[0]["end_ts_utc"], "2026-04-24T00:03:30Z")
+        self.assertIn(
+            "crypto gaps filled: 2 symbols, 3 missing minutes, 3 bars",
+            stdout.getvalue(),
+        )
+
     def test_sync_crypto_board_defaults_to_top_quote_volume_symbols(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -539,6 +608,56 @@ class CliTests(unittest.TestCase):
             ],
         )
         self.assertIn("crypto board synced: 2 symbols, 2 ranking rows", stdout.getvalue())
+
+    def test_sync_crypto_board_can_skip_rest_kline_sync(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+            aggregate_calls = []
+
+            class FakeBinanceCollector:
+                source_name = "binance"
+
+                def sync_intraday_bars(self, connection, symbols, interval, limit):
+                    raise AssertionError("REST kline sync should be skipped")
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.BinanceCollector",
+                return_value=FakeBinanceCollector(),
+            ), patch(
+                "market.cli.fetch_binance_24hr_tickers",
+                return_value=[
+                    {
+                        "symbol": "BTCUSDT",
+                        "lastPrice": "78012.00",
+                        "priceChangePercent": "-1.25",
+                        "volume": "12345.67",
+                        "quoteVolume": "987654321.12",
+                    }
+                ],
+            ), patch(
+                "market.cli.aggregate_crypto_from_1m",
+                side_effect=lambda connection, symbols: aggregate_calls.append(symbols),
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "sync-crypto-board",
+                        "--db-path",
+                        str(db_path),
+                        "--symbol",
+                        "BTCUSDT",
+                        "--skip-kline-sync",
+                        "--snapshot-ts-utc",
+                        "2026-04-24T20:00:00Z",
+                        "--trade-date-local",
+                        "2026-04-24",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(aggregate_calls, [["BTCUSDT"]])
+        self.assertIn("crypto board synced: 1 symbols, 1 ranking rows", stdout.getvalue())
 
     def test_sync_crypto_board_marks_job_failed_when_ranking_refresh_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

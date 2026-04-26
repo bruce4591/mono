@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Callable
 from urllib.parse import urlencode
@@ -21,6 +22,7 @@ BINANCE_SPOT_API_BASE = "https://api.binance.com"
 KNOWN_QUOTE_ASSETS = ("USDT", "USDC", "FDUSD", "TUSD", "BUSD", "BTC", "ETH", "BNB", "USD")
 
 KlineFetcher = Callable[[str, str, int], list[list[object]]]
+RangeKlineFetcher = Callable[[str, str, int, int, int], list[list[object]]]
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,36 @@ def fetch_binance_klines(
         {
             "symbol": symbol.upper(),
             "interval": interval,
+            "limit": limit,
+        }
+    )
+    request = Request(
+        f"{base_url}/api/v3/klines?{query}",
+        headers={"User-Agent": "market-mvp/0.1"},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("unexpected Binance kline response")
+    return payload
+
+
+def fetch_binance_klines_range(
+    symbol: str,
+    interval: str,
+    start_time_ms: int,
+    end_time_ms: int,
+    limit: int,
+    *,
+    base_url: str = BINANCE_SPOT_API_BASE,
+    timeout: float = 15.0,
+) -> list[list[object]]:
+    query = urlencode(
+        {
+            "symbol": symbol.upper(),
+            "interval": interval,
+            "startTime": start_time_ms,
+            "endTime": end_time_ms,
             "limit": limit,
         }
     )
@@ -153,6 +185,50 @@ def sync_binance_klines(
             )
         )
 
+    return BinanceSyncResult(
+        symbol=normalized_symbol,
+        interval=interval,
+        bars=len(bars),
+        latest_close=latest.close if latest else None,
+    )
+
+
+def sync_binance_klines_range(
+    connection: sqlite3.Connection,
+    *,
+    symbol: str,
+    interval: str,
+    start_time_ms: int,
+    end_time_ms: int,
+    limit: int,
+    now_ms: int | None = None,
+    source: str = "binance_gap_fill",
+    fetcher: RangeKlineFetcher = fetch_binance_klines_range,
+) -> BinanceSyncResult:
+    normalized_symbol = symbol.upper()
+    instrument = binance_symbol_to_instrument(normalized_symbol)
+    instrument_id = InstrumentRepository(connection).upsert(instrument)
+    rows = fetcher(normalized_symbol, interval, start_time_ms, end_time_ms, limit)
+    resolved_now_ms = now_ms or int(datetime.now(tz=UTC).timestamp() * 1000)
+
+    bars = [
+        replace(
+            parse_binance_kline(
+                instrument_id=instrument_id,
+                interval=interval,
+                row=row,
+                now_ms=resolved_now_ms,
+                timezone_name=instrument.timezone,
+            ),
+            source=source,
+        )
+        for row in rows
+    ]
+    repository = IntradayBarRepository(connection)
+    for bar in bars:
+        repository.upsert(bar)
+
+    latest = bars[-1] if bars else None
     return BinanceSyncResult(
         symbol=normalized_symbol,
         interval=interval,
