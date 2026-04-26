@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from market.aggregators import aggregate_crypto_from_1m
 from market.binance import binance_symbol_to_instrument
 from market.models import IntradayBar, MarketSnapshot
 from market.repositories import (
@@ -128,6 +129,8 @@ def apply_binance_kline_event(
         timezone_name=instrument.timezone,
     )
     IntradayBarRepository(connection).upsert(bar)
+    if bar.interval == "1m":
+        aggregate_crypto_from_1m(connection, [symbol])
     _upsert_kline_price_snapshot(
         connection,
         instrument_id=instrument_id,

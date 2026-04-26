@@ -60,7 +60,7 @@ class BinanceWebSocketTests(unittest.TestCase):
         self.assertEqual(len(sleeps), 1)
         self.assertAlmostEqual(sleeps[0], 0.15)
 
-    def test_kline_collector_applies_one_minute_messages_without_refreshing_rankings(self):
+    def test_kline_collector_applies_one_minute_messages_aggregates_without_refreshing_rankings(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
             init_database(db_path)
@@ -122,8 +122,9 @@ class BinanceWebSocketTests(unittest.TestCase):
                     JOIN instrument
                         ON instrument.instrument_id = bar_intraday.instrument_id
                     WHERE instrument.symbol = 'BTCUSDT'
+                    ORDER BY interval
                     """
-                ).fetchone()
+                ).fetchall()
                 ranking_count = connection.execute(
                     "SELECT count(*) FROM ranking_snapshot"
                 ).fetchone()[0]
@@ -133,10 +134,13 @@ class BinanceWebSocketTests(unittest.TestCase):
             ["wss://stream.binance.com:9443/stream?streams=btcusdt@kline_1m"],
         )
         self.assertEqual(result.items_synced, 1)
-        self.assertEqual(bar["interval"], "1m")
-        self.assertEqual(bar["close"], 64100.0)
-        self.assertEqual(bar["turnover_raw"], 160250.0)
-        self.assertEqual(bar["source"], "binance_ws_kline")
+        bars_by_interval = {row["interval"]: row for row in bar}
+        self.assertEqual(bars_by_interval["1m"]["close"], 64100.0)
+        self.assertEqual(bars_by_interval["1m"]["turnover_raw"], 160250.0)
+        self.assertEqual(bars_by_interval["1m"]["source"], "binance_ws_kline")
+        self.assertEqual(bars_by_interval["5m"]["close"], 64100.0)
+        self.assertEqual(bars_by_interval["15m"]["source"], "aggregate_1m")
+        self.assertEqual(bars_by_interval["8h"]["source"], "aggregate_1m")
         self.assertEqual(ranking_count, 0)
 
 
