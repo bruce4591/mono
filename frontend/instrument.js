@@ -15,6 +15,15 @@ const refreshButton = document.querySelector("#refreshButton");
 let activeChart = null;
 let activeTimezone = "UTC";
 
+const DEFAULT_VISIBLE_CANDLES = {
+  "1m": 90,
+  "5m": 96,
+  "15m": 96,
+  "60m": 80,
+  "8h": 90,
+  "1d": 120,
+};
+
 function formatNumber(value) {
   if (value === null || value === undefined) return "--";
   return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -110,7 +119,13 @@ function renderPeriodTabs(periods, selectedLabel, onSelect) {
 
 function renderSelectedPeriod(period) {
   intradayTitle.textContent = `K 线 ${period.label}`;
-  renderCandles(klineChart, period.items);
+  renderCandles(klineChart, getVisibleCandles(period));
+}
+
+function getVisibleCandles(period) {
+  const count = DEFAULT_VISIBLE_CANDLES[period.label] || 96;
+  if (period.items.length <= count) return period.items;
+  return period.items.slice(-count);
 }
 
 function renderCandles(container, bars) {

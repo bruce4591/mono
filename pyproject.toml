@@ -3,7 +3,9 @@ name = "market-mvp"
 version = "0.1.0"
 description = "Lightweight multi-market data, ranking, and charting system."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "websocket-client>=1.8,<2",
+]
 
 [project.scripts]
 market = "market.cli:main"
