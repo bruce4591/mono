@@ -3,13 +3,17 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from market.alerts import ALERT_METRICS, CHART_INDICATORS
+from market.binance import RangeKlineFetcher, fetch_binance_klines_range
+from market.crypto_gaps import fill_binance_1m_gaps
 from market.db import connect
+from market.models import IntradayBar
 from market.repositories import (
     AlertEventRepository,
     AlertRuleRepository,
@@ -173,13 +177,33 @@ def get_intraday_bars_payload(
     market: str,
     symbol: str,
     interval: str,
+    *,
+    before_ts_utc: str | None = None,
+    limit: int | None = None,
+    gap_fetcher: RangeKlineFetcher = fetch_binance_klines_range,
+    gap_min_request_interval_seconds: float = 1.0,
 ) -> dict[str, object]:
     instrument = InstrumentRepository(connection).get_by_market_symbol(market, symbol)
     if instrument is None or instrument.instrument_id is None:
         return {"market": market, "symbol": symbol, "interval": interval, "items": []}
 
-    bars = IntradayBarRepository(connection).list_for_instrument(
-        instrument.instrument_id, interval
+    resolved_limit = _clamp_limit(limit)
+    if before_ts_utc is not None and market == "CRYPTO":
+        _ensure_crypto_intraday_window(
+            connection,
+            symbol=symbol,
+            interval=interval,
+            before_ts_utc=before_ts_utc,
+            limit=resolved_limit,
+            fetcher=gap_fetcher,
+            min_request_interval_seconds=gap_min_request_interval_seconds,
+        )
+    bars = _list_intraday_window(
+        connection,
+        instrument_id=instrument.instrument_id,
+        interval=interval,
+        before_ts_utc=before_ts_utc,
+        limit=resolved_limit,
     )
     return {
         "market": market,
@@ -203,6 +227,93 @@ def get_intraday_bars_payload(
             for bar in bars
         ],
     }
+
+
+def _ensure_crypto_intraday_window(
+    connection: sqlite3.Connection,
+    *,
+    symbol: str,
+    interval: str,
+    before_ts_utc: str,
+    limit: int,
+    fetcher: RangeKlineFetcher,
+    min_request_interval_seconds: float,
+) -> None:
+    minutes = _interval_minutes(interval)
+    if minutes is None:
+        return
+    end = _parse_utc(before_ts_utc)
+    start = end - timedelta(minutes=minutes * limit)
+    if minutes * limit > 1000:
+        return
+    fill_binance_1m_gaps(
+        connection,
+        symbols=[symbol],
+        start_ts_utc=_format_utc(start),
+        end_ts_utc=_format_utc(end),
+        fetcher=fetcher,
+        min_request_interval_seconds=min_request_interval_seconds,
+    )
+
+
+def _list_intraday_window(
+    connection: sqlite3.Connection,
+    *,
+    instrument_id: int,
+    interval: str,
+    before_ts_utc: str | None,
+    limit: int,
+) -> list[IntradayBar]:
+    params: list[object] = [instrument_id, interval]
+    before_filter = ""
+    if before_ts_utc is not None:
+        before_filter = "AND bar_start_ts_utc < ?"
+        params.append(_format_utc(_parse_utc(before_ts_utc)))
+    params.append(limit)
+    rows = connection.execute(
+        f"""
+        SELECT
+            instrument_id,
+            interval,
+            bar_start_ts_utc,
+            bar_end_ts_utc,
+            trade_date_local,
+            open,
+            high,
+            low,
+            close,
+            volume_raw,
+            turnover_raw,
+            is_closed_bar,
+            source
+        FROM bar_intraday
+        WHERE instrument_id = ?
+            AND interval = ?
+            {before_filter}
+        ORDER BY bar_start_ts_utc DESC
+        LIMIT ?
+        """,
+        params,
+    ).fetchall()
+    return [_intraday_bar_from_row(row) for row in reversed(rows)]
+
+
+def _intraday_bar_from_row(row: sqlite3.Row) -> IntradayBar:
+    return IntradayBar(
+        instrument_id=int(row["instrument_id"]),
+        interval=str(row["interval"]),
+        bar_start_ts_utc=str(row["bar_start_ts_utc"]),
+        bar_end_ts_utc=str(row["bar_end_ts_utc"]),
+        trade_date_local=str(row["trade_date_local"]),
+        open=_optional_float(row["open"]),
+        high=_optional_float(row["high"]),
+        low=_optional_float(row["low"]),
+        close=_optional_float(row["close"]),
+        volume_raw=_optional_float(row["volume_raw"]),
+        turnover_raw=_optional_float(row["turnover_raw"]),
+        is_closed_bar=bool(row["is_closed_bar"]),
+        source=str(row["source"]),
+    )
 
 
 def get_watchlists_payload(connection: sqlite3.Connection) -> dict[str, object]:
@@ -487,6 +598,8 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 market = _first_query(query, "market")
                 symbol = _first_query(query, "symbol")
                 interval = _first_query(query, "interval")
+                before_ts_utc = _first_query(query, "before_ts_utc")
+                limit = _optional_query_int(query, "limit")
                 if market is None or symbol is None or interval is None:
                     self._write_json(
                         {"error": "market, symbol, and interval required"},
@@ -494,7 +607,14 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                     )
                     return
                 with connect(db_path) as connection:
-                    payload = get_intraday_bars_payload(connection, market, symbol, interval)
+                    payload = get_intraday_bars_payload(
+                        connection,
+                        market,
+                        symbol,
+                        interval,
+                        before_ts_utc=before_ts_utc,
+                        limit=limit,
+                    )
                 self._write_json(payload)
                 return
 
@@ -644,6 +764,38 @@ def _first_query(query: dict[str, list[str]], name: str) -> str | None:
     if not values:
         return None
     return values[0]
+
+
+def _optional_query_int(query: dict[str, list[str]], name: str) -> int | None:
+    value = _first_query(query, name)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _clamp_limit(limit: int | None) -> int:
+    if limit is None:
+        return 500
+    return max(1, min(limit, 500))
+
+
+def _interval_minutes(interval: str) -> int | None:
+    if interval.endswith("m"):
+        return int(interval[:-1])
+    if interval.endswith("h"):
+        return int(interval[:-1]) * 60
+    return None
+
+
+def _parse_utc(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def _format_utc(value: datetime) -> str:
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _optional_float(value: object) -> float | None:

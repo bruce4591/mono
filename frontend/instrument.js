@@ -11,9 +11,13 @@ const intradayTitle = document.querySelector("#intradayTitle");
 const chartTimezone = document.querySelector("#chartTimezone");
 const periodTabs = document.querySelector("#periodTabs");
 const klineChart = document.querySelector("#klineChart");
+const loadMoreBars = document.querySelector("#loadMoreBars");
+const chartRangeHint = document.querySelector("#chartRangeHint");
 const refreshButton = document.querySelector("#refreshButton");
 let activeChart = null;
 let activeTimezone = "UTC";
+let activePeriod = null;
+let touchStartX = null;
 
 const DEFAULT_VISIBLE_CANDLES = {
   "1m": 90,
@@ -22,6 +26,15 @@ const DEFAULT_VISIBLE_CANDLES = {
   "60m": 80,
   "8h": 90,
   "1d": 120,
+};
+
+const LOAD_MORE_CANDLES = {
+  "1m": 90,
+  "5m": 96,
+  "15m": 96,
+  "60m": 80,
+  "8h": 12,
+  "1d": 60,
 };
 
 function formatNumber(value) {
@@ -118,14 +131,43 @@ function renderPeriodTabs(periods, selectedLabel, onSelect) {
 }
 
 function renderSelectedPeriod(period) {
+  activePeriod = period;
   intradayTitle.textContent = `K 线 ${period.label}`;
   renderCandles(klineChart, getVisibleCandles(period));
+  renderRangeControls(period);
 }
 
 function getVisibleCandles(period) {
   const count = DEFAULT_VISIBLE_CANDLES[period.label] || 96;
   if (period.items.length <= count) return period.items;
-  return period.items.slice(-count);
+  return period.items.slice(0, count);
+}
+
+function renderRangeControls(period) {
+  const earliest = period.items[0];
+  const latest = period.items[period.items.length - 1];
+  const canLoadMore = period.type === "intraday" && Boolean(earliest);
+  loadMoreBars.disabled = !canLoadMore;
+  if (!earliest || !latest) {
+    chartRangeHint.textContent = "--";
+    return;
+  }
+  chartRangeHint.textContent = `${period.label} ${formatBarTime(earliest)} → ${formatBarTime(latest)}`;
+}
+
+function formatBarTime(bar) {
+  return bar.bar_start_ts_utc || bar.trade_date || "--";
+}
+
+function mergeBars(existing, incoming) {
+  const byTime = new Map();
+  [...incoming, ...existing].forEach((bar) => {
+    const key = bar.bar_start_ts_utc || bar.trade_date;
+    if (key) byTime.set(key, bar);
+  });
+  return Array.from(byTime.values()).sort((left, right) => {
+    return normalizeChartTimestamp(left) - normalizeChartTimestamp(right);
+  });
 }
 
 function renderCandles(container, bars) {
@@ -226,11 +268,7 @@ async function loadInstrument() {
     fetch(`/api/instruments/${encodeURIComponent(market)}/${encodeURIComponent(symbol)}`),
     fetch(`/api/bars/daily?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}`),
     ...intradayIntervals.map((interval) =>
-      fetch(
-        `/api/bars/intraday?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(
-          symbol,
-        )}&interval=${encodeURIComponent(interval)}`,
-      ),
+      fetchIntradayBars(interval, DEFAULT_VISIBLE_CANDLES[interval] || 96),
     ),
   ]);
 
@@ -265,7 +303,52 @@ async function loadInstrument() {
   selectPeriod(selectedPeriod);
 }
 
+async function fetchIntradayBars(interval, limit, beforeTsUtc = null) {
+  const query = new URLSearchParams({
+    market,
+    symbol,
+    interval,
+    limit: String(limit),
+  });
+  if (beforeTsUtc) query.set("before_ts_utc", beforeTsUtc);
+  return fetch(`/api/bars/intraday?${query.toString()}`);
+}
+
+async function loadOlderBars() {
+  if (!activePeriod || activePeriod.type !== "intraday" || !activePeriod.items.length) return;
+  const earliest = activePeriod.items[0];
+  const beforeTsUtc = earliest.bar_start_ts_utc;
+  if (!beforeTsUtc) return;
+  loadMoreBars.disabled = true;
+  loadMoreBars.textContent = "加载中";
+  try {
+    const limit = LOAD_MORE_CANDLES[activePeriod.label] || 96;
+    const response = await fetchIntradayBars(activePeriod.label, limit, beforeTsUtc);
+    if (!response.ok) return;
+    const payload = await response.json();
+    if (!payload.items.length) {
+      chartRangeHint.textContent = "没有更早数据";
+      return;
+    }
+    activePeriod.items = mergeBars(activePeriod.items, payload.items);
+    renderSelectedPeriod(activePeriod);
+  } finally {
+    loadMoreBars.textContent = "更早";
+    loadMoreBars.disabled = !activePeriod || activePeriod.type !== "intraday";
+  }
+}
+
 refreshButton.addEventListener("click", loadInstrument);
+loadMoreBars.addEventListener("click", loadOlderBars);
+klineChart.addEventListener("touchstart", (event) => {
+  touchStartX = event.changedTouches[0]?.clientX ?? null;
+});
+klineChart.addEventListener("touchend", (event) => {
+  if (touchStartX === null) return;
+  const touchEndX = event.changedTouches[0]?.clientX ?? touchStartX;
+  if (touchStartX - touchEndX > 60) loadOlderBars();
+  touchStartX = null;
+});
 setInterval(loadLatestSnapshot, 5000);
 
 loadInstrument().catch(() => {

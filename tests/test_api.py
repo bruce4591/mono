@@ -17,8 +17,9 @@ from market.api import (
     get_static_asset,
     get_watchlists_payload,
 )
+from market.binance import binance_symbol_to_instrument
 from market.db import connect, init_database
-from market.repositories import RankingRepository
+from market.repositories import InstrumentRepository, RankingRepository
 from market.models import AlertRule
 from market.repositories import AlertEventRepository, AlertRuleRepository
 from market.models import AlertEvent
@@ -223,6 +224,81 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(len(payload["items"]), 6)
         self.assertEqual(payload["items"][0]["interval"], "15m")
         self.assertTrue(payload["items"][-1]["is_closed_bar"])
+
+    def test_get_intraday_bars_payload_limits_latest_window(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                payload = get_intraday_bars_payload(
+                    connection,
+                    "CRYPTO",
+                    "BTCUSDT",
+                    "15m",
+                    limit=2,
+                )
+
+        self.assertEqual(len(payload["items"]), 2)
+        self.assertEqual(payload["items"][0]["bar_start_ts_utc"], "2026-04-24T15:00:00Z")
+        self.assertEqual(payload["items"][1]["bar_start_ts_utc"], "2026-04-24T15:15:00Z")
+
+    def test_get_intraday_bars_payload_backfills_crypto_window_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
+                calls.append((symbol, interval, start_time_ms, end_time_ms, limit))
+                return [
+                    [
+                        1_776_000_000_000,
+                        "64000",
+                        "64100",
+                        "63900",
+                        "64050",
+                        "1",
+                        1_776_000_059_999,
+                        "64050",
+                    ],
+                    [
+                        1_776_000_060_000,
+                        "64050",
+                        "64200",
+                        "64000",
+                        "64150",
+                        "2",
+                        1_776_000_119_999,
+                        "128300",
+                    ],
+                ]
+
+            with connect(db_path) as connection:
+                InstrumentRepository(connection).upsert(
+                    binance_symbol_to_instrument("BTCUSDT")
+                )
+                payload = get_intraday_bars_payload(
+                    connection,
+                    "CRYPTO",
+                    "BTCUSDT",
+                    "1m",
+                    before_ts_utc="2026-04-12T13:22:00Z",
+                    limit=2,
+                    gap_fetcher=fetcher,
+                    gap_min_request_interval_seconds=0,
+                )
+
+        self.assertEqual(len(payload["items"]), 2)
+        self.assertEqual(payload["items"][0]["source"], "binance_gap_fill")
+        self.assertEqual(payload["items"][1]["close"], 64150.0)
+        self.assertEqual(calls[0][0], "BTCUSDT")
+        self.assertEqual(calls[0][1], "1m")
 
     def test_get_watchlists_payload_returns_active_entries_with_instruments(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -434,6 +510,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b'<section class="detail-panel"', asset.body)
         self.assertIn(b'id="klineChart"', asset.body)
         self.assertIn(b'id="periodTabs"', asset.body)
+        self.assertIn(b'id="loadMoreBars"', asset.body)
+        self.assertIn(b'id="chartRangeHint"', asset.body)
         self.assertIn(b'id="chartTimezone"', asset.body)
         self.assertIn(b"klinecharts@9.8.12", asset.body)
         self.assertIn(b"KLineCharts", asset.body)
@@ -454,7 +532,10 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"chartTimezone", asset.body)
         self.assertIn(b'["1m", "5m", "15m", "8h"]', asset.body)
         self.assertIn(b"DEFAULT_VISIBLE_CANDLES", asset.body)
+        self.assertIn(b"LOAD_MORE_CANDLES", asset.body)
         self.assertIn(b"getVisibleCandles", asset.body)
+        self.assertIn(b"loadMoreBars", asset.body)
+        self.assertIn(b"chartRangeHint", asset.body)
         self.assertIn(b"loadLatestSnapshot", asset.body)
         self.assertIn(b"setInterval(loadLatestSnapshot, 5000)", asset.body)
 
