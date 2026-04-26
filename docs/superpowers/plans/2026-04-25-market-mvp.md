@@ -79,7 +79,7 @@
 - [x] Add static `config/watchlists/*.json` loading for ETF Focus20 and Index Focus20.
 - [x] Add snapshot and ranking repositories to build turnover top boards from `market_snapshot`.
 - [x] Add fake collector data seeding for local snapshots, daily bars, and intraday bars.
-- [ ] Add collector interfaces with fake clients first, then AKShare and Binance implementations.
+- [x] Add collector interfaces with fake clients first, then AKShare and Binance implementations.
 - [x] Add first read-only API route for boards.
 - [x] Add the first mobile Web/PWA screen for boards.
 - [x] Add read-only API routes for instruments and bars.
@@ -107,7 +107,6 @@ Completed:
 
 Not yet complete:
 
-- A unified collector interface that normalizes all markets through one contract.
 - AKShare collectors for A-share, HK, US, ETF, and index daily/60m data.
 - Full technical indicator library beyond snapshot-based alert metrics.
 - Authentication or IP restriction for long-term public mobile access.
@@ -192,10 +191,10 @@ Not yet complete:
 - `sync_snapshots(connection, symbols) -> SyncResult`
 
 **Tasks:**
-- [ ] Write failing tests for a fake collector implementing the contract.
-- [ ] Move Binance sync behind the collector interface without changing CLI behavior.
-- [ ] Keep `sync-crypto-board` compatible with current cron script.
-- [ ] Add job/source health updates at the collector boundary.
+- [x] Write failing tests for a fake collector implementing the contract.
+- [x] Move Binance sync behind the collector interface without changing CLI behavior.
+- [x] Keep `sync-crypto-board` compatible with current cron script.
+- [x] Add job/source health updates at the collector boundary.
 - [ ] Run local and server tests.
 
 ### Slice 3: AKShare Market Data MVP

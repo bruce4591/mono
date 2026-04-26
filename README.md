@@ -21,6 +21,7 @@ Implemented foundation:
 - Instrument detail API and mobile detail page with daily and intraday bars
 - Watchlist, health, and job status API endpoints
 - Alert rule/event framework with metric resolvers for future indicators
+- Unified collector contract with Binance behind a collector adapter
 - Mobile status page for boards, alerts, watchlists, jobs, and data sources
 - KLineCharts candlestick panel with MA, VOL, MACD, interval, volume, and turnover columns
 - CLI commands for database initialization and health checks

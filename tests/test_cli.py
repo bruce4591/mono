@@ -9,8 +9,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-from market.binance import BinanceSyncResult
 from market.cli import main
+from market.collectors.base import CollectorResult
 
 
 class CliTests(unittest.TestCase):
@@ -200,15 +200,20 @@ class CliTests(unittest.TestCase):
             db_path = Path(tmp_dir) / "market.sqlite3"
             stdout = io.StringIO()
 
-            def fake_sync(connection, *, symbol, interval, limit):
-                return BinanceSyncResult(
-                    symbol=symbol.upper(),
-                    interval=interval,
-                    bars=2,
-                    latest_close=100.0,
-                )
+            class FakeBinanceCollector:
+                source_name = "binance"
 
-            with redirect_stdout(stdout), patch("market.cli.sync_binance_klines", fake_sync):
+                def sync_intraday_bars(self, connection, symbols, interval, limit):
+                    return CollectorResult(
+                        source_name=self.source_name,
+                        items_synced=2,
+                        metadata={"symbols": symbols, "interval": interval},
+                    )
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.BinanceCollector",
+                return_value=FakeBinanceCollector(),
+            ):
                 main(["init-db", "--db-path", str(db_path)])
                 exit_code = main(
                     [
@@ -241,6 +246,52 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(job, ("success", "BTCUSDT:15m", None))
         self.assertEqual(source, ("ok", None))
+
+    def test_sync_crypto_board_uses_binance_collector_adapter(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+            calls = []
+
+            class FakeBinanceCollector:
+                source_name = "binance"
+
+                def sync_intraday_bars(self, connection, symbols, interval, limit):
+                    calls.append((symbols, interval, limit))
+                    return CollectorResult(
+                        source_name=self.source_name,
+                        items_synced=4,
+                        metadata={"symbols": symbols, "interval": interval},
+                    )
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.BinanceCollector",
+                return_value=FakeBinanceCollector(),
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "sync-crypto-board",
+                        "--db-path",
+                        str(db_path),
+                        "--symbol",
+                        "BTCUSDT",
+                        "--symbol",
+                        "ETHUSDT",
+                        "--interval",
+                        "15m",
+                        "--limit",
+                        "2",
+                        "--snapshot-ts-utc",
+                        "2026-04-24T20:00:00Z",
+                        "--trade-date-local",
+                        "2026-04-24",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(calls, [(["BTCUSDT", "ETHUSDT"], "15m", 2)])
+        self.assertIn("crypto board synced: 2 symbols, 0 ranking rows", stdout.getvalue())
 
     def test_add_alert_rule_and_list_alert_events_are_registered(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
