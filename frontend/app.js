@@ -4,6 +4,7 @@ const boards = {
 };
 
 let activeBoard = "ETF_FOCUS20";
+const previousPrices = new Map();
 
 const boardName = document.querySelector("#boardName");
 const snapshotTime = document.querySelector("#snapshotTime");
@@ -37,6 +38,17 @@ function formatPrice(value) {
   return Number(value).toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
+function formatPriceDirection(item) {
+  if (item.last_price === null || item.last_price === undefined) return "";
+  const key = `${item.market}:${item.symbol}`;
+  const price = Number(item.last_price);
+  const previous = previousPrices.get(key);
+  previousPrices.set(key, price);
+  if (previous === undefined || previous === price) return "";
+  if (price > previous) return '<span class="price-direction is-up">↑</span>';
+  return '<span class="price-direction is-down">↓</span>';
+}
+
 function formatRankChange(value) {
   if (value === null || value === undefined) return '<span class="rank-change is-new">新入</span>';
   if (value > 0) return `<span class="rank-change is-up">上期 ↑${value}</span>`;
@@ -63,6 +75,7 @@ function renderBoard(payload) {
       const change = Number(item.change_pct || 0);
       const changeClass = change < 0 ? "change is-down" : "change";
       const sign = change > 0 ? "+" : "";
+      const priceDirection = formatPriceDirection(item);
       return `
         <a class="row" href="/instrument.html?market=${encodeURIComponent(item.market)}&symbol=${encodeURIComponent(item.symbol)}">
           <div class="rank-box">
@@ -74,7 +87,7 @@ function renderBoard(payload) {
             <p class="name">${item.display_name}</p>
           </div>
           <div class="metrics">
-            <p class="price">${formatPrice(item.last_price)}</p>
+            <p class="price">${formatPrice(item.last_price)} ${priceDirection}</p>
             <p class="turnover">${formatTurnover(item.turnover_raw, item.quote_currency)}</p>
             <p class="name">24h量 ${formatVolume(item.volume_raw)}</p>
             <p class="${changeClass}">24h ${sign}${change.toFixed(2)}%</p>
@@ -85,12 +98,12 @@ function renderBoard(payload) {
     .join("");
 }
 
-async function loadBoard(board) {
+async function loadBoard(board, options = {}) {
   activeBoard = board;
   tabs.forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.board === activeBoard);
   });
-  boardList.innerHTML = '<div class="empty">加载中</div>';
+  if (!options.silent) boardList.innerHTML = '<div class="empty">加载中</div>';
   try {
     const response = await fetch(`/api/boards/${encodeURIComponent(board)}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -109,3 +122,4 @@ tabs.forEach((tab) => {
 refreshButton.addEventListener("click", () => loadBoard(activeBoard));
 
 loadBoard(activeBoard);
+setInterval(() => loadBoard(activeBoard, { silent: true }), 30000);

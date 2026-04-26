@@ -201,6 +201,19 @@ h1 {
   font-weight: 900;
 }
 
+.price-direction {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.price-direction.is-up {
+  color: var(--accent);
+}
+
+.price-direction.is-down {
+  color: var(--danger);
+}
+
 .change {
   margin: 0;
   color: var(--accent);
