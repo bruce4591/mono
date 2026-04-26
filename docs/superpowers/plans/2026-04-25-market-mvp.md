@@ -168,7 +168,7 @@ Not yet complete:
 - [x] Add API endpoints: `/api/alerts/rules` and `/api/alerts/events`.
 - [x] Add alert section to `/status.html`.
 - [x] Run local full tests.
-- [ ] Deploy to Tencent and verify alert events over `http://150.109.22.77:8000/api/alerts/events`.
+- [x] Deploy to Tencent and verify alert events over `http://150.109.22.77:8000/api/alerts/events`.
 
 **Current implementation note:** The alert framework is metric-registry based. Built-in metrics are `change_pct`, `turnover_raw`, `volume_raw`, and `last_price`; future indicators can be added by registering new metric resolvers without changing the rule/event tables.
 
