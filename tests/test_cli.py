@@ -173,6 +173,26 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
 
+    def test_sync_crypto_board_is_registered(self):
+        exit_code = main(
+            [
+                "sync-crypto-board",
+                "--db-path",
+                "./data/market.sqlite3",
+                "--symbol",
+                "BTCUSDT",
+                "--symbol",
+                "ETHUSDT",
+                "--interval",
+                "15m",
+                "--limit",
+                "2",
+                "--dry-run",
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

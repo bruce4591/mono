@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 from market.api import serve_api
@@ -68,6 +69,25 @@ def build_parser() -> argparse.ArgumentParser:
     sync_binance.add_argument("--interval", default="15m")
     sync_binance.add_argument("--limit", type=int, default=96)
     sync_binance.add_argument("--dry-run", action="store_true")
+
+    sync_crypto_board = subparsers.add_parser(
+        "sync-crypto-board",
+        help="Sync multiple Binance symbols and refresh the crypto turnover board",
+    )
+    sync_crypto_board.add_argument("--db-path", type=Path, default=None)
+    sync_crypto_board.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="Crypto symbol to sync; can be provided multiple times",
+    )
+    sync_crypto_board.add_argument("--interval", default="15m")
+    sync_crypto_board.add_argument("--limit", type=int, default=96)
+    sync_crypto_board.add_argument("--board-name", default="CRYPTO_TURNOVER_TOP50")
+    sync_crypto_board.add_argument("--board-limit", type=int, default=50)
+    sync_crypto_board.add_argument("--snapshot-ts-utc", default=None)
+    sync_crypto_board.add_argument("--trade-date-local", default=None)
+    sync_crypto_board.add_argument("--dry-run", action="store_true")
     return parser
 
 
@@ -154,6 +174,43 @@ def main(argv: list[str] | None = None) -> int:
             "binance klines synced: "
             f"{result.symbol} {result.interval} "
             f"({result.bars} bars, latest_close={result.latest_close})"
+        )
+        return 0
+
+    if args.command == "sync-crypto-board":
+        symbols = args.symbol or ["BTCUSDT", "ETHUSDT"]
+        now = datetime.now(tz=UTC)
+        snapshot_ts_utc = args.snapshot_ts_utc or now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        trade_date_local = args.trade_date_local or now.date().isoformat()
+        if args.dry_run:
+            print(
+                "crypto board sync ready: "
+                f"{','.join(symbol.upper() for symbol in symbols)} "
+                f"{args.interval} limit={args.limit} board={args.board_name}"
+            )
+            return 0
+        with connect(db_path) as connection:
+            results = [
+                sync_binance_klines(
+                    connection,
+                    symbol=symbol,
+                    interval=args.interval,
+                    limit=args.limit,
+                )
+                for symbol in symbols
+            ]
+            ranking_count = RankingRepository(connection).refresh_turnover_board(
+                board_name=args.board_name,
+                snapshot_ts_utc=snapshot_ts_utc,
+                trade_date_local=trade_date_local,
+                market="CRYPTO",
+                instrument_type="crypto",
+                limit=args.board_limit,
+            )
+        print(
+            "crypto board synced: "
+            f"{len(results)} symbols, {ranking_count} ranking rows, "
+            f"snapshot={snapshot_ts_utc}"
         )
         return 0
 

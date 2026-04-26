@@ -75,6 +75,17 @@ Sync real Binance Spot 15m crypto bars:
   --limit 96
 ```
 
+Sync the crypto board in one command:
+
+```bash
+.venv/bin/market sync-crypto-board \
+  --db-path ./data/market.sqlite3 \
+  --symbol BTCUSDT \
+  --symbol ETHUSDT \
+  --interval 15m \
+  --limit 96
+```
+
 Refresh a turnover board from current snapshots:
 
 ```bash
