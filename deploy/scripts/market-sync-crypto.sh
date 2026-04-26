@@ -8,7 +8,7 @@ cd "$APP_DIR"
 
 .venv/bin/market sync-crypto-board \
   --db-path "$DB_PATH" \
-  --interval 15m \
+  --interval 1m \
   --limit 96 \
   --board-name CRYPTO_TURNOVER_TOP50 \
   --board-limit 50 \
