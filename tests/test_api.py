@@ -185,6 +185,38 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["symbol"], "SPY")
         self.assertEqual(payload["latest_snapshot"]["last_price"], 510.2)
 
+    def test_get_instrument_payload_caches_crypto_tick_size_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def metadata_fetcher(symbol: str) -> dict[str, object]:
+                calls.append(symbol)
+                return {"price_tick_size": "0.00001000"}
+
+            with connect(db_path) as connection:
+                InstrumentRepository(connection).upsert(
+                    binance_symbol_to_instrument("DOGEUSDT")
+                )
+                payload = get_instrument_payload(
+                    connection,
+                    "CRYPTO",
+                    "DOGEUSDT",
+                    instrument_metadata_fetcher=metadata_fetcher,
+                )
+                stored = InstrumentRepository(connection).get_by_market_symbol(
+                    "CRYPTO", "DOGEUSDT"
+                )
+
+        self.assertEqual(calls, ["DOGEUSDT"])
+        self.assertIsNotNone(payload)
+        assert payload is not None
+        self.assertEqual(payload["extra_meta"]["price_tick_size"], "0.00001000")
+        self.assertIsNotNone(stored)
+        assert stored is not None
+        self.assertEqual(stored.extra_meta["price_tick_size"], "0.00001000")
+
     def test_get_daily_bars_payload_returns_symbol_bars(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -603,6 +635,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"DEFAULT_VISIBLE_CANDLES", asset.body)
         self.assertIn(b"LOAD_MORE_CANDLES", asset.body)
         self.assertIn(b"getVisibleCandles", asset.body)
+        self.assertIn(b"pricePrecisionFromTickSize", asset.body)
+        self.assertIn(b"setPriceVolumePrecision", asset.body)
         self.assertIn(b"fetchOlderBars", asset.body)
         self.assertIn(b"applyNewData(data)", asset.body)
         self.assertNotIn(b"setLoadDataCallback", asset.body)

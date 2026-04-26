@@ -23,6 +23,7 @@ KNOWN_QUOTE_ASSETS = ("USDT", "USDC", "FDUSD", "TUSD", "BUSD", "BTC", "ETH", "BN
 
 KlineFetcher = Callable[[str, str, int], list[list[object]]]
 RangeKlineFetcher = Callable[[str, str, int, int, int], list[list[object]]]
+InstrumentMetadataFetcher = Callable[[str], dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,48 @@ def fetch_binance_24hr_tickers(
     if not isinstance(payload, list):
         raise ValueError("unexpected Binance 24hr ticker response")
     return [item for item in payload if isinstance(item, dict)]
+
+
+def fetch_binance_symbol_trading_meta(
+    symbol: str,
+    *,
+    base_url: str = BINANCE_SPOT_API_BASE,
+    timeout: float = 15.0,
+) -> dict[str, object]:
+    query = urlencode({"symbol": symbol.upper()})
+    request = Request(
+        f"{base_url}/api/v3/exchangeInfo?{query}",
+        headers={"User-Agent": "market-mvp/0.1"},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("unexpected Binance exchangeInfo response")
+    return parse_binance_symbol_trading_meta(payload)
+
+
+def parse_binance_symbol_trading_meta(payload: dict[str, object]) -> dict[str, object]:
+    symbols = payload.get("symbols")
+    if not isinstance(symbols, list) or not symbols:
+        return {}
+    symbol_info = symbols[0]
+    if not isinstance(symbol_info, dict):
+        return {}
+
+    filters = symbol_info.get("filters")
+    meta: dict[str, object] = {}
+    if not isinstance(filters, list):
+        return meta
+
+    for raw_filter in filters:
+        if not isinstance(raw_filter, dict):
+            continue
+        filter_type = raw_filter.get("filterType")
+        if filter_type == "PRICE_FILTER" and raw_filter.get("tickSize") is not None:
+            meta["price_tick_size"] = str(raw_filter["tickSize"])
+        if filter_type == "LOT_SIZE" and raw_filter.get("stepSize") is not None:
+            meta["quantity_step_size"] = str(raw_filter["stepSize"])
+    return meta
 
 
 def fetch_top_binance_usdt_symbols(limit: int = 50) -> list[str]:

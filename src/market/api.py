@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -10,10 +10,15 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from market.alerts import ALERT_METRICS, CHART_INDICATORS
-from market.binance import RangeKlineFetcher, fetch_binance_klines_range
+from market.binance import (
+    InstrumentMetadataFetcher,
+    RangeKlineFetcher,
+    fetch_binance_klines_range,
+    fetch_binance_symbol_trading_meta,
+)
 from market.crypto_gaps import BINANCE_KLINES_MAX_LIMIT, fill_binance_1m_gaps
 from market.db import connect
-from market.models import IntradayBar
+from market.models import Instrument, IntradayBar
 from market.repositories import (
     AlertEventRepository,
     AlertRuleRepository,
@@ -119,10 +124,19 @@ def get_instrument_payload(
     connection: sqlite3.Connection,
     market: str,
     symbol: str,
+    *,
+    instrument_metadata_fetcher: InstrumentMetadataFetcher = fetch_binance_symbol_trading_meta,
 ) -> dict[str, object] | None:
-    instrument = InstrumentRepository(connection).get_by_market_symbol(market, symbol)
+    instrument_repository = InstrumentRepository(connection)
+    instrument = instrument_repository.get_by_market_symbol(market, symbol)
     if instrument is None or instrument.instrument_id is None:
         return None
+    if market == "CRYPTO":
+        instrument = _ensure_crypto_instrument_metadata(
+            instrument_repository,
+            instrument,
+            instrument_metadata_fetcher,
+        )
 
     snapshot = _latest_snapshot(connection, instrument.instrument_id)
     return {
@@ -138,6 +152,31 @@ def get_instrument_payload(
         "extra_meta": instrument.extra_meta,
         "latest_snapshot": snapshot,
     }
+
+
+def _ensure_crypto_instrument_metadata(
+    instrument_repository: InstrumentRepository,
+    instrument: Instrument,
+    metadata_fetcher: InstrumentMetadataFetcher,
+) -> Instrument:
+    if instrument.extra_meta.get("price_tick_size"):
+        return instrument
+    try:
+        metadata = metadata_fetcher(instrument.symbol)
+    except Exception:
+        return instrument
+    if not metadata:
+        return instrument
+    updated = replace(
+        instrument,
+        extra_meta={**instrument.extra_meta, **metadata},
+    )
+    instrument_repository.upsert(updated)
+    refreshed = instrument_repository.get_by_market_symbol(
+        instrument.market,
+        instrument.symbol,
+    )
+    return refreshed or updated
 
 
 def get_daily_bars_payload(

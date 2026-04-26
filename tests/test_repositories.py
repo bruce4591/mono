@@ -51,7 +51,47 @@ class InstrumentRepositoryTests(unittest.TestCase):
         self.assertEqual(stored.display_name, "Bitcoin / Tether")
         self.assertEqual(stored.extra_meta["base"], "BTC")
 
+    def test_upsert_instrument_preserves_existing_extra_meta_when_omitted(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                repository = InstrumentRepository(connection)
+                repository.upsert(
+                    Instrument(
+                        market="CRYPTO",
+                        symbol="DOGEUSDT",
+                        display_name="DOGE/USDT",
+                        exchange="BINANCE",
+                        instrument_type="crypto",
+                        quote_currency="USDT",
+                        timezone="UTC",
+                        extra_meta={
+                            "base_asset": "DOGE",
+                            "quote_asset": "USDT",
+                            "price_tick_size": "0.00001000",
+                        },
+                    )
+                )
+                repository.upsert(
+                    Instrument(
+                        market="CRYPTO",
+                        symbol="DOGEUSDT",
+                        display_name="DOGE/USDT",
+                        exchange="BINANCE",
+                        instrument_type="crypto",
+                        quote_currency="USDT",
+                        timezone="UTC",
+                        extra_meta={"base_asset": "DOGE", "quote_asset": "USDT"},
+                    )
+                )
+                stored = repository.get_by_market_symbol("CRYPTO", "DOGEUSDT")
+
+        self.assertIsNotNone(stored)
+        assert stored is not None
+        self.assertEqual(stored.extra_meta["price_tick_size"], "0.00001000")
+
 
 if __name__ == "__main__":
     unittest.main()
-

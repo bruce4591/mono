@@ -20,6 +20,7 @@ class InstrumentRepository:
         self.connection = connection
 
     def upsert(self, instrument: Instrument) -> int:
+        extra_meta = self._merged_extra_meta(instrument)
         self.connection.execute(
             """
             INSERT INTO instrument (
@@ -54,7 +55,7 @@ class InstrumentRepository:
                 instrument.quote_currency,
                 instrument.timezone,
                 int(instrument.is_active),
-                json.dumps(instrument.extra_meta, sort_keys=True),
+                json.dumps(extra_meta, sort_keys=True),
             ),
         )
         row = self.connection.execute(
@@ -68,6 +69,12 @@ class InstrumentRepository:
         if row is None:
             raise RuntimeError("instrument upsert did not return a row")
         return int(row["instrument_id"])
+
+    def _merged_extra_meta(self, instrument: Instrument) -> dict[str, object]:
+        existing = self.get_by_market_symbol(instrument.market, instrument.symbol)
+        if existing is None:
+            return dict(instrument.extra_meta)
+        return {**existing.extra_meta, **instrument.extra_meta}
 
     def get_by_market_symbol(self, market: str, symbol: str) -> Instrument | None:
         row = self.connection.execute(

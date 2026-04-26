@@ -8,6 +8,7 @@ from market.binance import (
     binance_symbol_to_instrument,
     parse_binance_daily_kline,
     parse_binance_24hr_ticker_snapshot,
+    parse_binance_symbol_trading_meta,
     parse_binance_kline,
     select_top_quote_volume_symbols,
     sync_binance_24hr_snapshots,
@@ -112,6 +113,30 @@ class BinanceTests(unittest.TestCase):
         self.assertEqual(instrument.instrument_type, "crypto")
         self.assertEqual(instrument.quote_currency, "USDT")
         self.assertEqual(instrument.timezone, "UTC")
+
+    def test_parse_binance_symbol_trading_meta_extracts_original_tick_size(self):
+        meta = parse_binance_symbol_trading_meta(
+            {
+                "symbols": [
+                    {
+                        "symbol": "DOGEUSDT",
+                        "filters": [
+                            {
+                                "filterType": "PRICE_FILTER",
+                                "tickSize": "0.00001000",
+                            },
+                            {
+                                "filterType": "LOT_SIZE",
+                                "stepSize": "1.00000000",
+                            },
+                        ],
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(meta["price_tick_size"], "0.00001000")
+        self.assertEqual(meta["quantity_step_size"], "1.00000000")
 
     def test_select_top_quote_volume_symbols_filters_usdt_and_sorts_descending(self):
         symbols = select_top_quote_volume_symbols(

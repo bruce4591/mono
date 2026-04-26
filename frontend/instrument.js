@@ -16,6 +16,7 @@ const chartRangeHint = document.querySelector("#chartRangeHint");
 const refreshButton = document.querySelector("#refreshButton");
 let activeChart = null;
 let activeTimezone = "UTC";
+let activePriceTickSize = null;
 let activePeriod = null;
 let isLoadingOlderBars = false;
 
@@ -82,6 +83,25 @@ function toKLineData(bar) {
     volume: Number(bar.volume_raw || 0),
     turnover: Number(bar.turnover_raw || 0),
   };
+}
+
+function pricePrecisionFromTickSize(tickSize) {
+  if (tickSize === null || tickSize === undefined) return null;
+  const normalized = String(tickSize).trim();
+  if (!normalized || Number(normalized) <= 0) return null;
+  if (normalized.toLowerCase().includes("e-")) {
+    const precision = Math.ceil(Math.abs(Math.log10(Number(normalized))));
+    return Number.isFinite(precision) ? precision : null;
+  }
+  return (normalized.split(".")[1] || "").length;
+}
+
+function applyChartPrecision(chart, priceTickSize) {
+  const pricePrecision = pricePrecisionFromTickSize(priceTickSize);
+  if (pricePrecision === null) return;
+  if (typeof chart.setPriceVolumePrecision === "function") {
+    chart.setPriceVolumePrecision(pricePrecision, 2);
+  }
 }
 
 function chartLibrary() {
@@ -236,6 +256,7 @@ function renderCandles(container, bars) {
       },
     },
   });
+  applyChartPrecision(activeChart, activePriceTickSize);
   activeChart.applyNewData(data);
   activeChart.createIndicator("MA", true, { id: "candle_pane" });
   activeChart.createIndicator("VOL", false, { height: 82 });
@@ -284,6 +305,7 @@ async function loadInstrument() {
   );
   const snapshot = instrument.latest_snapshot || {};
   activeTimezone = instrument.timezone || "UTC";
+  activePriceTickSize = instrument.extra_meta?.price_tick_size || null;
 
   title.textContent = `${instrument.symbol}`;
   chartTimezone.textContent = `图表时区 ${activeTimezone} / 原始时间 UTC`;
