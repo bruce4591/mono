@@ -18,6 +18,7 @@ from market.binance import (
     sync_binance_klines,
 )
 from market.collectors.binance import BinanceCollector
+from market.collectors.binance_ws import BinanceKlineWebSocketCollector
 from market.collectors.base import run_collector_job
 from market.db import connect, init_database
 from market.models import AlertRule
@@ -133,6 +134,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     apply_ticker.add_argument("--db-path", type=Path, default=None)
     apply_ticker.add_argument("--path", type=Path, required=True)
+
+    run_kline_ws = subparsers.add_parser(
+        "run-binance-kline-ws",
+        help="Run Binance combined WebSocket 1m kline collector",
+    )
+    run_kline_ws.add_argument("--db-path", type=Path, default=None)
+    run_kline_ws.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="Crypto symbol to subscribe; can be provided multiple times",
+    )
+    run_kline_ws.add_argument("--interval", default="1m")
+    run_kline_ws.add_argument("--max-streams-per-connection", type=int, default=200)
+    run_kline_ws.add_argument("--dry-run", action="store_true")
 
     add_alert_rule = subparsers.add_parser(
         "add-alert-rule", help="Create or update a threshold alert rule"
@@ -369,6 +385,31 @@ def main(argv: list[str] | None = None) -> int:
             "binance ticker applied: "
             f"{event.symbol} last_price={event.last_price} "
             f"snapshot={event.snapshot_ts_utc}"
+        )
+        return 0
+
+    if args.command == "run-binance-kline-ws":
+        normalized_symbols = [symbol.upper() for symbol in args.symbol]
+        if args.dry_run:
+            symbol_text = ",".join(normalized_symbols) or "none"
+            print(
+                "binance kline ws ready: "
+                f"{symbol_text} interval={args.interval}"
+            )
+            return 0
+        if not normalized_symbols:
+            print("binance kline ws error: at least one --symbol is required")
+            return 1
+        collector = BinanceKlineWebSocketCollector(
+            db_path=db_path,
+            symbols=normalized_symbols,
+            interval=args.interval,
+            max_streams_per_connection=args.max_streams_per_connection,
+        )
+        result = collector.run_once()
+        print(
+            "binance kline ws stopped: "
+            f"{result.items_synced} messages, interval={args.interval}"
         )
         return 0
 

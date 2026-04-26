@@ -4,10 +4,15 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from market.binance import binance_symbol_to_instrument
-from market.models import MarketSnapshot
-from market.repositories import InstrumentRepository, MarketSnapshotRepository
+from market.models import IntradayBar, MarketSnapshot
+from market.repositories import (
+    InstrumentRepository,
+    IntradayBarRepository,
+    MarketSnapshotRepository,
+)
 
 
 @dataclass(frozen=True)
@@ -66,6 +71,117 @@ def apply_binance_ticker_event(
         )
     )
     return event
+
+
+def parse_binance_kline_event(
+    payload: dict[str, Any],
+    *,
+    instrument_id: int,
+    timezone_name: str,
+) -> IntradayBar:
+    data = payload.get("data", payload)
+    if not isinstance(data, dict):
+        raise ValueError("Binance kline payload must be an object")
+    kline = data.get("k")
+    if not isinstance(kline, dict):
+        raise ValueError("Binance kline payload must include kline object")
+
+    open_time_ms = int(kline["t"])
+    close_time_ms = int(kline["T"])
+    timezone = ZoneInfo(timezone_name)
+    local_start = datetime.fromtimestamp(open_time_ms / 1000, tz=UTC).astimezone(timezone)
+    return IntradayBar(
+        instrument_id=instrument_id,
+        interval=str(kline["i"]),
+        bar_start_ts_utc=_format_utc_ms(open_time_ms),
+        bar_end_ts_utc=_format_utc_ms(close_time_ms + 1),
+        trade_date_local=local_start.date().isoformat(),
+        open=float(kline["o"]),
+        high=float(kline["h"]),
+        low=float(kline["l"]),
+        close=float(kline["c"]),
+        volume_raw=_optional_float(kline.get("v")),
+        turnover_raw=_optional_float(kline.get("q")),
+        is_closed_bar=bool(kline["x"]),
+        source="binance_ws_kline",
+    )
+
+
+def apply_binance_kline_event(
+    connection: sqlite3.Connection,
+    payload: dict[str, Any],
+) -> IntradayBar:
+    data = payload.get("data", payload)
+    if not isinstance(data, dict):
+        raise ValueError("Binance kline payload must be an object")
+    kline = data.get("k")
+    if not isinstance(kline, dict):
+        raise ValueError("Binance kline payload must include kline object")
+
+    symbol = str(kline.get("s") or data["s"]).upper()
+    event_time_ms = int(data["E"])
+    instrument = binance_symbol_to_instrument(symbol)
+    instrument_id = InstrumentRepository(connection).upsert(instrument)
+    bar = parse_binance_kline_event(
+        payload,
+        instrument_id=instrument_id,
+        timezone_name=instrument.timezone,
+    )
+    IntradayBarRepository(connection).upsert(bar)
+    _upsert_kline_price_snapshot(
+        connection,
+        instrument_id=instrument_id,
+        snapshot_ts_utc=_format_utc_ms(event_time_ms),
+        trade_date_local=bar.trade_date_local,
+        last_price=bar.close,
+        fallback_volume_raw=bar.volume_raw,
+        fallback_turnover_raw=bar.turnover_raw,
+        quote_currency=instrument.quote_currency,
+    )
+    return bar
+
+
+def _upsert_kline_price_snapshot(
+    connection: sqlite3.Connection,
+    *,
+    instrument_id: int,
+    snapshot_ts_utc: str,
+    trade_date_local: str,
+    last_price: float | None,
+    fallback_volume_raw: float | None,
+    fallback_turnover_raw: float | None,
+    quote_currency: str,
+) -> None:
+    existing = connection.execute(
+        """
+        SELECT change_pct, volume_raw, turnover_raw, quote_currency
+        FROM market_snapshot
+        WHERE instrument_id = ?
+            AND trade_date_local = ?
+        """,
+        (instrument_id, trade_date_local),
+    ).fetchone()
+    MarketSnapshotRepository(connection).upsert(
+        MarketSnapshot(
+            instrument_id=instrument_id,
+            snapshot_ts_utc=snapshot_ts_utc,
+            trade_date_local=trade_date_local,
+            last_price=last_price,
+            change_pct=_optional_float(existing["change_pct"]) if existing else None,
+            volume_raw=(
+                _optional_float(existing["volume_raw"])
+                if existing
+                else fallback_volume_raw
+            ),
+            turnover_raw=(
+                _optional_float(existing["turnover_raw"])
+                if existing
+                else fallback_turnover_raw
+            ),
+            quote_currency=str(existing["quote_currency"]) if existing else quote_currency,
+            source="binance_ws_kline_price",
+        )
+    )
 
 
 def _change_pct(data: dict[str, Any], last_price: float) -> float | None:

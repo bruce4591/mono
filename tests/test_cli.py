@@ -252,6 +252,22 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
 
+    def test_run_binance_kline_ws_is_registered(self):
+        exit_code = main(
+            [
+                "run-binance-kline-ws",
+                "--db-path",
+                "./data/market.sqlite3",
+                "--symbol",
+                "BTCUSDT",
+                "--interval",
+                "1m",
+                "--dry-run",
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+
     def test_sync_crypto_board_defaults_to_top_quote_volume_symbols(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

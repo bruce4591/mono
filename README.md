@@ -98,16 +98,28 @@ Sync daily bars for Binance USDT quoteVolume Top50:
 ```
 
 Sync the crypto board in one command. If no `--symbol` is provided, the command
-selects a Binance USDT quoteVolume candidate pool before syncing 15m bars and
-refreshing the board. The default candidate pool is larger than 50 so stale or
-inactive symbols do not shrink the final Top50 output:
+selects a Binance USDT quoteVolume candidate pool before syncing 1m bars,
+aggregating local 5m/15m/8h/1d bars, and refreshing the board. The default
+candidate pool is larger than 50 so stale or inactive symbols do not shrink the
+final Top50 output:
 
 ```bash
 .venv/bin/market sync-crypto-board \
   --db-path ./data/market.sqlite3 \
-  --interval 15m \
+  --interval 1m \
   --limit 96 \
   --top-usdt-limit 60
+```
+
+Run the optional Binance 1m kline WebSocket collector after installing
+`websocket-client` into the Python environment:
+
+```bash
+.venv/bin/market run-binance-kline-ws \
+  --db-path ./data/market.sqlite3 \
+  --symbol BTCUSDT \
+  --symbol ETHUSDT \
+  --interval 1m
 ```
 
 Apply one Binance ticker WebSocket event payload to the latest snapshot path:
@@ -192,18 +204,16 @@ http://127.0.0.1:8000/api/bars/intraday?market=CRYPTO&symbol=BTCUSDT&interval=15
   violations; a failure records `job_state` and `source_health`, then stops the
   job so it does not hammer the source.
 - Future AKShare collectors should use the same collector wrapper and start with small focus pools before expanding coverage.
-- Historical K lines, turnover, and ranking refresh jobs should stay on REST /
+- Historical K lines, turnover, and ranking refresh jobs stay on REST /
   scheduled collectors. Ranking refresh does not need sub-second latency and can
   run every few minutes.
-- Real-time crypto prices should use Binance WebSocket streams in a later slice.
-  Binance WS allows up to `1024` streams on one connection, limits incoming
-  control messages to `5` per second, and disconnects connections at 24 hours, so
-  the implementation should use grouped combined streams, throttle
-  subscribe/unsubscribe messages, and reconnect cleanly.
-- Current realtime groundwork can already parse Binance `24hrTicker` /
-  `24hrMiniTicker` payloads and update `market_snapshot` through
-  `apply-binance-ticker-event`; the actual long-running WS connection runner is
-  intentionally deferred until a WebSocket client dependency is approved.
+- Real-time crypto 1m K lines use Binance WebSocket combined streams through
+  `run-binance-kline-ws`. The collector writes `bar_intraday(interval='1m',
+  source='binance_ws_kline')`; local aggregation derives 5m/15m/8h/1d bars.
+- Binance WebSocket connections disconnect at 24 hours and incoming control
+  messages are limited to `5` per second. The collector uses grouped combined
+  streams and exposes conservative throttling/reconnect constants; the packaged
+  systemd service restarts the process automatically.
 
 Note: the current chart page loads `klinecharts@9.8.12` from jsDelivr. If you need fully offline LAN usage later, vendor the standalone JS file into `frontend/` and serve it locally.
 

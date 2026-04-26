@@ -4,8 +4,16 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from market.binance import binance_symbol_to_instrument
 from market.db import connect, init_database
-from market.realtime import apply_binance_ticker_event, parse_binance_ticker_event
+from market.models import MarketSnapshot
+from market.realtime import (
+    apply_binance_kline_event,
+    apply_binance_ticker_event,
+    parse_binance_kline_event,
+    parse_binance_ticker_event,
+)
+from market.repositories import InstrumentRepository, MarketSnapshotRepository
 
 
 class RealtimeTests(unittest.TestCase):
@@ -102,6 +110,109 @@ class RealtimeTests(unittest.TestCase):
         self.assertEqual(snapshot["volume_raw"], 10.5)
         self.assertEqual(snapshot["turnover_raw"], 673575.0)
         self.assertEqual(snapshot["source"], "binance_ws")
+
+    def test_parse_binance_kline_event_uses_one_minute_kline_fields(self):
+        bar = parse_binance_kline_event(
+            {
+                "stream": "btcusdt@kline_1m",
+                "data": {
+                    "e": "kline",
+                    "E": 1_776_000_030_000,
+                    "s": "BTCUSDT",
+                    "k": {
+                        "t": 1_776_000_000_000,
+                        "T": 1_776_000_059_999,
+                        "s": "BTCUSDT",
+                        "i": "1m",
+                        "o": "64000.00",
+                        "c": "64100.00",
+                        "h": "64150.00",
+                        "l": "63990.00",
+                        "v": "2.5",
+                        "q": "160250.00",
+                        "x": False,
+                    },
+                },
+            },
+            instrument_id=7,
+            timezone_name="UTC",
+        )
+
+        self.assertEqual(bar.instrument_id, 7)
+        self.assertEqual(bar.interval, "1m")
+        self.assertEqual(bar.bar_start_ts_utc, "2026-04-12T13:20:00Z")
+        self.assertEqual(bar.bar_end_ts_utc, "2026-04-12T13:21:00Z")
+        self.assertEqual(bar.trade_date_local, "2026-04-12")
+        self.assertEqual(bar.open, 64000.0)
+        self.assertEqual(bar.high, 64150.0)
+        self.assertEqual(bar.low, 63990.0)
+        self.assertEqual(bar.close, 64100.0)
+        self.assertEqual(bar.volume_raw, 2.5)
+        self.assertEqual(bar.turnover_raw, 160250.0)
+        self.assertFalse(bar.is_closed_bar)
+        self.assertEqual(bar.source, "binance_ws_kline")
+
+    def test_apply_binance_kline_event_preserves_existing_24h_snapshot_metrics(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instrument = binance_symbol_to_instrument("BTCUSDT")
+                instrument_id = InstrumentRepository(connection).upsert(instrument)
+                MarketSnapshotRepository(connection).upsert(
+                    MarketSnapshot(
+                        instrument_id=instrument_id,
+                        snapshot_ts_utc="2026-04-12T13:19:00Z",
+                        trade_date_local="2026-04-12",
+                        last_price=64000.0,
+                        change_pct=1.23,
+                        volume_raw=12345.0,
+                        turnover_raw=987654321.0,
+                        quote_currency="USDT",
+                        source="binance_24hr",
+                    )
+                )
+                bar = apply_binance_kline_event(
+                    connection,
+                    {
+                        "e": "kline",
+                        "E": 1_776_000_030_000,
+                        "s": "BTCUSDT",
+                        "k": {
+                            "t": 1_776_000_000_000,
+                            "T": 1_776_000_059_999,
+                            "s": "BTCUSDT",
+                            "i": "1m",
+                            "o": "64000.00",
+                            "c": "64100.00",
+                            "h": "64150.00",
+                            "l": "63990.00",
+                            "v": "2.5",
+                            "q": "160250.00",
+                            "x": False,
+                        },
+                    },
+                )
+                snapshot = connection.execute(
+                    """
+                    SELECT last_price, change_pct, volume_raw, turnover_raw, source
+                    FROM market_snapshot
+                    WHERE instrument_id = ?
+                    """,
+                    (instrument_id,),
+                ).fetchone()
+                intraday_count = connection.execute(
+                    "SELECT count(*) FROM bar_intraday WHERE interval = '1m'"
+                ).fetchone()[0]
+
+        self.assertEqual(bar.interval, "1m")
+        self.assertEqual(intraday_count, 1)
+        self.assertEqual(snapshot["last_price"], 64100.0)
+        self.assertEqual(snapshot["change_pct"], 1.23)
+        self.assertEqual(snapshot["volume_raw"], 12345.0)
+        self.assertEqual(snapshot["turnover_raw"], 987654321.0)
+        self.assertEqual(snapshot["source"], "binance_ws_kline_price")
 
 
 if __name__ == "__main__":
