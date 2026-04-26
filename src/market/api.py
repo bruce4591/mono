@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from market.alerts import ALERT_METRICS, CHART_INDICATORS
 from market.binance import RangeKlineFetcher, fetch_binance_klines_range
-from market.crypto_gaps import fill_binance_1m_gaps
+from market.crypto_gaps import BINANCE_KLINES_MAX_LIMIT, fill_binance_1m_gaps
 from market.db import connect
 from market.models import IntradayBar
 from market.repositories import (
@@ -180,6 +180,7 @@ def get_intraday_bars_payload(
     *,
     before_ts_utc: str | None = None,
     limit: int | None = None,
+    now_ts_utc: str | None = None,
     gap_fetcher: RangeKlineFetcher = fetch_binance_klines_range,
     gap_min_request_interval_seconds: float = 1.0,
 ) -> dict[str, object]:
@@ -188,16 +189,6 @@ def get_intraday_bars_payload(
         return {"market": market, "symbol": symbol, "interval": interval, "items": []}
 
     resolved_limit = _clamp_limit(limit)
-    if before_ts_utc is not None and market == "CRYPTO":
-        _ensure_crypto_intraday_window(
-            connection,
-            symbol=symbol,
-            interval=interval,
-            before_ts_utc=before_ts_utc,
-            limit=resolved_limit,
-            fetcher=gap_fetcher,
-            min_request_interval_seconds=gap_min_request_interval_seconds,
-        )
     bars = _list_intraday_window(
         connection,
         instrument_id=instrument.instrument_id,
@@ -205,6 +196,24 @@ def get_intraday_bars_payload(
         before_ts_utc=before_ts_utc,
         limit=resolved_limit,
     )
+    should_backfill = not bars or (before_ts_utc is not None and len(bars) < resolved_limit)
+    if market == "CRYPTO" and should_backfill:
+        _ensure_crypto_intraday_window(
+            connection,
+            symbol=symbol,
+            interval=interval,
+            before_ts_utc=before_ts_utc,
+            now_ts_utc=now_ts_utc,
+            fetcher=gap_fetcher,
+            min_request_interval_seconds=gap_min_request_interval_seconds,
+        )
+        bars = _list_intraday_window(
+            connection,
+            instrument_id=instrument.instrument_id,
+            interval=interval,
+            before_ts_utc=before_ts_utc,
+            limit=resolved_limit,
+        )
     return {
         "market": market,
         "symbol": symbol,
@@ -234,18 +243,16 @@ def _ensure_crypto_intraday_window(
     *,
     symbol: str,
     interval: str,
-    before_ts_utc: str,
-    limit: int,
+    before_ts_utc: str | None,
+    now_ts_utc: str | None,
     fetcher: RangeKlineFetcher,
     min_request_interval_seconds: float,
 ) -> None:
     minutes = _interval_minutes(interval)
     if minutes is None:
         return
-    end = _parse_utc(before_ts_utc)
-    start = end - timedelta(minutes=minutes * limit)
-    if minutes * limit > 1000:
-        return
+    end = _parse_utc(before_ts_utc) if before_ts_utc else _resolve_now(now_ts_utc)
+    start = end - timedelta(minutes=BINANCE_KLINES_MAX_LIMIT)
     fill_binance_1m_gaps(
         connection,
         symbols=[symbol],
@@ -792,6 +799,12 @@ def _interval_minutes(interval: str) -> int | None:
 
 def _parse_utc(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def _resolve_now(now_ts_utc: str | None) -> datetime:
+    if now_ts_utc is not None:
+        return _parse_utc(now_ts_utc)
+    return datetime.now(UTC)
 
 
 def _format_utc(value: datetime) -> str:

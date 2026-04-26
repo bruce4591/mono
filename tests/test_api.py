@@ -300,6 +300,74 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(calls[0][0], "BTCUSDT")
         self.assertEqual(calls[0][1], "1m")
 
+    def test_get_intraday_bars_payload_backfills_up_to_1000_1m_bars_when_window_is_short(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
+                calls.append((symbol, interval, start_time_ms, end_time_ms, limit))
+                return []
+
+            with connect(db_path) as connection:
+                InstrumentRepository(connection).upsert(
+                    binance_symbol_to_instrument("BTCUSDT")
+                )
+                payload = get_intraday_bars_payload(
+                    connection,
+                    "CRYPTO",
+                    "BTCUSDT",
+                    "5m",
+                    before_ts_utc="2026-04-12T13:22:00Z",
+                    limit=96,
+                    gap_fetcher=fetcher,
+                    gap_min_request_interval_seconds=0,
+                )
+
+        self.assertEqual(payload["items"], [])
+        self.assertEqual(calls, [("BTCUSDT", "1m", 1_775_940_120_000, 1_776_000_119_999, 1000)])
+
+    def test_get_intraday_bars_payload_backfills_latest_crypto_window_when_empty(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
+                calls.append((symbol, interval, start_time_ms, end_time_ms, limit))
+                return [
+                    [
+                        1_776_000_000_000,
+                        "64000",
+                        "64100",
+                        "63900",
+                        "64050",
+                        "1",
+                        1_776_000_059_999,
+                        "64050",
+                    ],
+                ]
+
+            with connect(db_path) as connection:
+                InstrumentRepository(connection).upsert(
+                    binance_symbol_to_instrument("BTCUSDT")
+                )
+                payload = get_intraday_bars_payload(
+                    connection,
+                    "CRYPTO",
+                    "BTCUSDT",
+                    "1m",
+                    limit=2,
+                    now_ts_utc="2026-04-12T13:22:00Z",
+                    gap_fetcher=fetcher,
+                    gap_min_request_interval_seconds=0,
+                )
+
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertEqual(payload["items"][0]["source"], "binance_gap_fill")
+        self.assertEqual(calls[0], ("BTCUSDT", "1m", 1_775_940_120_000, 1_776_000_119_999, 1000))
+
     def test_get_watchlists_payload_returns_active_entries_with_instruments(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
