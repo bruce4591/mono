@@ -145,6 +145,7 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(payload["items"][0]["symbol"], "BTCUSDT")
         self.assertEqual(payload["items"][0]["last_price"], 64250.0)
+        self.assertEqual(payload["previous_snapshot_ts_utc"], "2026-04-24T19:45:00Z")
         self.assertEqual(payload["items"][0]["previous_rank"], 2)
         self.assertEqual(payload["items"][0]["rank_change"], 1)
         self.assertEqual(payload["items"][1]["symbol"], "ETHUSDT")
@@ -161,6 +162,7 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(payload["board_name"], "MISSING_BOARD")
         self.assertIsNone(payload["snapshot_ts_utc"])
+        self.assertIsNone(payload["previous_snapshot_ts_utc"])
         self.assertEqual(payload["items"], [])
 
     def test_get_instrument_payload_returns_instrument_and_latest_snapshot(self):
@@ -460,7 +462,9 @@ class ApiTests(unittest.TestCase):
         assert asset is not None
         self.assertIn(b"formatRankChange", asset.body)
         self.assertIn(b"last_price", asset.body)
+        self.assertIn(b"previous_snapshot_ts_utc", asset.body)
         self.assertIn(b"rank-change", asset.body)
+        self.assertIn("排名较上期".encode("utf-8"), asset.body)
         self.assertIn("上期".encode("utf-8"), asset.body)
         self.assertIn(b"24h", asset.body)
         self.assertNotIn("价 ${formatPrice".encode("utf-8"), asset.body)

@@ -44,9 +44,15 @@ function formatRankChange(value) {
   return '<span class="rank-change">上期 持平</span>';
 }
 
+function formatSnapshotMeta(payload) {
+  const current = payload.snapshot_ts_utc || "--";
+  if (!payload.previous_snapshot_ts_utc) return current;
+  return `${current} · 排名较上期 ${payload.previous_snapshot_ts_utc}`;
+}
+
 function renderBoard(payload) {
   boardName.textContent = payload.board_name;
-  snapshotTime.textContent = payload.snapshot_ts_utc || "--";
+  snapshotTime.textContent = formatSnapshotMeta(payload);
   if (!payload.items.length) {
     boardList.innerHTML = '<div class="empty">暂无榜单数据</div>';
     return;

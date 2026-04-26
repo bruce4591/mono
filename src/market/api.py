@@ -34,7 +34,13 @@ def get_board_payload(
 ) -> dict[str, object]:
     resolved_snapshot = snapshot_ts_utc or _latest_snapshot_ts(connection, board_name)
     if resolved_snapshot is None:
-        return {"board_name": board_name, "snapshot_ts_utc": None, "items": []}
+        return {
+            "board_name": board_name,
+            "snapshot_ts_utc": None,
+            "previous_snapshot_ts_utc": None,
+            "items": [],
+        }
+    previous_snapshot = _previous_snapshot_ts(connection, board_name, resolved_snapshot)
 
     rows = connection.execute(
         """
@@ -80,6 +86,7 @@ def get_board_payload(
     return {
         "board_name": board_name,
         "snapshot_ts_utc": resolved_snapshot,
+        "previous_snapshot_ts_utc": previous_snapshot,
         "items": [
             {
                 "rank": rank,
@@ -573,6 +580,25 @@ def _latest_snapshot_ts(connection: sqlite3.Connection, board_name: str) -> str 
         (board_name,),
     ).fetchone()
     if row is None:
+        return None
+    return str(row["snapshot_ts_utc"])
+
+
+def _previous_snapshot_ts(
+    connection: sqlite3.Connection,
+    board_name: str,
+    snapshot_ts_utc: str,
+) -> str | None:
+    row = connection.execute(
+        """
+        SELECT max(snapshot_ts_utc) AS snapshot_ts_utc
+        FROM ranking_snapshot
+        WHERE board_name = ?
+            AND snapshot_ts_utc < ?
+        """,
+        (board_name, snapshot_ts_utc),
+    ).fetchone()
+    if row is None or row["snapshot_ts_utc"] is None:
         return None
     return str(row["snapshot_ts_utc"])
 
