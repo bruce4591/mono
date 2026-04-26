@@ -38,6 +38,15 @@ chmod +x /home/ubuntu/bin/market-sync-crypto.sh
 (crontab -l 2>/dev/null | grep -v market-sync-crypto.sh; echo "*/15 * * * * /home/ubuntu/bin/market-sync-crypto.sh >> /home/ubuntu/github/mono/logs/crypto-sync.log 2>&1") | crontab -
 ```
 
+## Sync Crypto Daily History
+
+```bash
+cp deploy/scripts/market-sync-crypto-daily.sh /home/ubuntu/bin/market-sync-crypto-daily.sh
+chmod +x /home/ubuntu/bin/market-sync-crypto-daily.sh
+/home/ubuntu/bin/market-sync-crypto-daily.sh
+(crontab -l 2>/dev/null | grep -v market-sync-crypto-daily.sh; echo "20 2 * * * /home/ubuntu/bin/market-sync-crypto-daily.sh >> /home/ubuntu/github/mono/logs/crypto-daily-sync.log 2>&1") | crontab -
+```
+
 ## Update Deployment
 
 ```bash

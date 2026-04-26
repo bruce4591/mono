@@ -4,7 +4,12 @@ import sqlite3
 from time import sleep as default_sleep
 from typing import Callable
 
-from market.binance import KlineFetcher, fetch_binance_klines, sync_binance_klines
+from market.binance import (
+    KlineFetcher,
+    fetch_binance_klines,
+    sync_binance_daily_bars,
+    sync_binance_klines,
+)
 from market.collectors.base import CollectorResult, RequestRateLimiter
 
 
@@ -43,10 +48,22 @@ class BinanceCollector:
         symbols: list[str],
         days: int,
     ) -> CollectorResult:
+        normalized_symbols = [symbol.upper() for symbol in symbols]
+        results = [
+            self._sync_daily_symbol(connection, symbol, days=days)
+            for symbol in normalized_symbols
+        ]
         return CollectorResult(
             source_name=self.source_name,
-            items_synced=0,
-            metadata={"symbols": [symbol.upper() for symbol in symbols], "days": days},
+            items_synced=sum(result.bars for result in results),
+            metadata={
+                "symbols": normalized_symbols,
+                "days": days,
+                "interval": "1d",
+                "request_weight_per_call": BINANCE_KLINES_REQUEST_WEIGHT,
+                "safe_request_weight_per_minute": BINANCE_SAFE_REQUEST_WEIGHT_PER_MINUTE,
+                "min_request_interval_seconds": self.min_request_interval_seconds,
+            },
         )
 
     def sync_intraday_bars(
@@ -100,5 +117,20 @@ class BinanceCollector:
             interval=interval,
             limit=limit,
             now_ms=self.now_ms,
+            fetcher=self.fetcher,
+        )
+
+    def _sync_daily_symbol(
+        self,
+        connection: sqlite3.Connection,
+        symbol: str,
+        *,
+        days: int,
+    ):
+        self.rate_limiter.wait()
+        return sync_binance_daily_bars(
+            connection,
+            symbol=symbol,
+            days=days,
             fetcher=self.fetcher,
         )

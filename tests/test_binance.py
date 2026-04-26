@@ -6,15 +6,46 @@ from pathlib import Path
 
 from market.binance import (
     binance_symbol_to_instrument,
+    parse_binance_daily_kline,
     parse_binance_kline,
+    select_top_quote_volume_symbols,
+    sync_binance_daily_bars,
     sync_binance_klines,
 )
 from market.db import connect, init_database
 from market.models import IntradayBar
-from market.repositories import InstrumentRepository, IntradayBarRepository
+from market.repositories import DailyBarRepository, InstrumentRepository, IntradayBarRepository
 
 
 class BinanceTests(unittest.TestCase):
+    def test_parse_binance_daily_kline_uses_quote_volume_as_turnover(self):
+        bar = parse_binance_daily_kline(
+            instrument_id=7,
+            row=[
+                1_775_952_000_000,
+                "64000.10",
+                "64200.20",
+                "63950.30",
+                "64100.40",
+                "12.5",
+                1_776_038_399_999,
+                "801255.00",
+            ],
+            quote_currency="USDT",
+            timezone_name="UTC",
+        )
+
+        self.assertEqual(bar.instrument_id, 7)
+        self.assertEqual(bar.trade_date, "2026-04-12")
+        self.assertEqual(bar.open, 64000.10)
+        self.assertEqual(bar.high, 64200.20)
+        self.assertEqual(bar.low, 63950.30)
+        self.assertEqual(bar.close, 64100.40)
+        self.assertEqual(bar.volume_raw, 12.5)
+        self.assertEqual(bar.turnover_raw, 801255.0)
+        self.assertEqual(bar.quote_currency, "USDT")
+        self.assertEqual(bar.source, "binance")
+
     def test_parse_binance_kline_uses_quote_volume_as_turnover(self):
         bar = parse_binance_kline(
             instrument_id=7,
@@ -53,6 +84,20 @@ class BinanceTests(unittest.TestCase):
         self.assertEqual(instrument.instrument_type, "crypto")
         self.assertEqual(instrument.quote_currency, "USDT")
         self.assertEqual(instrument.timezone, "UTC")
+
+    def test_select_top_quote_volume_symbols_filters_usdt_and_sorts_descending(self):
+        symbols = select_top_quote_volume_symbols(
+            [
+                {"symbol": "LOWUSDT", "quoteVolume": "10"},
+                {"symbol": "BTCUSDT", "quoteVolume": "1000"},
+                {"symbol": "ETHBTC", "quoteVolume": "999999"},
+                {"symbol": "ETHUSDT", "quoteVolume": "500"},
+            ],
+            quote_asset="USDT",
+            limit=2,
+        )
+
+        self.assertEqual(symbols, ["BTCUSDT", "ETHUSDT"])
 
     def test_sync_binance_klines_upserts_instrument_bars_and_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -135,6 +180,61 @@ class BinanceTests(unittest.TestCase):
         self.assertEqual(bars[-1].close, 64250.0)
         self.assertEqual(snapshot_count, 1)
         self.assertAlmostEqual(change_pct, ((64250.0 - 64100.0) / 64100.0) * 100)
+
+    def test_sync_binance_daily_bars_upserts_365_day_history(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            def fetcher(symbol: str, interval: str, limit: int) -> list[list[object]]:
+                self.assertEqual(symbol, "BTCUSDT")
+                self.assertEqual(interval, "1d")
+                self.assertEqual(limit, 365)
+                return [
+                    [
+                        1_775_952_000_000,
+                        "64000",
+                        "64200",
+                        "63900",
+                        "64100",
+                        "10",
+                        1_776_038_399_999,
+                        "641000",
+                    ],
+                    [
+                        1_776_038_400_000,
+                        "64100",
+                        "64300",
+                        "64000",
+                        "64250",
+                        "12",
+                        1_776_124_799_999,
+                        "771000",
+                    ],
+                ]
+
+            with connect(db_path) as connection:
+                result = sync_binance_daily_bars(
+                    connection,
+                    symbol="BTCUSDT",
+                    days=365,
+                    fetcher=fetcher,
+                )
+                instrument = InstrumentRepository(connection).get_by_market_symbol(
+                    "CRYPTO", "BTCUSDT"
+                )
+                assert instrument is not None
+                bars = DailyBarRepository(connection).list_for_instrument(
+                    instrument.instrument_id or 0
+                )
+
+        self.assertEqual(result.bars, 2)
+        self.assertEqual(result.symbol, "BTCUSDT")
+        self.assertEqual(result.interval, "1d")
+        self.assertEqual(len(bars), 2)
+        self.assertEqual(bars[0].trade_date, "2026-04-12")
+        self.assertEqual(bars[-1].close, 64250.0)
+        self.assertEqual(bars[-1].turnover_raw, 771000.0)
 
 
 if __name__ == "__main__":

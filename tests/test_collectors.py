@@ -130,6 +130,39 @@ class CollectorTests(unittest.TestCase):
         self.assertLess(snapshot["change_pct"], 0)
         self.assertEqual(snapshot["turnover_raw"], 1122.0)
 
+    def test_binance_collector_syncs_daily_bars_with_existing_binance_logic(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            rows = [
+                [
+                    1_775_952_000_000,
+                    "100.0",
+                    "105.0",
+                    "99.0",
+                    "104.0",
+                    "10.0",
+                    1_776_038_399_999,
+                    "1020.0",
+                ],
+            ]
+
+            with connect(db_path) as connection:
+                collector = BinanceCollector(fetcher=lambda symbol, interval, limit: rows)
+                result = collector.sync_daily_bars(
+                    connection,
+                    ["btcusdt"],
+                    days=365,
+                )
+                count = connection.execute("SELECT count(*) FROM bar_daily").fetchone()[0]
+
+        self.assertEqual(result.source_name, "binance")
+        self.assertEqual(result.items_synced, 1)
+        self.assertEqual(result.metadata["symbols"], ["BTCUSDT"])
+        self.assertEqual(result.metadata["days"], 365)
+        self.assertEqual(result.metadata["interval"], "1d")
+        self.assertEqual(count, 1)
+
     def test_binance_collector_rate_limits_between_symbol_requests(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

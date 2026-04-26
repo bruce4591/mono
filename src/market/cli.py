@@ -8,7 +8,11 @@ from pathlib import Path
 
 from market.alerts import evaluate_alert_rules
 from market.api import serve_api
-from market.binance import sync_binance_klines
+from market.binance import (
+    fetch_top_binance_usdt_symbols,
+    sync_binance_daily_bars,
+    sync_binance_klines,
+)
 from market.collectors.binance import BinanceCollector
 from market.collectors.base import run_collector_job
 from market.db import connect, init_database
@@ -75,6 +79,14 @@ def build_parser() -> argparse.ArgumentParser:
     sync_binance.add_argument("--limit", type=int, default=96)
     sync_binance.add_argument("--dry-run", action="store_true")
 
+    sync_binance_daily = subparsers.add_parser(
+        "sync-binance-daily", help="Fetch Binance Spot 1d klines and upsert daily bars"
+    )
+    sync_binance_daily.add_argument("--db-path", type=Path, default=None)
+    sync_binance_daily.add_argument("--symbol", required=True)
+    sync_binance_daily.add_argument("--days", type=int, default=365)
+    sync_binance_daily.add_argument("--dry-run", action="store_true")
+
     sync_crypto_board = subparsers.add_parser(
         "sync-crypto-board",
         help="Sync multiple Binance symbols and refresh the crypto turnover board",
@@ -90,9 +102,26 @@ def build_parser() -> argparse.ArgumentParser:
     sync_crypto_board.add_argument("--limit", type=int, default=96)
     sync_crypto_board.add_argument("--board-name", default="CRYPTO_TURNOVER_TOP50")
     sync_crypto_board.add_argument("--board-limit", type=int, default=50)
+    sync_crypto_board.add_argument("--top-usdt-limit", type=int, default=50)
     sync_crypto_board.add_argument("--snapshot-ts-utc", default=None)
     sync_crypto_board.add_argument("--trade-date-local", default=None)
     sync_crypto_board.add_argument("--dry-run", action="store_true")
+
+    sync_crypto_daily = subparsers.add_parser(
+        "sync-crypto-daily",
+        help="Sync Binance Spot 1d bars for top USDT symbols or explicit symbols",
+    )
+    sync_crypto_daily.add_argument("--db-path", type=Path, default=None)
+    sync_crypto_daily.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="Crypto symbol to sync; can be provided multiple times",
+    )
+    sync_crypto_daily.add_argument("--days", type=int, default=365)
+    sync_crypto_daily.add_argument("--top-usdt-limit", type=int, default=50)
+    sync_crypto_daily.add_argument("--snapshot-ts-utc", default=None)
+    sync_crypto_daily.add_argument("--dry-run", action="store_true")
 
     apply_ticker = subparsers.add_parser(
         "apply-binance-ticker-event",
@@ -212,8 +241,25 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    if args.command == "sync-binance-daily":
+        if args.dry_run:
+            print(f"binance daily ready: {args.symbol.upper()} 1d days={args.days}")
+            return 0
+        with connect(db_path) as connection:
+            result = sync_binance_daily_bars(
+                connection,
+                symbol=args.symbol,
+                days=args.days,
+            )
+        print(
+            "binance daily synced: "
+            f"{result.symbol} {result.interval} "
+            f"({result.bars} bars, latest_close={result.latest_close})"
+        )
+        return 0
+
     if args.command == "sync-crypto-board":
-        symbols = args.symbol or ["BTCUSDT", "ETHUSDT"]
+        symbols = args.symbol or fetch_top_binance_usdt_symbols(limit=args.top_usdt_limit)
         now = datetime.now(tz=UTC)
         snapshot_ts_utc = args.snapshot_ts_utc or now.strftime("%Y-%m-%dT%H:%M:%SZ")
         trade_date_local = args.trade_date_local or now.date().isoformat()
@@ -257,6 +303,39 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "crypto board synced: "
             f"{len(symbols)} symbols, {ranking_count} ranking rows, "
+            f"snapshot={snapshot_ts_utc}"
+        )
+        return 0
+
+    if args.command == "sync-crypto-daily":
+        symbols = args.symbol or fetch_top_binance_usdt_symbols(limit=args.top_usdt_limit)
+        now = datetime.now(tz=UTC)
+        snapshot_ts_utc = args.snapshot_ts_utc or now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        normalized_symbols = [symbol.upper() for symbol in symbols]
+        if args.dry_run:
+            print(
+                "crypto daily sync ready: "
+                f"{','.join(normalized_symbols)} days={args.days}"
+            )
+            return 0
+        with connect(db_path) as connection:
+            checkpoint = ",".join(normalized_symbols) + f":1d:{args.days}"
+
+            result = run_collector_job(
+                connection,
+                job_name="sync-crypto-daily",
+                source_name="binance",
+                checkpoint=checkpoint,
+                started_at_utc=snapshot_ts_utc,
+                operation=lambda: BinanceCollector().sync_daily_bars(
+                    connection,
+                    normalized_symbols,
+                    days=args.days,
+                ),
+            )
+        print(
+            "crypto daily synced: "
+            f"{len(normalized_symbols)} symbols, {result.items_synced} daily bars, "
             f"snapshot={snapshot_ts_utc}"
         )
         return 0

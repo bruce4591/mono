@@ -6,10 +6,7 @@ DB_PATH=${MARKET_DB_PATH:-$APP_DIR/data/market.sqlite3}
 
 cd "$APP_DIR"
 
-.venv/bin/market sync-crypto-board \
+.venv/bin/market sync-crypto-daily \
   --db-path "$DB_PATH" \
-  --interval 15m \
-  --limit 96 \
-  --board-name CRYPTO_TURNOVER_TOP50 \
-  --board-limit 50 \
+  --days 365 \
   --top-usdt-limit 50

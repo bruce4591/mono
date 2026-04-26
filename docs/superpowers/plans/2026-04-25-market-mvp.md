@@ -200,6 +200,8 @@ Not yet complete:
 **Collector safety policy:**
 - [x] Binance collector rate-limits symbol requests with a default 1 second interval.
 - [x] Binance REST kline policy is tied to the official `GET /api/v3/klines` request weight of `2` and a conservative local `120` request-weight/minute safety budget.
+- [x] Binance crypto board defaults to USDT quoteVolume Top50 instead of a fixed BTC/ETH pair list.
+- [x] Binance 365-day `1d` daily bars can be synced for one symbol or the USDT quoteVolume Top50.
 - [x] Collector jobs do not retry failed requests by default.
 - [x] Collector job failures are persisted to `job_state` and `source_health` before the exception is raised.
 - [ ] Apply the same default rate-limit and no-retry behavior to the future AKShare collector.

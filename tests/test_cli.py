@@ -175,6 +175,63 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
 
+    def test_sync_binance_daily_is_registered(self):
+        exit_code = main(
+            [
+                "sync-binance-daily",
+                "--db-path",
+                "./data/market.sqlite3",
+                "--symbol",
+                "BTCUSDT",
+                "--days",
+                "365",
+                "--dry-run",
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+
+    def test_sync_crypto_daily_defaults_to_top_quote_volume_symbols(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+            calls = []
+
+            class FakeBinanceCollector:
+                source_name = "binance"
+
+                def sync_daily_bars(self, connection, symbols, days):
+                    calls.append((symbols, days))
+                    return CollectorResult(
+                        source_name=self.source_name,
+                        items_synced=len(symbols) * days,
+                        metadata={"symbols": symbols, "days": days},
+                    )
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.BinanceCollector",
+                return_value=FakeBinanceCollector(),
+            ), patch(
+                "market.cli.fetch_top_binance_usdt_symbols",
+                return_value=["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "sync-crypto-daily",
+                        "--db-path",
+                        str(db_path),
+                        "--days",
+                        "365",
+                        "--snapshot-ts-utc",
+                        "2026-04-24T20:00:00Z",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(calls, [(["BTCUSDT", "ETHUSDT", "SOLUSDT"], 365)])
+        self.assertIn("crypto daily synced: 3 symbols, 1095 daily bars", stdout.getvalue())
+
     def test_sync_crypto_board_is_registered(self):
         exit_code = main(
             [
@@ -194,6 +251,51 @@ class CliTests(unittest.TestCase):
         )
 
         self.assertEqual(exit_code, 0)
+
+    def test_sync_crypto_board_defaults_to_top_quote_volume_symbols(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+            calls = []
+
+            class FakeBinanceCollector:
+                source_name = "binance"
+
+                def sync_intraday_bars(self, connection, symbols, interval, limit):
+                    calls.append((symbols, interval, limit))
+                    return CollectorResult(
+                        source_name=self.source_name,
+                        items_synced=len(symbols),
+                        metadata={"symbols": symbols, "interval": interval},
+                    )
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.BinanceCollector",
+                return_value=FakeBinanceCollector(),
+            ), patch(
+                "market.cli.fetch_top_binance_usdt_symbols",
+                return_value=["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "sync-crypto-board",
+                        "--db-path",
+                        str(db_path),
+                        "--interval",
+                        "15m",
+                        "--limit",
+                        "2",
+                        "--snapshot-ts-utc",
+                        "2026-04-24T20:00:00Z",
+                        "--trade-date-local",
+                        "2026-04-24",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(calls, [(["BTCUSDT", "ETHUSDT", "SOLUSDT"], "15m", 2)])
+        self.assertIn("crypto board synced: 3 symbols", stdout.getvalue())
 
     def test_apply_binance_ticker_event_updates_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

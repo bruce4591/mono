@@ -79,15 +79,34 @@ Sync real Binance Spot 15m crypto bars:
   --limit 96
 ```
 
-Sync the crypto board in one command:
+Sync Binance Spot 365-day daily bars:
+
+```bash
+.venv/bin/market sync-binance-daily \
+  --db-path ./data/market.sqlite3 \
+  --symbol BTCUSDT \
+  --days 365
+```
+
+Sync daily bars for Binance USDT quoteVolume Top50:
+
+```bash
+.venv/bin/market sync-crypto-daily \
+  --db-path ./data/market.sqlite3 \
+  --days 365 \
+  --top-usdt-limit 50
+```
+
+Sync the crypto board in one command. If no `--symbol` is provided, the command
+selects Binance USDT quoteVolume Top50 before syncing 15m bars and refreshing
+the board:
 
 ```bash
 .venv/bin/market sync-crypto-board \
   --db-path ./data/market.sqlite3 \
-  --symbol BTCUSDT \
-  --symbol ETHUSDT \
   --interval 15m \
-  --limit 96
+  --limit 96 \
+  --top-usdt-limit 50
 ```
 
 Apply one Binance ticker WebSocket event payload to the latest snapshot path:

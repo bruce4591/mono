@@ -9,8 +9,9 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
-from market.models import Instrument, IntradayBar, MarketSnapshot
+from market.models import DailyBar, Instrument, IntradayBar, MarketSnapshot
 from market.repositories import (
+    DailyBarRepository,
     InstrumentRepository,
     IntradayBarRepository,
     MarketSnapshotRepository,
@@ -54,6 +55,46 @@ def fetch_binance_klines(
     if not isinstance(payload, list):
         raise ValueError("unexpected Binance kline response")
     return payload
+
+
+def fetch_binance_24hr_tickers(
+    *,
+    base_url: str = BINANCE_SPOT_API_BASE,
+    timeout: float = 15.0,
+) -> list[dict[str, object]]:
+    request = Request(
+        f"{base_url}/api/v3/ticker/24hr",
+        headers={"User-Agent": "market-mvp/0.1"},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("unexpected Binance 24hr ticker response")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def fetch_top_binance_usdt_symbols(limit: int = 50) -> list[str]:
+    return select_top_quote_volume_symbols(
+        fetch_binance_24hr_tickers(),
+        quote_asset="USDT",
+        limit=limit,
+    )
+
+
+def select_top_quote_volume_symbols(
+    tickers: list[dict[str, object]],
+    *,
+    quote_asset: str,
+    limit: int,
+) -> list[str]:
+    suffix = quote_asset.upper()
+    rows = [
+        (str(ticker["symbol"]).upper(), float(ticker.get("quoteVolume") or 0))
+        for ticker in tickers
+        if str(ticker.get("symbol", "")).upper().endswith(suffix)
+    ]
+    rows.sort(key=lambda row: (-row[1], row[0]))
+    return [symbol for symbol, _quote_volume in rows[:limit]]
 
 
 def sync_binance_klines(
@@ -117,6 +158,65 @@ def sync_binance_klines(
         interval=interval,
         bars=len(bars),
         latest_close=latest.close if latest else None,
+    )
+
+
+def sync_binance_daily_bars(
+    connection: sqlite3.Connection,
+    *,
+    symbol: str,
+    days: int = 365,
+    fetcher: KlineFetcher = fetch_binance_klines,
+) -> BinanceSyncResult:
+    normalized_symbol = symbol.upper()
+    instrument = binance_symbol_to_instrument(normalized_symbol)
+    instrument_id = InstrumentRepository(connection).upsert(instrument)
+    rows = fetcher(normalized_symbol, "1d", days)
+    bars = [
+        parse_binance_daily_kline(
+            instrument_id=instrument_id,
+            row=row,
+            quote_currency=instrument.quote_currency,
+            timezone_name=instrument.timezone,
+        )
+        for row in rows
+    ]
+    repository = DailyBarRepository(connection)
+    for bar in bars:
+        repository.upsert(bar)
+    latest = bars[-1] if bars else None
+    return BinanceSyncResult(
+        symbol=normalized_symbol,
+        interval="1d",
+        bars=len(bars),
+        latest_close=latest.close if latest else None,
+    )
+
+
+def parse_binance_daily_kline(
+    *,
+    instrument_id: int,
+    row: list[object],
+    quote_currency: str,
+    timezone_name: str,
+) -> DailyBar:
+    if len(row) < 8:
+        raise ValueError("Binance daily kline row must include at least 8 fields")
+    timezone = ZoneInfo(timezone_name)
+    trade_date = datetime.fromtimestamp(int(row[0]) / 1000, tz=UTC).astimezone(
+        timezone
+    ).date().isoformat()
+    return DailyBar(
+        instrument_id=instrument_id,
+        trade_date=trade_date,
+        open=float(row[1]),
+        high=float(row[2]),
+        low=float(row[3]),
+        close=float(row[4]),
+        volume_raw=float(row[5]),
+        turnover_raw=float(row[7]),
+        quote_currency=quote_currency,
+        source="binance",
     )
 
 
