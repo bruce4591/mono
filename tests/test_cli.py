@@ -257,6 +257,29 @@ class CliTests(unittest.TestCase):
             db_path = Path(tmp_dir) / "market.sqlite3"
             stdout = io.StringIO()
             calls = []
+            tickers = [
+                {
+                    "symbol": "SOLUSDT",
+                    "quoteVolume": "3000",
+                    "lastPrice": "150",
+                    "priceChangePercent": "3",
+                    "volume": "20",
+                },
+                {
+                    "symbol": "BTCUSDT",
+                    "quoteVolume": "2000",
+                    "lastPrice": "78000",
+                    "priceChangePercent": "2",
+                    "volume": "0.1",
+                },
+                {
+                    "symbol": "ETHUSDT",
+                    "quoteVolume": "1000",
+                    "lastPrice": "3000",
+                    "priceChangePercent": "1",
+                    "volume": "0.3",
+                },
+            ]
 
             class FakeBinanceCollector:
                 source_name = "binance"
@@ -273,8 +296,8 @@ class CliTests(unittest.TestCase):
                 "market.cli.BinanceCollector",
                 return_value=FakeBinanceCollector(),
             ), patch(
-                "market.cli.fetch_top_binance_usdt_symbols",
-                return_value=["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+                "market.cli.fetch_binance_24hr_tickers",
+                return_value=tickers,
             ):
                 main(["init-db", "--db-path", str(db_path)])
                 exit_code = main(
@@ -294,7 +317,7 @@ class CliTests(unittest.TestCase):
                 )
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(calls, [(["BTCUSDT", "ETHUSDT", "SOLUSDT"], "15m", 2)])
+        self.assertEqual(calls, [(["SOLUSDT", "BTCUSDT", "ETHUSDT"], "15m", 2)])
         self.assertIn("crypto board synced: 3 symbols", stdout.getvalue())
 
     def test_apply_binance_ticker_event_updates_snapshot(self):
@@ -362,6 +385,24 @@ class CliTests(unittest.TestCase):
             with redirect_stdout(stdout), patch(
                 "market.cli.BinanceCollector",
                 return_value=FakeBinanceCollector(),
+            ), patch(
+                "market.cli.fetch_binance_24hr_tickers",
+                return_value=[
+                    {
+                        "symbol": "BTCUSDT",
+                        "lastPrice": "78012.00",
+                        "priceChangePercent": "-1.25",
+                        "volume": "12345.67",
+                        "quoteVolume": "987654321.12",
+                    },
+                    {
+                        "symbol": "ETHUSDT",
+                        "lastPrice": "3000.00",
+                        "priceChangePercent": "2.50",
+                        "volume": "20000",
+                        "quoteVolume": "60000000",
+                    },
+                ],
             ):
                 main(["init-db", "--db-path", str(db_path)])
                 exit_code = main(
@@ -416,6 +457,24 @@ class CliTests(unittest.TestCase):
             with redirect_stdout(stdout), patch(
                 "market.cli.BinanceCollector",
                 return_value=FakeBinanceCollector(),
+            ), patch(
+                "market.cli.fetch_binance_24hr_tickers",
+                return_value=[
+                    {
+                        "symbol": "BTCUSDT",
+                        "lastPrice": "78012.00",
+                        "priceChangePercent": "-1.25",
+                        "volume": "12345.67",
+                        "quoteVolume": "987654321.12",
+                    },
+                    {
+                        "symbol": "ETHUSDT",
+                        "lastPrice": "3000.00",
+                        "priceChangePercent": "2.50",
+                        "volume": "20000",
+                        "quoteVolume": "60000000",
+                    },
+                ],
             ):
                 main(["init-db", "--db-path", str(db_path)])
                 exit_code = main(
@@ -437,10 +496,32 @@ class CliTests(unittest.TestCase):
                         "2026-04-24",
                     ]
                 )
+                with sqlite3.connect(db_path) as connection:
+                    rows = connection.execute(
+                        """
+                        SELECT instrument.symbol,
+                            market_snapshot.last_price,
+                            market_snapshot.change_pct,
+                            market_snapshot.volume_raw,
+                            market_snapshot.turnover_raw,
+                            market_snapshot.source
+                        FROM market_snapshot
+                        JOIN instrument
+                            ON instrument.instrument_id = market_snapshot.instrument_id
+                        ORDER BY market_snapshot.turnover_raw DESC
+                        """
+                    ).fetchall()
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(calls, [(["BTCUSDT", "ETHUSDT"], "15m", 2)])
-        self.assertIn("crypto board synced: 2 symbols, 0 ranking rows", stdout.getvalue())
+        self.assertEqual(
+            [tuple(row) for row in rows],
+            [
+                ("BTCUSDT", 78012.0, -1.25, 12345.67, 987654321.12, "binance_24hr"),
+                ("ETHUSDT", 3000.0, 2.5, 20000.0, 60000000.0, "binance_24hr"),
+            ],
+        )
+        self.assertIn("crypto board synced: 2 symbols, 2 ranking rows", stdout.getvalue())
 
     def test_sync_crypto_board_marks_job_failed_when_ranking_refresh_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -463,6 +544,17 @@ class CliTests(unittest.TestCase):
             with redirect_stdout(stdout), patch(
                 "market.cli.BinanceCollector",
                 return_value=FakeBinanceCollector(),
+            ), patch(
+                "market.cli.fetch_binance_24hr_tickers",
+                return_value=[
+                    {
+                        "symbol": "BTCUSDT",
+                        "lastPrice": "78012.00",
+                        "priceChangePercent": "-1.25",
+                        "volume": "12345.67",
+                        "quoteVolume": "987654321.12",
+                    }
+                ],
             ), patch("market.cli.RankingRepository.refresh_turnover_board", fail_refresh):
                 main(["init-db", "--db-path", str(db_path)])
                 with self.assertRaises(RuntimeError):

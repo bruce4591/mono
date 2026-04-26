@@ -9,7 +9,10 @@ from pathlib import Path
 from market.alerts import evaluate_alert_rules
 from market.api import serve_api
 from market.binance import (
+    fetch_binance_24hr_tickers,
     fetch_top_binance_usdt_symbols,
+    select_top_quote_volume_symbols,
+    sync_binance_24hr_snapshots,
     sync_binance_daily_bars,
     sync_binance_klines,
 )
@@ -259,28 +262,43 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "sync-crypto-board":
-        symbols = args.symbol or fetch_top_binance_usdt_symbols(limit=args.top_usdt_limit)
         now = datetime.now(tz=UTC)
         snapshot_ts_utc = args.snapshot_ts_utc or now.strftime("%Y-%m-%dT%H:%M:%SZ")
         trade_date_local = args.trade_date_local or now.date().isoformat()
         if args.dry_run:
+            normalized_symbols = [symbol.upper() for symbol in args.symbol]
+            symbol_text = ",".join(normalized_symbols) or f"top_usdt_limit={args.top_usdt_limit}"
             print(
                 "crypto board sync ready: "
-                f"{','.join(symbol.upper() for symbol in symbols)} "
+                f"{symbol_text} "
                 f"{args.interval} limit={args.limit} board={args.board_name}"
             )
             return 0
+        tickers = fetch_binance_24hr_tickers()
+        symbols = args.symbol or select_top_quote_volume_symbols(
+            tickers,
+            quote_asset="USDT",
+            limit=args.top_usdt_limit,
+        )
+        normalized_symbols = [symbol.upper() for symbol in symbols]
         with connect(db_path) as connection:
-            checkpoint = ",".join(symbol.upper() for symbol in symbols) + f":{args.interval}"
+            checkpoint = ",".join(normalized_symbols) + f":{args.interval}"
             ranking_count = 0
 
             def sync_and_rank():
                 nonlocal ranking_count
                 result = BinanceCollector().sync_intraday_bars(
                     connection,
-                    [symbol.upper() for symbol in symbols],
+                    normalized_symbols,
                     interval=args.interval,
                     limit=args.limit,
+                )
+                sync_binance_24hr_snapshots(
+                    connection,
+                    tickers=tickers,
+                    symbols=normalized_symbols,
+                    snapshot_ts_utc=snapshot_ts_utc,
+                    trade_date_local=trade_date_local,
                 )
                 ranking_count = RankingRepository(connection).refresh_turnover_board(
                     board_name=args.board_name,
@@ -302,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         print(
             "crypto board synced: "
-            f"{len(symbols)} symbols, {ranking_count} ranking rows, "
+            f"{len(normalized_symbols)} symbols, {ranking_count} ranking rows, "
             f"snapshot={snapshot_ts_utc}"
         )
         return 0

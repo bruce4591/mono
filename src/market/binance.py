@@ -193,6 +193,63 @@ def sync_binance_daily_bars(
     )
 
 
+def sync_binance_24hr_snapshots(
+    connection: sqlite3.Connection,
+    *,
+    tickers: list[dict[str, object]],
+    symbols: list[str],
+    snapshot_ts_utc: str,
+    trade_date_local: str,
+) -> int:
+    ticker_by_symbol = {
+        str(ticker.get("symbol", "")).upper(): ticker
+        for ticker in tickers
+        if ticker.get("symbol")
+    }
+    instrument_repository = InstrumentRepository(connection)
+    snapshot_repository = MarketSnapshotRepository(connection)
+    count = 0
+    for symbol in symbols:
+        normalized_symbol = symbol.upper()
+        ticker = ticker_by_symbol.get(normalized_symbol)
+        if ticker is None:
+            continue
+        instrument = binance_symbol_to_instrument(normalized_symbol)
+        instrument_id = instrument_repository.upsert(instrument)
+        snapshot_repository.upsert(
+            parse_binance_24hr_ticker_snapshot(
+                instrument_id=instrument_id,
+                instrument=instrument,
+                ticker=ticker,
+                snapshot_ts_utc=snapshot_ts_utc,
+                trade_date_local=trade_date_local,
+            )
+        )
+        count += 1
+    return count
+
+
+def parse_binance_24hr_ticker_snapshot(
+    *,
+    instrument_id: int,
+    instrument: Instrument,
+    ticker: dict[str, object],
+    snapshot_ts_utc: str,
+    trade_date_local: str,
+) -> MarketSnapshot:
+    return MarketSnapshot(
+        instrument_id=instrument_id,
+        snapshot_ts_utc=snapshot_ts_utc,
+        trade_date_local=trade_date_local,
+        last_price=_optional_float(ticker.get("lastPrice")),
+        change_pct=_optional_float(ticker.get("priceChangePercent")),
+        volume_raw=_optional_float(ticker.get("volume")),
+        turnover_raw=_optional_float(ticker.get("quoteVolume")),
+        quote_currency=instrument.quote_currency,
+        source="binance_24hr",
+    )
+
+
 def parse_binance_daily_kline(
     *,
     instrument_id: int,
@@ -281,3 +338,9 @@ def _change_pct(previous_close: float | None, latest_close: float | None) -> flo
     if previous_close in (None, 0) or latest_close is None:
         return None
     return ((latest_close - previous_close) / previous_close) * 100
+
+
+def _optional_float(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    return float(value)

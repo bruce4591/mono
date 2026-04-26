@@ -7,8 +7,10 @@ from pathlib import Path
 from market.binance import (
     binance_symbol_to_instrument,
     parse_binance_daily_kline,
+    parse_binance_24hr_ticker_snapshot,
     parse_binance_kline,
     select_top_quote_volume_symbols,
+    sync_binance_24hr_snapshots,
     sync_binance_daily_bars,
     sync_binance_klines,
 )
@@ -45,6 +47,32 @@ class BinanceTests(unittest.TestCase):
         self.assertEqual(bar.turnover_raw, 801255.0)
         self.assertEqual(bar.quote_currency, "USDT")
         self.assertEqual(bar.source, "binance")
+
+    def test_parse_binance_24hr_ticker_snapshot_uses_24h_volume_turnover_and_change(self):
+        instrument = binance_symbol_to_instrument("BTCUSDT")
+        snapshot = parse_binance_24hr_ticker_snapshot(
+            instrument_id=7,
+            instrument=instrument,
+            ticker={
+                "symbol": "BTCUSDT",
+                "lastPrice": "78012.00",
+                "priceChangePercent": "-1.25",
+                "volume": "12345.67",
+                "quoteVolume": "987654321.12",
+            },
+            snapshot_ts_utc="2026-04-24T20:00:00Z",
+            trade_date_local="2026-04-24",
+        )
+
+        self.assertEqual(snapshot.instrument_id, 7)
+        self.assertEqual(snapshot.snapshot_ts_utc, "2026-04-24T20:00:00Z")
+        self.assertEqual(snapshot.trade_date_local, "2026-04-24")
+        self.assertEqual(snapshot.last_price, 78012.0)
+        self.assertEqual(snapshot.change_pct, -1.25)
+        self.assertEqual(snapshot.volume_raw, 12345.67)
+        self.assertEqual(snapshot.turnover_raw, 987654321.12)
+        self.assertEqual(snapshot.quote_currency, "USDT")
+        self.assertEqual(snapshot.source, "binance_24hr")
 
     def test_parse_binance_kline_uses_quote_volume_as_turnover(self):
         bar = parse_binance_kline(
@@ -180,6 +208,71 @@ class BinanceTests(unittest.TestCase):
         self.assertEqual(bars[-1].close, 64250.0)
         self.assertEqual(snapshot_count, 1)
         self.assertAlmostEqual(change_pct, ((64250.0 - 64100.0) / 64100.0) * 100)
+
+    def test_sync_binance_24hr_snapshots_overwrites_kline_snapshot_for_board_semantics(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                sync_binance_klines(
+                    connection,
+                    symbol="BTCUSDT",
+                    interval="15m",
+                    limit=2,
+                    now_ms=1_776_001_900_000,
+                    fetcher=lambda _symbol, _interval, _limit: [
+                        [
+                            1_776_000_000_000,
+                            "64000",
+                            "64200",
+                            "63900",
+                            "64100",
+                            "10",
+                            1_776_000_899_999,
+                            "641000",
+                        ],
+                        [
+                            1_776_000_900_000,
+                            "64100",
+                            "64300",
+                            "64000",
+                            "64250",
+                            "12",
+                            1_776_001_799_999,
+                            "771000",
+                        ],
+                    ],
+                )
+                count = sync_binance_24hr_snapshots(
+                    connection,
+                    tickers=[
+                        {
+                            "symbol": "BTCUSDT",
+                            "lastPrice": "78012.00",
+                            "priceChangePercent": "-1.25",
+                            "volume": "12345.67",
+                            "quoteVolume": "987654321.12",
+                        }
+                    ],
+                    symbols=["BTCUSDT"],
+                    snapshot_ts_utc="2026-04-12T20:00:00Z",
+                    trade_date_local="2026-04-12",
+                )
+                row = connection.execute(
+                    """
+                    SELECT last_price, change_pct, volume_raw, turnover_raw, source
+                    FROM market_snapshot
+                    JOIN instrument
+                        ON instrument.instrument_id = market_snapshot.instrument_id
+                    WHERE instrument.market = 'CRYPTO'
+                        AND instrument.symbol = 'BTCUSDT'
+                        AND market_snapshot.trade_date_local = '2026-04-12'
+                    """
+                ).fetchone()
+
+        self.assertEqual(count, 1)
+        self.assertEqual(tuple(row), (78012.0, -1.25, 12345.67, 987654321.12, "binance_24hr"))
 
     def test_sync_binance_daily_bars_upserts_365_day_history(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

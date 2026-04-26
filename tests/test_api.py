@@ -461,6 +461,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"formatRankChange", asset.body)
         self.assertIn(b"last_price", asset.body)
         self.assertIn(b"rank-change", asset.body)
+        self.assertIn("上期".encode("utf-8"), asset.body)
+        self.assertIn(b"24h", asset.body)
 
     def test_get_static_asset_returns_status_page(self):
         asset = get_static_asset("/status.html")

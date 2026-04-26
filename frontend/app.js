@@ -38,10 +38,10 @@ function formatPrice(value) {
 }
 
 function formatRankChange(value) {
-  if (value === null || value === undefined) return '<span class="rank-change is-new">新</span>';
-  if (value > 0) return `<span class="rank-change is-up">↑${value}</span>`;
-  if (value < 0) return `<span class="rank-change is-down">↓${Math.abs(value)}</span>`;
-  return '<span class="rank-change">持平</span>';
+  if (value === null || value === undefined) return '<span class="rank-change is-new">新入</span>';
+  if (value > 0) return `<span class="rank-change is-up">上期 ↑${value}</span>`;
+  if (value < 0) return `<span class="rank-change is-down">上期 ↓${Math.abs(value)}</span>`;
+  return '<span class="rank-change">上期 持平</span>';
 }
 
 function renderBoard(payload) {
@@ -68,10 +68,10 @@ function renderBoard(payload) {
             <p class="name">${item.display_name}</p>
           </div>
           <div class="metrics">
-            <p class="price">${formatPrice(item.last_price)}</p>
-            <p class="turnover">${formatTurnover(item.turnover_raw, item.quote_currency)}</p>
-            <p class="name">量 ${formatVolume(item.volume_raw)}</p>
-            <p class="${changeClass}">${sign}${change.toFixed(2)}%</p>
+            <p class="price">价 ${formatPrice(item.last_price)}</p>
+            <p class="turnover">24h额 ${formatTurnover(item.turnover_raw, item.quote_currency)}</p>
+            <p class="name">24h量 ${formatVolume(item.volume_raw)}</p>
+            <p class="${changeClass}">24h ${sign}${change.toFixed(2)}%</p>
           </div>
         </a>
       `;
