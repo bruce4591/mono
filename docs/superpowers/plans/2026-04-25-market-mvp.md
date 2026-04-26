@@ -195,7 +195,7 @@ Not yet complete:
 - [x] Move Binance sync behind the collector interface without changing CLI behavior.
 - [x] Keep `sync-crypto-board` compatible with current cron script.
 - [x] Add job/source health updates at the collector boundary.
-- [ ] Run local and server tests.
+- [x] Run local and server tests.
 
 ### Slice 3: AKShare Market Data MVP
 
