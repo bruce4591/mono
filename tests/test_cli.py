@@ -293,6 +293,56 @@ class CliTests(unittest.TestCase):
         self.assertEqual(calls, [(["BTCUSDT", "ETHUSDT"], "15m", 2)])
         self.assertIn("crypto board synced: 2 symbols, 0 ranking rows", stdout.getvalue())
 
+    def test_sync_crypto_board_marks_job_failed_when_ranking_refresh_fails(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+
+            class FakeBinanceCollector:
+                source_name = "binance"
+
+                def sync_intraday_bars(self, connection, symbols, interval, limit):
+                    return CollectorResult(
+                        source_name=self.source_name,
+                        items_synced=2,
+                        metadata={"symbols": symbols, "interval": interval},
+                    )
+
+            def fail_refresh(self, **kwargs):
+                raise RuntimeError("ranking failed")
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.BinanceCollector",
+                return_value=FakeBinanceCollector(),
+            ), patch("market.cli.RankingRepository.refresh_turnover_board", fail_refresh):
+                main(["init-db", "--db-path", str(db_path)])
+                with self.assertRaises(RuntimeError):
+                    main(
+                        [
+                            "sync-crypto-board",
+                            "--db-path",
+                            str(db_path),
+                            "--symbol",
+                            "BTCUSDT",
+                            "--interval",
+                            "15m",
+                            "--limit",
+                            "2",
+                            "--snapshot-ts-utc",
+                            "2026-04-24T20:00:00Z",
+                            "--trade-date-local",
+                            "2026-04-24",
+                        ]
+                    )
+
+            with sqlite3.connect(db_path) as connection:
+                job = connection.execute(
+                    "SELECT status, last_error FROM job_state WHERE job_name = ?",
+                    ("sync-crypto-board",),
+                ).fetchone()
+
+        self.assertEqual(tuple(job), ("failed", "ranking failed"))
+
     def test_add_alert_rule_and_list_alert_events_are_registered(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

@@ -218,26 +218,33 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         with connect(db_path) as connection:
             checkpoint = ",".join(symbol.upper() for symbol in symbols) + f":{args.interval}"
-            collector_result = run_collector_job(
+            ranking_count = 0
+
+            def sync_and_rank():
+                nonlocal ranking_count
+                result = BinanceCollector().sync_intraday_bars(
+                    connection,
+                    [symbol.upper() for symbol in symbols],
+                    interval=args.interval,
+                    limit=args.limit,
+                )
+                ranking_count = RankingRepository(connection).refresh_turnover_board(
+                    board_name=args.board_name,
+                    snapshot_ts_utc=snapshot_ts_utc,
+                    trade_date_local=trade_date_local,
+                    market="CRYPTO",
+                    instrument_type="crypto",
+                    limit=args.board_limit,
+                )
+                return result
+
+            run_collector_job(
                 connection,
                 job_name="sync-crypto-board",
                 source_name="binance",
                 checkpoint=checkpoint,
                 started_at_utc=snapshot_ts_utc,
-                operation=lambda: BinanceCollector().sync_intraday_bars(
-                    connection,
-                    [symbol.upper() for symbol in symbols],
-                    interval=args.interval,
-                    limit=args.limit,
-                ),
-            )
-            ranking_count = RankingRepository(connection).refresh_turnover_board(
-                board_name=args.board_name,
-                snapshot_ts_utc=snapshot_ts_utc,
-                trade_date_local=trade_date_local,
-                market="CRYPTO",
-                instrument_type="crypto",
-                limit=args.board_limit,
+                operation=sync_and_rank,
             )
         print(
             "crypto board synced: "

@@ -3,7 +3,8 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Protocol
+from time import monotonic, sleep as default_sleep
+from typing import Callable, Protocol
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,33 @@ class MarketCollector(Protocol):
         raise NotImplementedError
 
 
+class RequestRateLimiter:
+    def __init__(
+        self,
+        min_interval_seconds: float,
+        *,
+        clock: Callable[[], float] = monotonic,
+        sleep: Callable[[float], None] = default_sleep,
+    ) -> None:
+        self.min_interval_seconds = min_interval_seconds
+        self.clock = clock
+        self.sleep = sleep
+        self._last_request_at: float | None = None
+
+    def wait(self) -> None:
+        if self.min_interval_seconds <= 0:
+            self._last_request_at = self.clock()
+            return
+        now = self.clock()
+        if self._last_request_at is not None:
+            elapsed = now - self._last_request_at
+            remaining = self.min_interval_seconds - elapsed
+            if remaining > 0:
+                self.sleep(remaining)
+                now = self.clock()
+        self._last_request_at = now
+
+
 def run_collector_job(
     connection: sqlite3.Connection,
     *,
@@ -60,6 +88,7 @@ def run_collector_job(
         failed_at = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         _record_job_failed(connection, job_name, failed_at, str(error))
         _record_source_failed(connection, source_name, failed_at, str(error))
+        connection.commit()
         raise
     _record_job_finished(connection, job_name, started_at_utc)
     _record_source_success(connection, source_name, started_at_utc)

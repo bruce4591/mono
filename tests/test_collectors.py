@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.error import URLError
 
 from market.collectors.base import (
     CollectorResult,
@@ -113,6 +114,75 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(snapshot["last_price"], 102.0)
         self.assertLess(snapshot["change_pct"], 0)
         self.assertEqual(snapshot["turnover_raw"], 1122.0)
+
+    def test_binance_collector_rate_limits_between_symbol_requests(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+            sleeps = []
+            rows = [
+                [
+                    1_776_960_000_000,
+                    "100.0",
+                    "105.0",
+                    "99.0",
+                    "104.0",
+                    "10.0",
+                    1_776_960_899_999,
+                    "1020.0",
+                ]
+            ]
+
+            def fetcher(symbol, interval, limit):
+                calls.append(symbol)
+                return rows
+
+            with connect(db_path) as connection:
+                collector = BinanceCollector(
+                    fetcher=fetcher,
+                    now_ms=1_776_961_800_000,
+                    min_request_interval_seconds=1.0,
+                    sleep=sleeps.append,
+                )
+                result = collector.sync_intraday_bars(
+                    connection,
+                    ["BTCUSDT", "ETHUSDT"],
+                    interval="15m",
+                    limit=1,
+                )
+
+        self.assertEqual(result.items_synced, 2)
+        self.assertEqual(calls, ["BTCUSDT", "ETHUSDT"])
+        self.assertEqual(len(sleeps), 1)
+        self.assertGreater(sleeps[0], 0.9)
+        self.assertLessEqual(sleeps[0], 1.0)
+
+    def test_binance_collector_does_not_retry_failed_requests(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbol, interval, limit):
+                calls.append(symbol)
+                raise URLError("rate limited")
+
+            with connect(db_path) as connection:
+                collector = BinanceCollector(
+                    fetcher=fetcher,
+                    min_request_interval_seconds=1.0,
+                    sleep=lambda seconds: None,
+                )
+                with self.assertRaises(URLError):
+                    collector.sync_intraday_bars(
+                        connection,
+                        ["BTCUSDT"],
+                        interval="15m",
+                        limit=1,
+                    )
+
+        self.assertEqual(calls, ["BTCUSDT"])
 
     def test_run_collector_job_records_success_health(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -153,6 +153,12 @@ http://127.0.0.1:8000/api/bars/intraday?market=CRYPTO&symbol=BTCUSDT&interval=15
 - Client: mobile Web/PWA using KLineCharts
 - Later extension: indicators and alerts on top of stored bars and rankings
 
+## Collector Safety Policy
+
+- Collectors should rate-limit requests by default. Current Binance collector waits at least 1 second between symbol requests.
+- Collectors should not retry failed requests by default. A failure records `job_state` and `source_health`, then stops the job so it does not hammer the source.
+- Future AKShare collectors should use the same collector wrapper and start with small focus pools before expanding coverage.
+
 Note: the current chart page loads `klinecharts@9.8.12` from jsDelivr. If you need fully offline LAN usage later, vendor the standalone JS file into `frontend/` and serve it locally.
 
 ## Next Implementation Slice

@@ -197,6 +197,12 @@ Not yet complete:
 - [x] Add job/source health updates at the collector boundary.
 - [x] Run local and server tests.
 
+**Collector safety policy:**
+- [x] Binance collector rate-limits symbol requests with a default 1 second interval.
+- [x] Collector jobs do not retry failed requests by default.
+- [x] Collector job failures are persisted to `job_state` and `source_health` before the exception is raised.
+- [ ] Apply the same default rate-limit and no-retry behavior to the future AKShare collector.
+
 ### Slice 3: AKShare Market Data MVP
 
 **Goal:** Add first non-crypto market sync for ETF/index focus pools, then expand to stock boards.
