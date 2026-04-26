@@ -199,9 +199,16 @@ Not yet complete:
 
 **Collector safety policy:**
 - [x] Binance collector rate-limits symbol requests with a default 1 second interval.
+- [x] Binance REST kline policy is tied to the official `GET /api/v3/klines` request weight of `2` and a conservative local `120` request-weight/minute safety budget.
 - [x] Collector jobs do not retry failed requests by default.
 - [x] Collector job failures are persisted to `job_state` and `source_health` before the exception is raised.
 - [ ] Apply the same default rate-limit and no-retry behavior to the future AKShare collector.
+
+**Realtime price direction:**
+- [ ] Keep historical K lines, turnover, and ranking refresh on REST/scheduled jobs.
+- [ ] Add a Binance WebSocket realtime price collector for fast price updates.
+- [ ] Respect Binance WS limits by using grouped combined streams, throttling subscribe/unsubscribe messages, and reconnecting before/after the 24-hour connection lifetime.
+- [ ] Keep board ranking refresh at minute-level cadence; do not tie ranking recompute to every realtime tick.
 
 ### Slice 3: AKShare Market Data MVP
 

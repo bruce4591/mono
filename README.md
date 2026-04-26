@@ -155,9 +155,23 @@ http://127.0.0.1:8000/api/bars/intraday?market=CRYPTO&symbol=BTCUSDT&interval=15
 
 ## Collector Safety Policy
 
-- Collectors should rate-limit requests by default. Current Binance collector waits at least 1 second between symbol requests.
-- Collectors should not retry failed requests by default. A failure records `job_state` and `source_health`, then stops the job so it does not hammer the source.
+- Collectors should rate-limit requests by default. Binance Spot `GET /api/v3/klines`
+  has request weight `2`; this project caps Binance REST usage at a conservative
+  `120` request-weight/minute budget, so the current Binance collector waits at
+  least `1` second between symbol kline requests.
+- Collectors should not retry failed requests by default. Binance returns HTTP
+  `429` when a request rate limit is broken and HTTP `418` after repeated
+  violations; a failure records `job_state` and `source_health`, then stops the
+  job so it does not hammer the source.
 - Future AKShare collectors should use the same collector wrapper and start with small focus pools before expanding coverage.
+- Historical K lines, turnover, and ranking refresh jobs should stay on REST /
+  scheduled collectors. Ranking refresh does not need sub-second latency and can
+  run every few minutes.
+- Real-time crypto prices should use Binance WebSocket streams in a later slice.
+  Binance WS allows up to `1024` streams on one connection, limits incoming
+  control messages to `5` per second, and disconnects connections at 24 hours, so
+  the implementation should use grouped combined streams, throttle
+  subscribe/unsubscribe messages, and reconnect cleanly.
 
 Note: the current chart page loads `klinecharts@9.8.12` from jsDelivr. If you need fully offline LAN usage later, vendor the standalone JS file into `frontend/` and serve it locally.
 

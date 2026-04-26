@@ -8,6 +8,13 @@ from market.binance import KlineFetcher, fetch_binance_klines, sync_binance_klin
 from market.collectors.base import CollectorResult, RequestRateLimiter
 
 
+BINANCE_KLINES_REQUEST_WEIGHT = 2
+BINANCE_SAFE_REQUEST_WEIGHT_PER_MINUTE = 120
+BINANCE_DEFAULT_MIN_REQUEST_INTERVAL_SECONDS = (
+    60 / (BINANCE_SAFE_REQUEST_WEIGHT_PER_MINUTE / BINANCE_KLINES_REQUEST_WEIGHT)
+)
+
+
 class BinanceCollector:
     source_name = "binance"
 
@@ -16,11 +23,12 @@ class BinanceCollector:
         *,
         fetcher: KlineFetcher = fetch_binance_klines,
         now_ms: int | None = None,
-        min_request_interval_seconds: float = 1.0,
+        min_request_interval_seconds: float = BINANCE_DEFAULT_MIN_REQUEST_INTERVAL_SECONDS,
         sleep: Callable[[float], None] = default_sleep,
     ) -> None:
         self.fetcher = fetcher
         self.now_ms = now_ms
+        self.min_request_interval_seconds = min_request_interval_seconds
         self.rate_limiter = RequestRateLimiter(
             min_request_interval_seconds,
             sleep=sleep,
@@ -60,6 +68,9 @@ class BinanceCollector:
                 "symbols": normalized_symbols,
                 "interval": interval,
                 "limit": limit,
+                "request_weight_per_call": BINANCE_KLINES_REQUEST_WEIGHT,
+                "safe_request_weight_per_minute": BINANCE_SAFE_REQUEST_WEIGHT_PER_MINUTE,
+                "min_request_interval_seconds": self.min_request_interval_seconds,
             },
         )
 

@@ -10,7 +10,12 @@ from market.collectors.base import (
     MarketCollector,
     run_collector_job,
 )
-from market.collectors.binance import BinanceCollector
+from market.collectors.binance import (
+    BINANCE_DEFAULT_MIN_REQUEST_INTERVAL_SECONDS,
+    BINANCE_KLINES_REQUEST_WEIGHT,
+    BINANCE_SAFE_REQUEST_WEIGHT_PER_MINUTE,
+    BinanceCollector,
+)
 from market.db import connect, init_database
 
 
@@ -35,6 +40,13 @@ class FakeCollector(MarketCollector):
 
 
 class CollectorTests(unittest.TestCase):
+    def test_binance_default_interval_is_derived_from_safe_request_weight_budget(self):
+        calls_per_minute = BINANCE_SAFE_REQUEST_WEIGHT_PER_MINUTE / BINANCE_KLINES_REQUEST_WEIGHT
+
+        self.assertEqual(BINANCE_KLINES_REQUEST_WEIGHT, 2)
+        self.assertEqual(BINANCE_SAFE_REQUEST_WEIGHT_PER_MINUTE, 120)
+        self.assertEqual(BINANCE_DEFAULT_MIN_REQUEST_INTERVAL_SECONDS, 60 / calls_per_minute)
+
     def test_fake_collector_implements_common_contract(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -110,6 +122,9 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(result.source_name, "binance")
         self.assertEqual(result.items_synced, 2)
         self.assertEqual(result.metadata["symbols"], ["BTCUSDT"])
+        self.assertEqual(result.metadata["request_weight_per_call"], 2)
+        self.assertEqual(result.metadata["safe_request_weight_per_minute"], 120)
+        self.assertEqual(result.metadata["min_request_interval_seconds"], 1.0)
         self.assertEqual(count, 2)
         self.assertEqual(snapshot["last_price"], 102.0)
         self.assertLess(snapshot["change_pct"], 0)
