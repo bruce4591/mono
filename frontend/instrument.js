@@ -17,11 +17,7 @@ const refreshButton = document.querySelector("#refreshButton");
 let activeChart = null;
 let activeTimezone = "UTC";
 let activePeriod = null;
-let touchStartX = null;
-let pointerStartX = null;
 let isLoadingOlderBars = false;
-
-const CHART_SWIPE_THRESHOLD_PX = 60;
 
 const DEFAULT_VISIBLE_CANDLES = {
   "1m": 90,
@@ -351,47 +347,8 @@ async function loadOlderBars() {
   renderSelectedPeriod(activePeriod);
 }
 
-function handleChartSwipe(startX, endX) {
-  if (Math.abs(startX - endX) > CHART_SWIPE_THRESHOLD_PX) loadOlderBars();
-}
-
 refreshButton.addEventListener("click", loadInstrument);
 loadMoreBars.addEventListener("click", loadOlderBars);
-klineChart.addEventListener(
-  "pointerdown",
-  (event) => {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    pointerStartX = event.clientX;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  },
-  true,
-);
-klineChart.addEventListener(
-  "pointerup",
-  (event) => {
-    if (pointerStartX === null) return;
-    handleChartSwipe(pointerStartX, event.clientX);
-    pointerStartX = null;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  },
-  true,
-);
-klineChart.addEventListener(
-  "pointercancel",
-  () => {
-    pointerStartX = null;
-  },
-  true,
-);
-klineChart.addEventListener("touchstart", (event) => {
-  touchStartX = event.changedTouches[0]?.clientX ?? null;
-});
-klineChart.addEventListener("touchend", (event) => {
-  if (touchStartX === null) return;
-  const touchEndX = event.changedTouches[0]?.clientX ?? touchStartX;
-  handleChartSwipe(touchStartX, touchEndX);
-  touchStartX = null;
-});
 setInterval(loadLatestSnapshot, 5000);
 
 loadInstrument().catch(() => {
