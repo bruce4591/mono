@@ -107,6 +107,35 @@ CREATE TABLE IF NOT EXISTS source_health (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS alert_rule (
+    rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    market TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    operator TEXT NOT NULL,
+    threshold REAL NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (name)
+);
+
+CREATE TABLE IF NOT EXISTS alert_event (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rule_id INTEGER NOT NULL,
+    instrument_id INTEGER NOT NULL,
+    triggered_at_utc TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    observed_value REAL NOT NULL,
+    threshold REAL NOT NULL,
+    message TEXT NOT NULL,
+    is_acknowledged INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (rule_id) REFERENCES alert_rule(rule_id),
+    FOREIGN KEY (instrument_id) REFERENCES instrument(instrument_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_bar_daily_trade_date
     ON bar_daily (trade_date);
 
@@ -116,3 +145,5 @@ CREATE INDEX IF NOT EXISTS idx_bar_intraday_lookup
 CREATE INDEX IF NOT EXISTS idx_market_snapshot_turnover
     ON market_snapshot (trade_date_local, turnover_raw DESC);
 
+CREATE INDEX IF NOT EXISTS idx_alert_event_triggered
+    ON alert_event (triggered_at_utc DESC);

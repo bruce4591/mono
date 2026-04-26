@@ -242,6 +242,105 @@ class CliTests(unittest.TestCase):
         self.assertEqual(job, ("success", "BTCUSDT:15m", None))
         self.assertEqual(source, ("ok", None))
 
+    def test_add_alert_rule_and_list_alert_events_are_registered(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                main(["init-db", "--db-path", str(db_path)])
+                add_exit = main(
+                    [
+                        "add-alert-rule",
+                        "--db-path",
+                        str(db_path),
+                        "--name",
+                        "btc change",
+                        "--market",
+                        "CRYPTO",
+                        "--symbol",
+                        "BTCUSDT",
+                        "--metric",
+                        "change_pct",
+                        "--operator",
+                        ">=",
+                        "--threshold",
+                        "2",
+                    ]
+                )
+                list_exit = main(
+                    [
+                        "list-alert-events",
+                        "--db-path",
+                        str(db_path),
+                        "--limit",
+                        "5",
+                    ]
+                )
+
+            with sqlite3.connect(db_path) as connection:
+                count = connection.execute("SELECT count(*) FROM alert_rule").fetchone()[0]
+
+        self.assertEqual(add_exit, 0)
+        self.assertEqual(list_exit, 0)
+        self.assertEqual(count, 1)
+        self.assertIn("alert rule saved: btc change", stdout.getvalue())
+        self.assertIn("[]", stdout.getvalue())
+
+    def test_run_alerts_command_creates_event(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                main(["init-db", "--db-path", str(db_path)])
+                main(
+                    [
+                        "seed-sample-data",
+                        "--db-path",
+                        str(db_path),
+                        "--snapshot-ts-utc",
+                        "2026-04-24T20:00:00Z",
+                        "--trade-date-local",
+                        "2026-04-24",
+                    ]
+                )
+                main(
+                    [
+                        "add-alert-rule",
+                        "--db-path",
+                        str(db_path),
+                        "--name",
+                        "btc turnover",
+                        "--market",
+                        "CRYPTO",
+                        "--symbol",
+                        "BTCUSDT",
+                        "--metric",
+                        "turnover_raw",
+                        "--operator",
+                        ">=",
+                        "--threshold",
+                        "1",
+                    ]
+                )
+                exit_code = main(
+                    [
+                        "run-alerts",
+                        "--db-path",
+                        str(db_path),
+                        "--triggered-at-utc",
+                        "2026-04-24T20:01:00Z",
+                    ]
+                )
+
+            with sqlite3.connect(db_path) as connection:
+                count = connection.execute("SELECT count(*) FROM alert_event").fetchone()[0]
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(count, 1)
+        self.assertIn("alerts evaluated: 1 rules, 1 events", stdout.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

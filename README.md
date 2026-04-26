@@ -20,7 +20,8 @@ Implemented foundation:
 - Mobile web board dashboard served from the local API process
 - Instrument detail API and mobile detail page with daily and intraday bars
 - Watchlist, health, and job status API endpoints
-- Mobile status page for boards, watchlists, jobs, and data sources
+- Alert rule/event framework with metric resolvers for future indicators
+- Mobile status page for boards, alerts, watchlists, jobs, and data sources
 - KLineCharts candlestick panel with MA, VOL, MACD, interval, volume, and turnover columns
 - CLI commands for database initialization and health checks
 
@@ -88,6 +89,22 @@ Sync the crypto board in one command:
   --limit 96
 ```
 
+Add and evaluate a simple alert rule:
+
+```bash
+.venv/bin/market add-alert-rule \
+  --db-path ./data/market.sqlite3 \
+  --name "btc change high" \
+  --market CRYPTO \
+  --symbol BTCUSDT \
+  --metric change_pct \
+  --operator ">=" \
+  --threshold 2
+
+.venv/bin/market run-alerts --db-path ./data/market.sqlite3
+.venv/bin/market list-alert-events --db-path ./data/market.sqlite3 --limit 20
+```
+
 Refresh a turnover board from current snapshots:
 
 ```bash
@@ -117,6 +134,8 @@ http://127.0.0.1:8000/instrument.html?market=US&symbol=SPY
 http://127.0.0.1:8000/api/health
 http://127.0.0.1:8000/api/watchlists
 http://127.0.0.1:8000/api/jobs
+http://127.0.0.1:8000/api/alerts/rules
+http://127.0.0.1:8000/api/alerts/events
 http://127.0.0.1:8000/api/boards/ETF_FOCUS20
 http://127.0.0.1:8000/api/boards/CRYPTO_TURNOVER_TOP50
 http://127.0.0.1:8000/api/instruments/US/SPY

@@ -4,6 +4,8 @@ import json
 import sqlite3
 
 from market.models import (
+    AlertEvent,
+    AlertRule,
     DailyBar,
     Instrument,
     IntradayBar,
@@ -531,6 +533,182 @@ class RankingRepository:
             """,
             (watchlist_name, trade_date_local, market, instrument_type, limit),
         ).fetchall()
+
+
+class AlertRuleRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.connection = connection
+
+    def upsert(self, rule: AlertRule) -> int:
+        self.connection.execute(
+            """
+            INSERT INTO alert_rule (
+                name,
+                market,
+                symbol,
+                metric,
+                operator,
+                threshold,
+                is_active,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(name) DO UPDATE SET
+                market = excluded.market,
+                symbol = excluded.symbol,
+                metric = excluded.metric,
+                operator = excluded.operator,
+                threshold = excluded.threshold,
+                is_active = excluded.is_active,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                rule.name,
+                rule.market,
+                rule.symbol,
+                rule.metric,
+                rule.operator,
+                rule.threshold,
+                int(rule.is_active),
+            ),
+        )
+        row = self.connection.execute(
+            "SELECT rule_id FROM alert_rule WHERE name = ?",
+            (rule.name,),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("alert rule upsert did not return a row")
+        return int(row["rule_id"])
+
+    def list_active(self) -> list[AlertRule]:
+        rows = self.connection.execute(
+            """
+            SELECT
+                rule_id,
+                name,
+                market,
+                symbol,
+                metric,
+                operator,
+                threshold,
+                is_active
+            FROM alert_rule
+            WHERE is_active = 1
+            ORDER BY name
+            """
+        ).fetchall()
+        return [_alert_rule_from_row(row) for row in rows]
+
+    def list_all(self) -> list[AlertRule]:
+        rows = self.connection.execute(
+            """
+            SELECT
+                rule_id,
+                name,
+                market,
+                symbol,
+                metric,
+                operator,
+                threshold,
+                is_active
+            FROM alert_rule
+            ORDER BY name
+            """
+        ).fetchall()
+        return [_alert_rule_from_row(row) for row in rows]
+
+
+class AlertEventRepository:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.connection = connection
+
+    def insert(self, event: AlertEvent) -> int:
+        self.connection.execute(
+            """
+            INSERT INTO alert_event (
+                rule_id,
+                instrument_id,
+                triggered_at_utc,
+                metric,
+                observed_value,
+                threshold,
+                message,
+                is_acknowledged
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event.rule_id,
+                event.instrument_id,
+                event.triggered_at_utc,
+                event.metric,
+                event.observed_value,
+                event.threshold,
+                event.message,
+                int(event.is_acknowledged),
+            ),
+        )
+        row = self.connection.execute("SELECT last_insert_rowid()").fetchone()
+        if row is None:
+            raise RuntimeError("alert event insert did not return a row")
+        return int(row[0])
+
+    def list_recent(self, limit: int = 50) -> list[AlertEvent]:
+        rows = self.connection.execute(
+            """
+            SELECT
+                alert_event.event_id,
+                alert_event.rule_id,
+                alert_rule.name AS rule_name,
+                alert_event.instrument_id,
+                instrument.market,
+                instrument.symbol,
+                alert_event.triggered_at_utc,
+                alert_event.metric,
+                alert_event.observed_value,
+                alert_event.threshold,
+                alert_event.message,
+                alert_event.is_acknowledged
+            FROM alert_event
+            JOIN alert_rule
+                ON alert_rule.rule_id = alert_event.rule_id
+            JOIN instrument
+                ON instrument.instrument_id = alert_event.instrument_id
+            ORDER BY alert_event.triggered_at_utc DESC, alert_event.event_id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [
+            AlertEvent(
+                event_id=int(row["event_id"]),
+                rule_id=int(row["rule_id"]),
+                rule_name=str(row["rule_name"]),
+                instrument_id=int(row["instrument_id"]),
+                market=str(row["market"]),
+                symbol=str(row["symbol"]),
+                triggered_at_utc=str(row["triggered_at_utc"]),
+                metric=str(row["metric"]),
+                observed_value=float(row["observed_value"]),
+                threshold=float(row["threshold"]),
+                message=str(row["message"]),
+                is_acknowledged=bool(row["is_acknowledged"]),
+            )
+            for row in rows
+        ]
+
+
+def _alert_rule_from_row(row: sqlite3.Row) -> AlertRule:
+    return AlertRule(
+        rule_id=int(row["rule_id"]),
+        name=str(row["name"]),
+        market=str(row["market"]),
+        symbol=str(row["symbol"]),
+        metric=str(row["metric"]),
+        operator=str(row["operator"]),
+        threshold=float(row["threshold"]),
+        is_active=bool(row["is_active"]),
+    )
 
 
 def _optional_float(value: object) -> float | None:

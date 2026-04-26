@@ -327,6 +327,11 @@ h1 {
   gap: 12px;
 }
 
+.alert-row {
+  border-color: rgba(230, 189, 92, 0.48);
+  background: rgba(49, 39, 17, 0.52);
+}
+
 .table-head,
 .table-row {
   display: grid;

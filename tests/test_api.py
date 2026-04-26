@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 
 from market.api import (
+    get_alert_events_payload,
+    get_alert_rules_payload,
     get_daily_bars_payload,
     get_health_payload,
     get_instrument_payload,
@@ -16,6 +18,9 @@ from market.api import (
 )
 from market.db import connect, init_database
 from market.repositories import RankingRepository
+from market.models import AlertRule
+from market.repositories import AlertEventRepository, AlertRuleRepository
+from market.models import AlertEvent
 from market.sample_data import seed_sample_data
 from market.watchlists import sync_watchlist_from_file
 
@@ -265,6 +270,69 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["sources"][0]["source_name"], "binance")
         self.assertEqual(payload["sources"][0]["status"], "ok")
 
+    def test_get_alert_rules_payload_returns_rules(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                AlertRuleRepository(connection).upsert(
+                    AlertRule(
+                        name="btc change",
+                        market="CRYPTO",
+                        symbol="BTCUSDT",
+                        metric="change_pct",
+                        operator=">=",
+                        threshold=2.0,
+                    )
+                )
+                payload = get_alert_rules_payload(connection)
+
+        self.assertEqual(payload["rules"][0]["name"], "btc change")
+        self.assertEqual(payload["rules"][0]["metric"], "change_pct")
+
+    def test_get_alert_events_payload_returns_recent_events(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                rule_id = AlertRuleRepository(connection).upsert(
+                    AlertRule(
+                        name="btc turnover",
+                        market="CRYPTO",
+                        symbol="BTCUSDT",
+                        metric="turnover_raw",
+                        operator=">=",
+                        threshold=1.0,
+                    )
+                )
+                instrument = get_instrument_payload(connection, "CRYPTO", "BTCUSDT")
+                assert instrument is not None
+                AlertEventRepository(connection).insert(
+                    AlertEvent(
+                        rule_id=rule_id,
+                        rule_name="btc turnover",
+                        instrument_id=int(instrument["instrument_id"]),
+                        market="CRYPTO",
+                        symbol="BTCUSDT",
+                        triggered_at_utc="2026-04-24T20:01:00Z",
+                        metric="turnover_raw",
+                        observed_value=100.0,
+                        threshold=1.0,
+                        message="BTCUSDT turnover_raw 100.0 >= 1.0",
+                    )
+                )
+                payload = get_alert_events_payload(connection, limit=5)
+
+        self.assertEqual(payload["events"][0]["rule_name"], "btc turnover")
+        self.assertEqual(payload["events"][0]["symbol"], "BTCUSDT")
+
     def test_get_static_asset_returns_mobile_dashboard_index(self):
         asset = get_static_asset("/")
 
@@ -309,6 +377,15 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b'id="healthStatus"', asset.body)
         self.assertIn(b'id="watchlistList"', asset.body)
         self.assertIn(b'id="jobList"', asset.body)
+        self.assertIn(b'id="alertList"', asset.body)
+
+    def test_get_static_asset_returns_status_alert_loader(self):
+        asset = get_static_asset("/status.js")
+
+        self.assertIsNotNone(asset)
+        self.assertEqual(asset.content_type, "text/javascript; charset=utf-8")
+        self.assertIn(b"/api/alerts/events", asset.body)
+        self.assertIn(b"renderAlerts", asset.body)
 
     def test_get_static_asset_rejects_unknown_paths(self):
         self.assertIsNone(get_static_asset("/missing.js"))

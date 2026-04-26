@@ -6,10 +6,12 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from market.alerts import evaluate_alert_rules
 from market.api import serve_api
 from market.binance import sync_binance_klines
 from market.db import connect, init_database
-from market.repositories import RankingRepository
+from market.models import AlertRule
+from market.repositories import AlertEventRepository, AlertRuleRepository, RankingRepository
 from market.sample_data import seed_sample_data
 from market.settings import load_settings
 from market.watchlists import sync_watchlist_from_file
@@ -88,6 +90,29 @@ def build_parser() -> argparse.ArgumentParser:
     sync_crypto_board.add_argument("--snapshot-ts-utc", default=None)
     sync_crypto_board.add_argument("--trade-date-local", default=None)
     sync_crypto_board.add_argument("--dry-run", action="store_true")
+
+    add_alert_rule = subparsers.add_parser(
+        "add-alert-rule", help="Create or update a threshold alert rule"
+    )
+    add_alert_rule.add_argument("--db-path", type=Path, default=None)
+    add_alert_rule.add_argument("--name", required=True)
+    add_alert_rule.add_argument("--market", required=True)
+    add_alert_rule.add_argument("--symbol", required=True)
+    add_alert_rule.add_argument("--metric", required=True)
+    add_alert_rule.add_argument("--operator", required=True)
+    add_alert_rule.add_argument("--threshold", type=float, required=True)
+
+    run_alerts = subparsers.add_parser(
+        "run-alerts", help="Evaluate active alert rules against latest snapshots"
+    )
+    run_alerts.add_argument("--db-path", type=Path, default=None)
+    run_alerts.add_argument("--triggered-at-utc", default=None)
+
+    list_alert_events = subparsers.add_parser(
+        "list-alert-events", help="Print recent alert events as JSON"
+    )
+    list_alert_events.add_argument("--db-path", type=Path, default=None)
+    list_alert_events.add_argument("--limit", type=int, default=50)
     return parser
 
 
@@ -221,6 +246,61 @@ def main(argv: list[str] | None = None) -> int:
             "crypto board synced: "
             f"{len(results)} symbols, {ranking_count} ranking rows, "
             f"snapshot={snapshot_ts_utc}"
+        )
+        return 0
+
+    if args.command == "add-alert-rule":
+        with connect(db_path) as connection:
+            AlertRuleRepository(connection).upsert(
+                AlertRule(
+                    name=args.name,
+                    market=args.market,
+                    symbol=args.symbol.upper(),
+                    metric=args.metric,
+                    operator=args.operator,
+                    threshold=args.threshold,
+                )
+            )
+        print(f"alert rule saved: {args.name}")
+        return 0
+
+    if args.command == "run-alerts":
+        triggered_at_utc = args.triggered_at_utc or datetime.now(tz=UTC).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        with connect(db_path) as connection:
+            result = evaluate_alert_rules(
+                connection,
+                triggered_at_utc=triggered_at_utc,
+            )
+        print(
+            "alerts evaluated: "
+            f"{result.rules_checked} rules, {result.events_created} events"
+        )
+        return 0
+
+    if args.command == "list-alert-events":
+        with connect(db_path) as connection:
+            events = AlertEventRepository(connection).list_recent(limit=args.limit)
+        print(
+            json.dumps(
+                [
+                    {
+                        "event_id": event.event_id,
+                        "rule_name": event.rule_name,
+                        "market": event.market,
+                        "symbol": event.symbol,
+                        "triggered_at_utc": event.triggered_at_utc,
+                        "metric": event.metric,
+                        "observed_value": event.observed_value,
+                        "threshold": event.threshold,
+                        "message": event.message,
+                        "is_acknowledged": event.is_acknowledged,
+                    }
+                    for event in events
+                ],
+                ensure_ascii=False,
+            )
         )
         return 0
 

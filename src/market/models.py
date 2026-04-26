@@ -79,3 +79,31 @@ class RankingEntry:
     quote_currency: str
     change_pct: float | None
     source: str
+
+
+@dataclass(frozen=True)
+class AlertRule:
+    name: str
+    market: str
+    symbol: str
+    metric: str
+    operator: str
+    threshold: float
+    is_active: bool = True
+    rule_id: int | None = None
+
+
+@dataclass(frozen=True)
+class AlertEvent:
+    rule_id: int
+    rule_name: str
+    instrument_id: int
+    market: str
+    symbol: str
+    triggered_at_utc: str
+    metric: str
+    observed_value: float
+    threshold: float
+    message: str
+    is_acknowledged: bool = False
+    event_id: int | None = None

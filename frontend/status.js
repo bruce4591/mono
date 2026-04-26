@@ -1,6 +1,7 @@
 const healthStatus = document.querySelector("#healthStatus");
 const databaseStatus = document.querySelector("#databaseStatus");
 const boardStatusList = document.querySelector("#boardStatusList");
+const alertList = document.querySelector("#alertList");
 const watchlistList = document.querySelector("#watchlistList");
 const jobList = document.querySelector("#jobList");
 const sourceList = document.querySelector("#sourceList");
@@ -50,6 +51,27 @@ function renderWatchlists(watchlists) {
     .join("");
 }
 
+function renderAlerts(events) {
+  if (!events.length) {
+    alertList.innerHTML = empty("暂无提醒");
+    return;
+  }
+  alertList.innerHTML = events
+    .map(
+      (event) => `
+        <div class="status-row alert-row">
+          <div>
+            <p class="symbol">${event.symbol} · ${event.rule_name}</p>
+            <p class="name">${event.message}</p>
+            <p class="name">${event.triggered_at_utc}</p>
+          </div>
+          <p class="turnover">${event.metric}</p>
+        </div>
+      `,
+    )
+    .join("");
+}
+
 function renderJobs(jobs) {
   if (!jobs.length) {
     jobList.innerHTML = empty("暂无任务记录");
@@ -93,20 +115,23 @@ function renderSources(sources) {
 async function loadStatus() {
   healthStatus.textContent = "读取中";
   try {
-    const [healthResponse, watchlistsResponse, jobsResponse] = await Promise.all([
+    const [healthResponse, watchlistsResponse, jobsResponse, alertsResponse] = await Promise.all([
       fetch("/api/health"),
       fetch("/api/watchlists"),
       fetch("/api/jobs"),
+      fetch("/api/alerts/events?limit=20"),
     ]);
-    if (!healthResponse.ok || !watchlistsResponse.ok || !jobsResponse.ok) {
+    if (!healthResponse.ok || !watchlistsResponse.ok || !jobsResponse.ok || !alertsResponse.ok) {
       throw new Error("status api failed");
     }
     const health = await healthResponse.json();
     const watchlists = await watchlistsResponse.json();
     const jobs = await jobsResponse.json();
+    const alerts = await alertsResponse.json();
     healthStatus.textContent = health.status;
     databaseStatus.textContent = `数据库 ${health.database.writable ? "可读" : "异常"} / ${health.database.journal_mode}`;
     renderBoards(health.latest_boards || []);
+    renderAlerts(alerts.events || []);
     renderWatchlists(watchlists.watchlists || []);
     renderJobs(jobs.jobs || []);
     renderSources(jobs.sources || health.sources || []);
@@ -114,6 +139,7 @@ async function loadStatus() {
     healthStatus.textContent = "读取失败";
     databaseStatus.textContent = "数据库 --";
     boardStatusList.innerHTML = empty("读取榜单状态失败");
+    alertList.innerHTML = empty("读取提醒失败");
     watchlistList.innerHTML = empty("读取关注池失败");
     jobList.innerHTML = empty("读取任务失败");
     sourceList.innerHTML = empty("读取数据源失败");

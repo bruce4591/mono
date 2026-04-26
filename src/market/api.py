@@ -10,6 +10,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from market.db import connect
 from market.repositories import (
+    AlertEventRepository,
+    AlertRuleRepository,
     DailyBarRepository,
     InstrumentRepository,
     IntradayBarRepository,
@@ -312,6 +314,50 @@ def get_jobs_payload(connection: sqlite3.Connection) -> dict[str, object]:
     }
 
 
+def get_alert_rules_payload(connection: sqlite3.Connection) -> dict[str, object]:
+    rules = AlertRuleRepository(connection).list_all()
+    return {
+        "rules": [
+            {
+                "rule_id": rule.rule_id,
+                "name": rule.name,
+                "market": rule.market,
+                "symbol": rule.symbol,
+                "metric": rule.metric,
+                "operator": rule.operator,
+                "threshold": rule.threshold,
+                "is_active": rule.is_active,
+            }
+            for rule in rules
+        ]
+    }
+
+
+def get_alert_events_payload(
+    connection: sqlite3.Connection,
+    limit: int = 50,
+) -> dict[str, object]:
+    events = AlertEventRepository(connection).list_recent(limit=limit)
+    return {
+        "events": [
+            {
+                "event_id": event.event_id,
+                "rule_id": event.rule_id,
+                "rule_name": event.rule_name,
+                "market": event.market,
+                "symbol": event.symbol,
+                "triggered_at_utc": event.triggered_at_utc,
+                "metric": event.metric,
+                "observed_value": event.observed_value,
+                "threshold": event.threshold,
+                "message": event.message,
+                "is_acknowledged": event.is_acknowledged,
+            }
+            for event in events
+        ]
+    }
+
+
 def get_static_asset(path: str) -> StaticAsset | None:
     asset_path = _asset_path(path)
     if asset_path is None:
@@ -348,6 +394,21 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
             if parsed.path == "/api/jobs":
                 with connect(db_path) as connection:
                     payload = get_jobs_payload(connection)
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/alerts/rules":
+                with connect(db_path) as connection:
+                    payload = get_alert_rules_payload(connection)
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/alerts/events":
+                query = parse_qs(parsed.query)
+                limit_value = _first_query(query, "limit")
+                limit = int(limit_value) if limit_value is not None else 50
+                with connect(db_path) as connection:
+                    payload = get_alert_events_payload(connection, limit=limit)
                 self._write_json(payload)
                 return
 
