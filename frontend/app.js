@@ -68,8 +68,8 @@ function renderBoard(payload) {
             <p class="name">${item.display_name}</p>
           </div>
           <div class="metrics">
-            <p class="price">价 ${formatPrice(item.last_price)}</p>
-            <p class="turnover">24h额 ${formatTurnover(item.turnover_raw, item.quote_currency)}</p>
+            <p class="price">${formatPrice(item.last_price)}</p>
+            <p class="turnover">${formatTurnover(item.turnover_raw, item.quote_currency)}</p>
             <p class="name">24h量 ${formatVolume(item.volume_raw)}</p>
             <p class="${changeClass}">24h ${sign}${change.toFixed(2)}%</p>
           </div>

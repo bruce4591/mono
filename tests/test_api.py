@@ -463,6 +463,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"rank-change", asset.body)
         self.assertIn("上期".encode("utf-8"), asset.body)
         self.assertIn(b"24h", asset.body)
+        self.assertNotIn("价 ${formatPrice".encode("utf-8"), asset.body)
+        self.assertNotIn("24h额".encode("utf-8"), asset.body)
 
     def test_get_static_asset_returns_status_page(self):
         asset = get_static_asset("/status.html")
