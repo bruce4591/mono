@@ -18,6 +18,10 @@ let activeChart = null;
 let activeTimezone = "UTC";
 let activePeriod = null;
 let touchStartX = null;
+let pointerStartX = null;
+let isLoadingOlderBars = false;
+
+const CHART_SWIPE_THRESHOLD_PX = 60;
 
 const DEFAULT_VISIBLE_CANDLES = {
   "1m": 90,
@@ -315,10 +319,12 @@ async function fetchIntradayBars(interval, limit, beforeTsUtc = null) {
 }
 
 async function loadOlderBars() {
+  if (isLoadingOlderBars) return;
   if (!activePeriod || activePeriod.type !== "intraday" || !activePeriod.items.length) return;
   const earliest = activePeriod.items[0];
   const beforeTsUtc = earliest.bar_start_ts_utc;
   if (!beforeTsUtc) return;
+  isLoadingOlderBars = true;
   loadMoreBars.disabled = true;
   loadMoreBars.textContent = "加载中";
   try {
@@ -333,20 +339,51 @@ async function loadOlderBars() {
     activePeriod.items = mergeBars(activePeriod.items, payload.items);
     renderSelectedPeriod(activePeriod);
   } finally {
+    isLoadingOlderBars = false;
     loadMoreBars.textContent = "更早";
     loadMoreBars.disabled = !activePeriod || activePeriod.type !== "intraday";
   }
 }
 
+function handleChartSwipe(startX, endX) {
+  if (startX - endX > CHART_SWIPE_THRESHOLD_PX) loadOlderBars();
+}
+
 refreshButton.addEventListener("click", loadInstrument);
 loadMoreBars.addEventListener("click", loadOlderBars);
+klineChart.addEventListener(
+  "pointerdown",
+  (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    pointerStartX = event.clientX;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  },
+  true,
+);
+klineChart.addEventListener(
+  "pointerup",
+  (event) => {
+    if (pointerStartX === null) return;
+    handleChartSwipe(pointerStartX, event.clientX);
+    pointerStartX = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  },
+  true,
+);
+klineChart.addEventListener(
+  "pointercancel",
+  () => {
+    pointerStartX = null;
+  },
+  true,
+);
 klineChart.addEventListener("touchstart", (event) => {
   touchStartX = event.changedTouches[0]?.clientX ?? null;
 });
 klineChart.addEventListener("touchend", (event) => {
   if (touchStartX === null) return;
   const touchEndX = event.changedTouches[0]?.clientX ?? touchStartX;
-  if (touchStartX - touchEndX > 60) loadOlderBars();
+  handleChartSwipe(touchStartX, touchEndX);
   touchStartX = null;
 });
 setInterval(loadLatestSnapshot, 5000);

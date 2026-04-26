@@ -343,6 +343,8 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #0b1014;
+  touch-action: pan-y;
+  user-select: none;
 }
 
 .chart-actions {

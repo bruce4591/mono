@@ -536,6 +536,9 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"getVisibleCandles", asset.body)
         self.assertIn(b"loadMoreBars", asset.body)
         self.assertIn(b"chartRangeHint", asset.body)
+        self.assertIn(b"handleChartSwipe", asset.body)
+        self.assertIn(b"pointerdown", asset.body)
+        self.assertIn(b"pointerup", asset.body)
         self.assertIn(b"loadLatestSnapshot", asset.body)
         self.assertIn(b"setInterval(loadLatestSnapshot, 5000)", asset.body)
 
