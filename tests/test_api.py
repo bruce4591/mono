@@ -517,6 +517,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"KLineCharts", asset.body)
         self.assertIn(b'id="volume"', asset.body)
         self.assertIn(b'id="intradayTitle"', asset.body)
+        self.assertIn(b'/instrument.js?v=', asset.body)
         self.assertNotIn(b'id="dailyBars"', asset.body)
         self.assertNotIn(b'id="intradayBars"', asset.body)
 
