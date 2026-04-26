@@ -32,6 +32,18 @@ function formatVolume(value) {
   return Number(value || 0).toFixed(2);
 }
 
+function formatPrice(value) {
+  if (value === null || value === undefined) return "--";
+  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 6 });
+}
+
+function formatRankChange(value) {
+  if (value === null || value === undefined) return '<span class="rank-change is-new">新</span>';
+  if (value > 0) return `<span class="rank-change is-up">↑${value}</span>`;
+  if (value < 0) return `<span class="rank-change is-down">↓${Math.abs(value)}</span>`;
+  return '<span class="rank-change">持平</span>';
+}
+
 function renderBoard(payload) {
   boardName.textContent = payload.board_name;
   snapshotTime.textContent = payload.snapshot_ts_utc || "--";
@@ -47,12 +59,16 @@ function renderBoard(payload) {
       const sign = change > 0 ? "+" : "";
       return `
         <a class="row" href="/instrument.html?market=${encodeURIComponent(item.market)}&symbol=${encodeURIComponent(item.symbol)}">
-          <div class="rank">${item.rank}</div>
+          <div class="rank-box">
+            <div class="rank">${item.rank}</div>
+            ${formatRankChange(item.rank_change)}
+          </div>
           <div>
             <p class="symbol">${item.symbol}</p>
             <p class="name">${item.display_name}</p>
           </div>
           <div class="metrics">
+            <p class="price">${formatPrice(item.last_price)}</p>
             <p class="turnover">${formatTurnover(item.turnover_raw, item.quote_currency)}</p>
             <p class="name">量 ${formatVolume(item.volume_raw)}</p>
             <p class="${changeClass}">${sign}${change.toFixed(2)}%</p>

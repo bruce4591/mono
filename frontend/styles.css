@@ -133,6 +133,12 @@ h1 {
   text-decoration: none;
 }
 
+.rank-box {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
 .rank {
   display: grid;
   place-items: center;
@@ -142,6 +148,25 @@ h1 {
   background: var(--panel-2);
   color: var(--accent);
   font-weight: 800;
+}
+
+.rank-change {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.rank-change.is-up {
+  color: var(--accent);
+}
+
+.rank-change.is-down {
+  color: var(--danger);
+}
+
+.rank-change.is-new {
+  color: var(--warning);
 }
 
 .symbol {
@@ -167,6 +192,13 @@ h1 {
   margin: 0 0 5px;
   font-size: 15px;
   font-weight: 800;
+}
+
+.price {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 900;
 }
 
 .change {

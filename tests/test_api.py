@@ -81,6 +81,76 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["symbol"], "BTCUSDT")
         self.assertEqual(payload["items"][0]["volume_raw"], 42000.0)
 
+    def test_get_board_payload_returns_latest_price_and_rank_change(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                btc = get_instrument_payload(connection, "CRYPTO", "BTCUSDT")
+                eth = get_instrument_payload(connection, "CRYPTO", "ETHUSDT")
+                assert btc is not None
+                assert eth is not None
+                connection.executemany(
+                    """
+                    INSERT INTO ranking_snapshot (
+                        board_name,
+                        snapshot_ts_utc,
+                        rank,
+                        instrument_id,
+                        turnover_raw,
+                        quote_currency,
+                        change_pct,
+                        source
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            "CRYPTO_TURNOVER_TOP50",
+                            "2026-04-24T19:45:00Z",
+                            1,
+                            eth["instrument_id"],
+                            1_208_400_000.0,
+                            "USDT",
+                            1.76,
+                            "test",
+                        ),
+                        (
+                            "CRYPTO_TURNOVER_TOP50",
+                            "2026-04-24T19:45:00Z",
+                            2,
+                            btc["instrument_id"],
+                            2_698_500_000.0,
+                            "USDT",
+                            2.14,
+                            "test",
+                        ),
+                    ],
+                )
+                RankingRepository(connection).refresh_turnover_board(
+                    board_name="CRYPTO_TURNOVER_TOP50",
+                    snapshot_ts_utc="2026-04-24T20:05:00Z",
+                    trade_date_local="2026-04-24",
+                    market="CRYPTO",
+                    instrument_type="crypto",
+                    limit=50,
+                )
+                payload = get_board_payload(connection, "CRYPTO_TURNOVER_TOP50")
+
+        self.assertEqual(payload["items"][0]["symbol"], "BTCUSDT")
+        self.assertEqual(payload["items"][0]["last_price"], 64250.0)
+        self.assertEqual(payload["items"][0]["previous_rank"], 2)
+        self.assertEqual(payload["items"][0]["rank_change"], 1)
+        self.assertEqual(payload["items"][1]["symbol"], "ETHUSDT")
+        self.assertEqual(payload["items"][1]["previous_rank"], 1)
+        self.assertEqual(payload["items"][1]["rank_change"], -1)
+
     def test_get_board_payload_returns_empty_items_for_unknown_board(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -382,6 +452,15 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"chartTimezone", asset.body)
         self.assertIn(b"loadLatestSnapshot", asset.body)
         self.assertIn(b"setInterval(loadLatestSnapshot, 5000)", asset.body)
+
+    def test_get_static_asset_returns_board_rank_change_renderer(self):
+        asset = get_static_asset("/app.js")
+
+        self.assertIsNotNone(asset)
+        assert asset is not None
+        self.assertIn(b"formatRankChange", asset.body)
+        self.assertIn(b"last_price", asset.body)
+        self.assertIn(b"rank-change", asset.body)
 
     def test_get_static_asset_returns_status_page(self):
         asset = get_static_asset("/status.html")

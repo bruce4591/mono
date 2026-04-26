@@ -44,6 +44,8 @@ def get_board_payload(
             ranking_snapshot.quote_currency,
             ranking_snapshot.change_pct,
             ranking_snapshot.source,
+            previous_ranking.rank AS previous_rank,
+            market_snapshot.last_price,
             market_snapshot.volume_raw,
             instrument.market,
             instrument.symbol,
@@ -60,6 +62,15 @@ def get_board_payload(
                 FROM market_snapshot AS latest_snapshot
                 WHERE latest_snapshot.instrument_id = ranking_snapshot.instrument_id
             )
+        LEFT JOIN ranking_snapshot AS previous_ranking
+            ON previous_ranking.board_name = ranking_snapshot.board_name
+            AND previous_ranking.instrument_id = ranking_snapshot.instrument_id
+            AND previous_ranking.snapshot_ts_utc = (
+                SELECT max(previous_snapshot.snapshot_ts_utc)
+                FROM ranking_snapshot AS previous_snapshot
+                WHERE previous_snapshot.board_name = ranking_snapshot.board_name
+                    AND previous_snapshot.snapshot_ts_utc < ranking_snapshot.snapshot_ts_utc
+            )
         WHERE ranking_snapshot.board_name = ?
             AND ranking_snapshot.snapshot_ts_utc = ?
         ORDER BY ranking_snapshot.rank
@@ -71,12 +82,15 @@ def get_board_payload(
         "snapshot_ts_utc": resolved_snapshot,
         "items": [
             {
-                "rank": int(row["rank"]),
+                "rank": rank,
+                "previous_rank": previous_rank,
+                "rank_change": None if previous_rank is None else previous_rank - rank,
                 "market": str(row["market"]),
                 "symbol": str(row["symbol"]),
                 "display_name": str(row["display_name"]),
                 "exchange": str(row["exchange"]),
                 "instrument_type": str(row["instrument_type"]),
+                "last_price": _optional_float(row["last_price"]),
                 "volume_raw": _optional_float(row["volume_raw"]),
                 "turnover_raw": float(row["turnover_raw"]),
                 "quote_currency": str(row["quote_currency"]),
@@ -84,6 +98,8 @@ def get_board_payload(
                 "source": str(row["source"]),
             }
             for row in rows
+            for rank in [int(row["rank"])]
+            for previous_rank in [_optional_int(row["previous_rank"])]
         ],
     }
 
@@ -614,6 +630,12 @@ def _optional_str(value: object) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    return int(value)
 
 
 def _database_is_writable(connection: sqlite3.Connection) -> bool:
