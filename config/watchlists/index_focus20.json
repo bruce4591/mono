@@ -1,0 +1,36 @@
+{
+  "watchlist_name": "INDEX_FOCUS20",
+  "entries": [
+    {
+      "market": "US",
+      "symbol": "SPX",
+      "display_name": "S&P 500 Index",
+      "exchange": "CBOE",
+      "instrument_type": "index",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 1
+    },
+    {
+      "market": "US",
+      "symbol": "NDX",
+      "display_name": "Nasdaq 100 Index",
+      "exchange": "NASDAQ",
+      "instrument_type": "index",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 2
+    },
+    {
+      "market": "US",
+      "symbol": "DJI",
+      "display_name": "Dow Jones Industrial Average",
+      "exchange": "DJI",
+      "instrument_type": "index",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 3
+    }
+  ]
+}
+

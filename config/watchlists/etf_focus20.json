@@ -1,0 +1,56 @@
+{
+  "watchlist_name": "ETF_FOCUS20",
+  "entries": [
+    {
+      "market": "US",
+      "symbol": "SPY",
+      "display_name": "SPDR S&P 500 ETF Trust",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 1
+    },
+    {
+      "market": "US",
+      "symbol": "QQQ",
+      "display_name": "Invesco QQQ Trust",
+      "exchange": "NASDAQ",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 2
+    },
+    {
+      "market": "US",
+      "symbol": "IWM",
+      "display_name": "iShares Russell 2000 ETF",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 3
+    },
+    {
+      "market": "US",
+      "symbol": "DIA",
+      "display_name": "SPDR Dow Jones Industrial Average ETF Trust",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 4
+    },
+    {
+      "market": "US",
+      "symbol": "GLD",
+      "display_name": "SPDR Gold Shares",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 5
+    }
+  ]
+}
+

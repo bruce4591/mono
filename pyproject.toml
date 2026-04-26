@@ -1,0 +1,9 @@
+[project]
+name = "market-mvp"
+version = "0.1.0"
+description = "Lightweight multi-market data, ranking, and charting system."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+market = "market.cli:main"
