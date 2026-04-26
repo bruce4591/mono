@@ -440,6 +440,7 @@ class CliTests(unittest.TestCase):
             db_path = Path(tmp_dir) / "market.sqlite3"
             stdout = io.StringIO()
             calls = []
+            aggregate_calls = []
 
             class FakeBinanceCollector:
                 source_name = "binance"
@@ -473,6 +474,9 @@ class CliTests(unittest.TestCase):
                         "quoteVolume": "60000000",
                     },
                 ],
+            ), patch(
+                "market.cli.aggregate_crypto_from_1m",
+                side_effect=lambda connection, symbols: aggregate_calls.append(symbols),
             ):
                 main(["init-db", "--db-path", str(db_path)])
                 exit_code = main(
@@ -484,8 +488,6 @@ class CliTests(unittest.TestCase):
                         "BTCUSDT",
                         "--symbol",
                         "ETHUSDT",
-                        "--interval",
-                        "15m",
                         "--limit",
                         "2",
                         "--snapshot-ts-utc",
@@ -511,7 +513,8 @@ class CliTests(unittest.TestCase):
                     ).fetchall()
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(calls, [(["BTCUSDT", "ETHUSDT"], "15m", 2)])
+        self.assertEqual(calls, [(["BTCUSDT", "ETHUSDT"], "1m", 2)])
+        self.assertEqual(aggregate_calls, [["BTCUSDT", "ETHUSDT"]])
         self.assertEqual(
             [tuple(row) for row in rows],
             [

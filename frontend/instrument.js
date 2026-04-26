@@ -206,7 +206,7 @@ async function loadLatestSnapshot() {
 
 async function loadInstrument() {
   title.textContent = `${market}:${symbol}`;
-  const intradayIntervals = market === "CRYPTO" ? ["1m", "15m"] : ["60m"];
+  const intradayIntervals = market === "CRYPTO" ? ["1m", "5m", "15m", "8h"] : ["60m"];
   const [instrumentResponse, dailyResponse, ...intradayResponses] = await Promise.all([
     fetch(`/api/instruments/${encodeURIComponent(market)}/${encodeURIComponent(symbol)}`),
     fetch(`/api/bars/daily?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}`),

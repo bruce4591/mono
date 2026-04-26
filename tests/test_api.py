@@ -452,7 +452,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b'createIndicator("MACD"', asset.body)
         self.assertIn(b"renderPeriodTabs", asset.body)
         self.assertIn(b"chartTimezone", asset.body)
-        self.assertIn(b'["1m", "15m"]', asset.body)
+        self.assertIn(b'["1m", "5m", "15m", "8h"]', asset.body)
         self.assertIn(b"loadLatestSnapshot", asset.body)
         self.assertIn(b"setInterval(loadLatestSnapshot, 5000)", asset.body)
 

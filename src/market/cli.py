@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from market.alerts import evaluate_alert_rules
+from market.aggregators import aggregate_crypto_from_1m
 from market.api import serve_api
 from market.binance import (
     fetch_binance_24hr_tickers,
@@ -300,6 +301,8 @@ def main(argv: list[str] | None = None) -> int:
                     snapshot_ts_utc=snapshot_ts_utc,
                     trade_date_local=trade_date_local,
                 )
+                if args.interval == "1m":
+                    aggregate_crypto_from_1m(connection, normalized_symbols)
                 ranking_count = RankingRepository(connection).refresh_turnover_board(
                     board_name=args.board_name,
                     snapshot_ts_utc=snapshot_ts_utc,
