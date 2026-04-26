@@ -101,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Crypto symbol to sync; can be provided multiple times",
     )
-    sync_crypto_board.add_argument("--interval", default="15m")
+    sync_crypto_board.add_argument("--interval", default="1m")
     sync_crypto_board.add_argument("--limit", type=int, default=96)
     sync_crypto_board.add_argument("--board-name", default="CRYPTO_TURNOVER_TOP50")
     sync_crypto_board.add_argument("--board-limit", type=int, default=50)

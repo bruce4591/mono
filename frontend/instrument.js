@@ -66,15 +66,17 @@ function chartLibrary() {
   return window.klinecharts || window.KLineCharts;
 }
 
-function buildPeriods(daily, intraday) {
+function buildPeriods(daily, intradayPayloads) {
   const periods = [];
-  if (intraday.items.length) {
-    periods.push({
-      label: intraday.interval,
-      type: "intraday",
-      items: intraday.items,
-    });
-  }
+  intradayPayloads.forEach((intraday) => {
+    if (intraday.items.length) {
+      periods.push({
+        label: intraday.interval,
+        type: "intraday",
+        items: intraday.items,
+      });
+    }
+  });
   if (daily.items.length) {
     periods.push({
       label: daily.interval,
@@ -204,14 +206,16 @@ async function loadLatestSnapshot() {
 
 async function loadInstrument() {
   title.textContent = `${market}:${symbol}`;
-  const interval = market === "CRYPTO" ? "15m" : "60m";
-  const [instrumentResponse, dailyResponse, intradayResponse] = await Promise.all([
+  const intradayIntervals = market === "CRYPTO" ? ["1m", "15m"] : ["60m"];
+  const [instrumentResponse, dailyResponse, ...intradayResponses] = await Promise.all([
     fetch(`/api/instruments/${encodeURIComponent(market)}/${encodeURIComponent(symbol)}`),
     fetch(`/api/bars/daily?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}`),
-    fetch(
-      `/api/bars/intraday?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(
-        symbol,
-      )}&interval=${encodeURIComponent(interval)}`,
+    ...intradayIntervals.map((interval) =>
+      fetch(
+        `/api/bars/intraday?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(
+          symbol,
+        )}&interval=${encodeURIComponent(interval)}`,
+      ),
     ),
   ]);
 
@@ -222,14 +226,16 @@ async function loadInstrument() {
 
   const instrument = await instrumentResponse.json();
   const daily = await dailyResponse.json();
-  const intraday = await intradayResponse.json();
+  const intradayPayloads = await Promise.all(
+    intradayResponses.map((response) => response.json()),
+  );
   const snapshot = instrument.latest_snapshot || {};
   activeTimezone = instrument.timezone || "UTC";
 
   title.textContent = `${instrument.symbol}`;
   chartTimezone.textContent = `图表时区 ${activeTimezone} / 原始时间 UTC`;
   renderSnapshot(snapshot);
-  const periods = buildPeriods(daily, intraday);
+  const periods = buildPeriods(daily, intradayPayloads);
   const selectedPeriod = periods[0];
   if (!selectedPeriod) {
     periodTabs.innerHTML = "";

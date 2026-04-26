@@ -305,8 +305,6 @@ class CliTests(unittest.TestCase):
                         "sync-crypto-board",
                         "--db-path",
                         str(db_path),
-                        "--interval",
-                        "15m",
                         "--limit",
                         "2",
                         "--snapshot-ts-utc",
@@ -317,7 +315,7 @@ class CliTests(unittest.TestCase):
                 )
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(calls, [(["SOLUSDT", "BTCUSDT", "ETHUSDT"], "15m", 2)])
+        self.assertEqual(calls, [(["SOLUSDT", "BTCUSDT", "ETHUSDT"], "1m", 2)])
         self.assertIn("crypto board synced: 3 symbols", stdout.getvalue())
 
     def test_apply_binance_ticker_event_updates_snapshot(self):
