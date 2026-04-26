@@ -6,6 +6,7 @@ from pathlib import Path
 
 from market.api import (
     get_alert_events_payload,
+    get_alert_metrics_payload,
     get_alert_rules_payload,
     get_daily_bars_payload,
     get_health_payload,
@@ -291,6 +292,17 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["rules"][0]["name"], "btc change")
         self.assertEqual(payload["rules"][0]["metric"], "change_pct")
 
+    def test_get_alert_metrics_payload_returns_supported_metrics(self):
+        payload = get_alert_metrics_payload()
+
+        keys = [metric["key"] for metric in payload["metrics"]]
+        self.assertIn("change_pct", keys)
+        self.assertIn("turnover_raw", keys)
+        self.assertIn("volume_raw", keys)
+        self.assertIn("last_price", keys)
+        self.assertIn("MA", payload["chart_indicators"])
+        self.assertIn("MACD", payload["chart_indicators"])
+
     def test_get_alert_events_payload_returns_recent_events(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -384,7 +396,11 @@ class ApiTests(unittest.TestCase):
 
         self.assertIsNotNone(asset)
         self.assertEqual(asset.content_type, "text/javascript; charset=utf-8")
+        self.assertIn(b"/api/alerts/metrics", asset.body)
+        self.assertIn(b"/api/alerts/rules", asset.body)
         self.assertIn(b"/api/alerts/events", asset.body)
+        self.assertIn(b"renderAlertMetrics", asset.body)
+        self.assertIn(b"renderAlertRules", asset.body)
         self.assertIn(b"renderAlerts", asset.body)
 
     def test_get_static_asset_rejects_unknown_paths(self):

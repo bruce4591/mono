@@ -2,6 +2,8 @@ const healthStatus = document.querySelector("#healthStatus");
 const databaseStatus = document.querySelector("#databaseStatus");
 const boardStatusList = document.querySelector("#boardStatusList");
 const alertList = document.querySelector("#alertList");
+const alertMetricList = document.querySelector("#alertMetricList");
+const alertRuleList = document.querySelector("#alertRuleList");
 const watchlistList = document.querySelector("#watchlistList");
 const jobList = document.querySelector("#jobList");
 const sourceList = document.querySelector("#sourceList");
@@ -72,6 +74,60 @@ function renderAlerts(events) {
     .join("");
 }
 
+function renderAlertMetrics(payload) {
+  const metrics = payload.metrics || [];
+  const chartIndicators = payload.chart_indicators || [];
+  if (!metrics.length && !chartIndicators.length) {
+    alertMetricList.innerHTML = empty("暂无指标");
+    return;
+  }
+  const metricRows = metrics
+    .map(
+      (metric) => `
+        <div class="status-row">
+          <div>
+            <p class="symbol">${metric.label} · ${metric.key}</p>
+            <p class="name">${metric.description}</p>
+          </div>
+          <p class="turnover">提醒</p>
+        </div>
+      `,
+    )
+    .join("");
+  const chartRow = chartIndicators.length
+    ? `
+        <div class="status-row">
+          <div>
+            <p class="symbol">K线图指标</p>
+            <p class="name">${chartIndicators.join(" / ")}</p>
+          </div>
+          <p class="turnover">图表</p>
+        </div>
+      `
+    : "";
+  alertMetricList.innerHTML = metricRows + chartRow;
+}
+
+function renderAlertRules(rules) {
+  if (!rules.length) {
+    alertRuleList.innerHTML = empty("暂无提醒规则");
+    return;
+  }
+  alertRuleList.innerHTML = rules
+    .map(
+      (rule) => `
+        <div class="status-row">
+          <div>
+            <p class="symbol">${rule.symbol} · ${rule.name}</p>
+            <p class="name">${rule.metric} ${rule.operator} ${rule.threshold}</p>
+          </div>
+          <p class="turnover">${rule.is_active ? "启用" : "停用"}</p>
+        </div>
+      `,
+    )
+    .join("");
+}
+
 function renderJobs(jobs) {
   if (!jobs.length) {
     jobList.innerHTML = empty("暂无任务记录");
@@ -115,23 +171,43 @@ function renderSources(sources) {
 async function loadStatus() {
   healthStatus.textContent = "读取中";
   try {
-    const [healthResponse, watchlistsResponse, jobsResponse, alertsResponse] = await Promise.all([
+    const [
+      healthResponse,
+      watchlistsResponse,
+      jobsResponse,
+      alertsResponse,
+      alertMetricsResponse,
+      alertRulesResponse,
+    ] = await Promise.all([
       fetch("/api/health"),
       fetch("/api/watchlists"),
       fetch("/api/jobs"),
       fetch("/api/alerts/events?limit=20"),
+      fetch("/api/alerts/metrics"),
+      fetch("/api/alerts/rules"),
     ]);
-    if (!healthResponse.ok || !watchlistsResponse.ok || !jobsResponse.ok || !alertsResponse.ok) {
+    if (
+      !healthResponse.ok ||
+      !watchlistsResponse.ok ||
+      !jobsResponse.ok ||
+      !alertsResponse.ok ||
+      !alertMetricsResponse.ok ||
+      !alertRulesResponse.ok
+    ) {
       throw new Error("status api failed");
     }
     const health = await healthResponse.json();
     const watchlists = await watchlistsResponse.json();
     const jobs = await jobsResponse.json();
     const alerts = await alertsResponse.json();
+    const alertMetrics = await alertMetricsResponse.json();
+    const alertRules = await alertRulesResponse.json();
     healthStatus.textContent = health.status;
     databaseStatus.textContent = `数据库 ${health.database.writable ? "可读" : "异常"} / ${health.database.journal_mode}`;
     renderBoards(health.latest_boards || []);
     renderAlerts(alerts.events || []);
+    renderAlertMetrics(alertMetrics);
+    renderAlertRules(alertRules.rules || []);
     renderWatchlists(watchlists.watchlists || []);
     renderJobs(jobs.jobs || []);
     renderSources(jobs.sources || health.sources || []);
@@ -140,6 +216,8 @@ async function loadStatus() {
     databaseStatus.textContent = "数据库 --";
     boardStatusList.innerHTML = empty("读取榜单状态失败");
     alertList.innerHTML = empty("读取提醒失败");
+    alertMetricList.innerHTML = empty("读取指标失败");
+    alertRuleList.innerHTML = empty("读取规则失败");
     watchlistList.innerHTML = empty("读取关注池失败");
     jobList.innerHTML = empty("读取任务失败");
     sourceList.innerHTML = empty("读取数据源失败");

@@ -134,6 +134,7 @@ http://127.0.0.1:8000/instrument.html?market=US&symbol=SPY
 http://127.0.0.1:8000/api/health
 http://127.0.0.1:8000/api/watchlists
 http://127.0.0.1:8000/api/jobs
+http://127.0.0.1:8000/api/alerts/metrics
 http://127.0.0.1:8000/api/alerts/rules
 http://127.0.0.1:8000/api/alerts/events
 http://127.0.0.1:8000/api/boards/ETF_FOCUS20

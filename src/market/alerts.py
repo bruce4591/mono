@@ -25,6 +25,31 @@ DEFAULT_METRIC_RESOLVERS: dict[str, MetricResolver] = {
     "last_price": lambda snapshot: _optional_float(snapshot.get("last_price")),
 }
 
+ALERT_METRICS: tuple[dict[str, str], ...] = (
+    {
+        "key": "last_price",
+        "label": "最新价",
+        "description": "来自最新 market_snapshot.last_price，适合价格突破提醒。",
+    },
+    {
+        "key": "change_pct",
+        "label": "涨跌幅",
+        "description": "来自最新 market_snapshot.change_pct，单位为百分比。",
+    },
+    {
+        "key": "volume_raw",
+        "label": "成交量",
+        "description": "来自最新 market_snapshot.volume_raw，保留数据源原始单位。",
+    },
+    {
+        "key": "turnover_raw",
+        "label": "成交额",
+        "description": "来自最新 market_snapshot.turnover_raw，保留原始币种。",
+    },
+)
+
+CHART_INDICATORS: tuple[str, ...] = ("MA", "VOL", "MACD")
+
 OPERATORS: dict[str, Callable[[float, float], bool]] = {
     ">": operator.gt,
     ">=": operator.ge,

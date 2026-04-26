@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from market.alerts import ALERT_METRICS, CHART_INDICATORS
 from market.db import connect
 from market.repositories import (
     AlertEventRepository,
@@ -333,6 +334,14 @@ def get_alert_rules_payload(connection: sqlite3.Connection) -> dict[str, object]
     }
 
 
+def get_alert_metrics_payload() -> dict[str, object]:
+    return {
+        "metrics": list(ALERT_METRICS),
+        "operators": [">", ">=", "<", "<=", "=="],
+        "chart_indicators": list(CHART_INDICATORS),
+    }
+
+
 def get_alert_events_payload(
     connection: sqlite3.Connection,
     limit: int = 50,
@@ -401,6 +410,10 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 with connect(db_path) as connection:
                     payload = get_alert_rules_payload(connection)
                 self._write_json(payload)
+                return
+
+            if parsed.path == "/api/alerts/metrics":
+                self._write_json(get_alert_metrics_payload())
                 return
 
             if parsed.path == "/api/alerts/events":
