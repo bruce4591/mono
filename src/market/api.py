@@ -231,12 +231,19 @@ def get_health_payload(connection: sqlite3.Connection) -> dict[str, object]:
     latest_boards = connection.execute(
         """
         SELECT
-            board_name,
-            max(snapshot_ts_utc) AS snapshot_ts_utc,
-            count(*) AS item_count
-        FROM ranking_snapshot
-        GROUP BY board_name
-        ORDER BY board_name
+            latest.board_name,
+            latest.snapshot_ts_utc,
+            count(ranking_snapshot.rank) AS item_count
+        FROM (
+            SELECT board_name, max(snapshot_ts_utc) AS snapshot_ts_utc
+            FROM ranking_snapshot
+            GROUP BY board_name
+        ) AS latest
+        JOIN ranking_snapshot
+            ON ranking_snapshot.board_name = latest.board_name
+            AND ranking_snapshot.snapshot_ts_utc = latest.snapshot_ts_utc
+        GROUP BY latest.board_name, latest.snapshot_ts_utc
+        ORDER BY latest.board_name
         """
     ).fetchall()
     sources = connection.execute(

@@ -185,6 +185,39 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["latest_boards"][0]["board_name"], "CRYPTO_TURNOVER_TOP50")
         self.assertEqual(payload["latest_boards"][0]["item_count"], 2)
 
+    def test_get_health_payload_counts_only_latest_board_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                ranking = RankingRepository(connection)
+                ranking.refresh_turnover_board(
+                    board_name="CRYPTO_TURNOVER_TOP50",
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                    market="CRYPTO",
+                    instrument_type="crypto",
+                    limit=50,
+                )
+                ranking.refresh_turnover_board(
+                    board_name="CRYPTO_TURNOVER_TOP50",
+                    snapshot_ts_utc="2026-04-24T20:05:00Z",
+                    trade_date_local="2026-04-24",
+                    market="CRYPTO",
+                    instrument_type="crypto",
+                    limit=1,
+                )
+                payload = get_health_payload(connection)
+
+        self.assertEqual(payload["latest_boards"][0]["snapshot_ts_utc"], "2026-04-24T20:05:00Z")
+        self.assertEqual(payload["latest_boards"][0]["item_count"], 1)
+
     def test_get_jobs_payload_returns_job_and_source_health_rows(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
