@@ -380,6 +380,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b'createIndicator("MACD"', asset.body)
         self.assertIn(b"renderPeriodTabs", asset.body)
         self.assertIn(b"chartTimezone", asset.body)
+        self.assertIn(b"loadLatestSnapshot", asset.body)
+        self.assertIn(b"setInterval(loadLatestSnapshot, 5000)", asset.body)
 
     def test_get_static_asset_returns_status_page(self):
         asset = get_static_asset("/status.html")

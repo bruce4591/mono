@@ -183,6 +183,25 @@ function renderCandles(container, bars) {
   activeChart.createIndicator("MACD", false, { height: 92 });
 }
 
+function renderSnapshot(snapshot) {
+  lastPrice.textContent = formatNumber(snapshot.last_price);
+  changePct.textContent =
+    snapshot.change_pct === null || snapshot.change_pct === undefined
+      ? "--"
+      : `${Number(snapshot.change_pct).toFixed(2)}%`;
+  turnover.textContent = formatTurnover(snapshot.turnover_raw, snapshot.quote_currency);
+  volume.textContent = formatVolume(snapshot.volume_raw);
+}
+
+async function loadLatestSnapshot() {
+  const response = await fetch(
+    `/api/instruments/${encodeURIComponent(market)}/${encodeURIComponent(symbol)}`,
+  );
+  if (!response.ok) return;
+  const instrument = await response.json();
+  renderSnapshot(instrument.latest_snapshot || {});
+}
+
 async function loadInstrument() {
   title.textContent = `${market}:${symbol}`;
   const interval = market === "CRYPTO" ? "15m" : "60m";
@@ -209,13 +228,7 @@ async function loadInstrument() {
 
   title.textContent = `${instrument.symbol}`;
   chartTimezone.textContent = `图表时区 ${activeTimezone} / 原始时间 UTC`;
-  lastPrice.textContent = formatNumber(snapshot.last_price);
-  changePct.textContent =
-    snapshot.change_pct === null || snapshot.change_pct === undefined
-      ? "--"
-      : `${Number(snapshot.change_pct).toFixed(2)}%`;
-  turnover.textContent = formatTurnover(snapshot.turnover_raw, snapshot.quote_currency);
-  volume.textContent = formatVolume(snapshot.volume_raw);
+  renderSnapshot(snapshot);
   const periods = buildPeriods(daily, intraday);
   const selectedPeriod = periods[0];
   if (!selectedPeriod) {
@@ -232,6 +245,7 @@ async function loadInstrument() {
 }
 
 refreshButton.addEventListener("click", loadInstrument);
+setInterval(loadLatestSnapshot, 5000);
 
 loadInstrument().catch(() => {
   title.textContent = "读取失败";

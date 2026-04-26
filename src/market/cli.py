@@ -13,6 +13,7 @@ from market.collectors.binance import BinanceCollector
 from market.collectors.base import run_collector_job
 from market.db import connect, init_database
 from market.models import AlertRule
+from market.realtime import apply_binance_ticker_event
 from market.repositories import AlertEventRepository, AlertRuleRepository, RankingRepository
 from market.sample_data import seed_sample_data
 from market.settings import load_settings
@@ -92,6 +93,13 @@ def build_parser() -> argparse.ArgumentParser:
     sync_crypto_board.add_argument("--snapshot-ts-utc", default=None)
     sync_crypto_board.add_argument("--trade-date-local", default=None)
     sync_crypto_board.add_argument("--dry-run", action="store_true")
+
+    apply_ticker = subparsers.add_parser(
+        "apply-binance-ticker-event",
+        help="Apply one Binance ticker WebSocket event JSON payload to market_snapshot",
+    )
+    apply_ticker.add_argument("--db-path", type=Path, default=None)
+    apply_ticker.add_argument("--path", type=Path, required=True)
 
     add_alert_rule = subparsers.add_parser(
         "add-alert-rule", help="Create or update a threshold alert rule"
@@ -250,6 +258,17 @@ def main(argv: list[str] | None = None) -> int:
             "crypto board synced: "
             f"{len(symbols)} symbols, {ranking_count} ranking rows, "
             f"snapshot={snapshot_ts_utc}"
+        )
+        return 0
+
+    if args.command == "apply-binance-ticker-event":
+        payload = json.loads(args.path.read_text(encoding="utf-8"))
+        with connect(db_path) as connection:
+            event = apply_binance_ticker_event(connection, payload)
+        print(
+            "binance ticker applied: "
+            f"{event.symbol} last_price={event.last_price} "
+            f"snapshot={event.snapshot_ts_utc}"
         )
         return 0
 

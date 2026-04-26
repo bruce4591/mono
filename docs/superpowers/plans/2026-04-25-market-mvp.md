@@ -206,6 +206,9 @@ Not yet complete:
 
 **Realtime price direction:**
 - [ ] Keep historical K lines, turnover, and ranking refresh on REST/scheduled jobs.
+- [x] Add a no-network Binance ticker event processor that updates `market_snapshot`.
+- [x] Add a CLI entry point to apply one Binance ticker event JSON payload for smoke testing.
+- [x] Poll the instrument detail snapshot every 5 seconds so latest price can update without reloading K lines.
 - [ ] Add a Binance WebSocket realtime price collector for fast price updates.
 - [ ] Respect Binance WS limits by using grouped combined streams, throttling subscribe/unsubscribe messages, and reconnecting before/after the 24-hour connection lifetime.
 - [ ] Keep board ranking refresh at minute-level cadence; do not tie ranking recompute to every realtime tick.

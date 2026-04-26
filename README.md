@@ -90,6 +90,14 @@ Sync the crypto board in one command:
   --limit 96
 ```
 
+Apply one Binance ticker WebSocket event payload to the latest snapshot path:
+
+```bash
+.venv/bin/market apply-binance-ticker-event \
+  --db-path ./data/market.sqlite3 \
+  --path ./ticker-event.json
+```
+
 Add and evaluate a simple alert rule:
 
 ```bash
@@ -172,6 +180,10 @@ http://127.0.0.1:8000/api/bars/intraday?market=CRYPTO&symbol=BTCUSDT&interval=15
   control messages to `5` per second, and disconnects connections at 24 hours, so
   the implementation should use grouped combined streams, throttle
   subscribe/unsubscribe messages, and reconnect cleanly.
+- Current realtime groundwork can already parse Binance `24hrTicker` /
+  `24hrMiniTicker` payloads and update `market_snapshot` through
+  `apply-binance-ticker-event`; the actual long-running WS connection runner is
+  intentionally deferred until a WebSocket client dependency is approved.
 
 Note: the current chart page loads `klinecharts@9.8.12` from jsDelivr. If you need fully offline LAN usage later, vendor the standalone JS file into `frontend/` and serve it locally.
 

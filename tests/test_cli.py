@@ -195,6 +195,53 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
 
+    def test_apply_binance_ticker_event_updates_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            event_path = Path(tmp_dir) / "ticker.json"
+            event_path.write_text(
+                json.dumps(
+                    {
+                        "e": "24hrTicker",
+                        "E": 1_776_000_000_000,
+                        "s": "BTCUSDT",
+                        "c": "64100.00",
+                        "P": "1.00",
+                        "v": "10.0",
+                        "q": "641000.00",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "apply-binance-ticker-event",
+                        "--db-path",
+                        str(db_path),
+                        "--path",
+                        str(event_path),
+                    ]
+                )
+
+            with sqlite3.connect(db_path) as connection:
+                row = connection.execute(
+                    """
+                    SELECT market_snapshot.last_price, market_snapshot.source
+                    FROM market_snapshot
+                    JOIN instrument
+                        ON instrument.instrument_id = market_snapshot.instrument_id
+                    WHERE instrument.symbol = 'BTCUSDT'
+                    """
+                ).fetchone()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(row, (64100.0, "binance_ws"))
+        self.assertIn("binance ticker applied: BTCUSDT last_price=64100.0", stdout.getvalue())
+
     def test_sync_crypto_board_records_job_and_source_health(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
