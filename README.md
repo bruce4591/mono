@@ -19,6 +19,8 @@ Implemented foundation:
 - Read-only local JSON API for board data
 - Mobile web board dashboard served from the local API process
 - Instrument detail API and mobile detail page with daily and intraday bars
+- Watchlist, health, and job status API endpoints
+- Mobile status page for boards, watchlists, jobs, and data sources
 - KLineCharts candlestick panel with MA, VOL, MACD, interval, volume, and turnover columns
 - CLI commands for database initialization and health checks
 
@@ -110,7 +112,11 @@ Open a board JSON endpoint:
 
 ```text
 http://127.0.0.1:8000/
+http://127.0.0.1:8000/status.html
 http://127.0.0.1:8000/instrument.html?market=US&symbol=SPY
+http://127.0.0.1:8000/api/health
+http://127.0.0.1:8000/api/watchlists
+http://127.0.0.1:8000/api/jobs
 http://127.0.0.1:8000/api/boards/ETF_FOCUS20
 http://127.0.0.1:8000/api/boards/CRYPTO_TURNOVER_TOP50
 http://127.0.0.1:8000/api/instruments/US/SPY

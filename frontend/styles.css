@@ -39,6 +39,24 @@ body {
   padding: 8px 0 14px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-link {
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: var(--accent);
@@ -292,6 +310,21 @@ h1 {
 .chart-credit a {
   color: var(--accent);
   text-decoration: none;
+}
+
+.status-card,
+.status-row {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(22, 29, 36, 0.92);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .table-head,

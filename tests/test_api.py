@@ -6,10 +6,13 @@ from pathlib import Path
 
 from market.api import (
     get_daily_bars_payload,
+    get_health_payload,
     get_instrument_payload,
     get_intraday_bars_payload,
+    get_jobs_payload,
     get_board_payload,
     get_static_asset,
+    get_watchlists_payload,
 )
 from market.db import connect, init_database
 from market.repositories import RankingRepository
@@ -143,6 +146,92 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["interval"], "15m")
         self.assertTrue(payload["items"][-1]["is_closed_bar"])
 
+    def test_get_watchlists_payload_returns_active_entries_with_instruments(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                sync_watchlist_from_file(connection, Path("config/watchlists/etf_focus20.json"))
+                payload = get_watchlists_payload(connection)
+
+        self.assertEqual(payload["watchlists"][0]["watchlist_name"], "ETF_FOCUS20")
+        self.assertEqual(payload["watchlists"][0]["items"][0]["symbol"], "SPY")
+        self.assertEqual(payload["watchlists"][0]["items"][0]["sort_order"], 1)
+
+    def test_get_health_payload_reports_database_and_latest_board(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                RankingRepository(connection).refresh_turnover_board(
+                    board_name="CRYPTO_TURNOVER_TOP50",
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                    market="CRYPTO",
+                    instrument_type="crypto",
+                    limit=50,
+                )
+                payload = get_health_payload(connection)
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["database"]["writable"], True)
+        self.assertEqual(payload["latest_boards"][0]["board_name"], "CRYPTO_TURNOVER_TOP50")
+        self.assertEqual(payload["latest_boards"][0]["item_count"], 2)
+
+    def test_get_jobs_payload_returns_job_and_source_health_rows(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO job_state (
+                        job_name,
+                        checkpoint,
+                        status,
+                        last_started_at,
+                        last_finished_at,
+                        last_error
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "sync-crypto-board",
+                        "BTCUSDT:15m",
+                        "success",
+                        "2026-04-24T20:00:00Z",
+                        "2026-04-24T20:00:03Z",
+                        None,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO source_health (
+                        source_name,
+                        status,
+                        last_success_at,
+                        last_error_at,
+                        last_error
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    ("binance", "ok", "2026-04-24T20:00:03Z", None, None),
+                )
+                payload = get_jobs_payload(connection)
+
+        self.assertEqual(payload["jobs"][0]["job_name"], "sync-crypto-board")
+        self.assertEqual(payload["jobs"][0]["status"], "success")
+        self.assertEqual(payload["sources"][0]["source_name"], "binance")
+        self.assertEqual(payload["sources"][0]["status"], "ok")
+
     def test_get_static_asset_returns_mobile_dashboard_index(self):
         asset = get_static_asset("/")
 
@@ -150,6 +239,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(asset.content_type, "text/html; charset=utf-8")
         self.assertIn(b'<main class="shell">', asset.body)
         self.assertIn(b"ETF_FOCUS20", asset.body)
+        self.assertIn(b'href="/status.html"', asset.body)
 
     def test_get_static_asset_returns_instrument_detail_page(self):
         asset = get_static_asset("/instrument.html")
@@ -177,6 +267,15 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b'createIndicator("MACD"', asset.body)
         self.assertIn(b"renderPeriodTabs", asset.body)
         self.assertIn(b"chartTimezone", asset.body)
+
+    def test_get_static_asset_returns_status_page(self):
+        asset = get_static_asset("/status.html")
+
+        self.assertIsNotNone(asset)
+        self.assertEqual(asset.content_type, "text/html; charset=utf-8")
+        self.assertIn(b'id="healthStatus"', asset.body)
+        self.assertIn(b'id="watchlistList"', asset.body)
+        self.assertIn(b'id="jobList"', asset.body)
 
     def test_get_static_asset_rejects_unknown_paths(self):
         self.assertIsNone(get_static_asset("/missing.js"))

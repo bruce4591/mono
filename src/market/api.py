@@ -179,6 +179,132 @@ def get_intraday_bars_payload(
     }
 
 
+def get_watchlists_payload(connection: sqlite3.Connection) -> dict[str, object]:
+    rows = connection.execute(
+        """
+        SELECT
+            watchlist.watchlist_name,
+            watchlist.sort_order,
+            watchlist.is_active,
+            instrument.market,
+            instrument.symbol,
+            instrument.display_name,
+            instrument.exchange,
+            instrument.instrument_type,
+            instrument.quote_currency,
+            instrument.timezone
+        FROM watchlist
+        JOIN instrument
+            ON instrument.instrument_id = watchlist.instrument_id
+        WHERE watchlist.is_active = 1
+            AND instrument.is_active = 1
+        ORDER BY watchlist.watchlist_name, watchlist.sort_order, instrument.symbol
+        """
+    ).fetchall()
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["watchlist_name"]), []).append(
+            {
+                "sort_order": int(row["sort_order"]),
+                "market": str(row["market"]),
+                "symbol": str(row["symbol"]),
+                "display_name": str(row["display_name"]),
+                "exchange": str(row["exchange"]),
+                "instrument_type": str(row["instrument_type"]),
+                "quote_currency": str(row["quote_currency"]),
+                "timezone": str(row["timezone"]),
+            }
+        )
+    return {
+        "watchlists": [
+            {
+                "watchlist_name": watchlist_name,
+                "items": items,
+            }
+            for watchlist_name, items in grouped.items()
+        ]
+    }
+
+
+def get_health_payload(connection: sqlite3.Connection) -> dict[str, object]:
+    database_ok = _database_is_writable(connection)
+    latest_boards = connection.execute(
+        """
+        SELECT
+            board_name,
+            max(snapshot_ts_utc) AS snapshot_ts_utc,
+            count(*) AS item_count
+        FROM ranking_snapshot
+        GROUP BY board_name
+        ORDER BY board_name
+        """
+    ).fetchall()
+    sources = connection.execute(
+        """
+        SELECT source_name, status, last_success_at, last_error_at, last_error
+        FROM source_health
+        ORDER BY source_name
+        """
+    ).fetchall()
+    source_items = [_source_health_row(row) for row in sources]
+    has_failed_source = any(item["status"] not in {"ok", "success"} for item in source_items)
+    return {
+        "status": "degraded" if has_failed_source or not database_ok else "ok",
+        "database": {
+            "writable": database_ok,
+            "journal_mode": _journal_mode(connection),
+        },
+        "latest_boards": [
+            {
+                "board_name": str(row["board_name"]),
+                "snapshot_ts_utc": str(row["snapshot_ts_utc"]),
+                "item_count": int(row["item_count"]),
+            }
+            for row in latest_boards
+        ],
+        "sources": source_items,
+    }
+
+
+def get_jobs_payload(connection: sqlite3.Connection) -> dict[str, object]:
+    job_rows = connection.execute(
+        """
+        SELECT
+            job_name,
+            checkpoint,
+            status,
+            last_started_at,
+            last_finished_at,
+            last_error,
+            updated_at
+        FROM job_state
+        ORDER BY job_name
+        """
+    ).fetchall()
+    source_rows = connection.execute(
+        """
+        SELECT source_name, status, last_success_at, last_error_at, last_error, updated_at
+        FROM source_health
+        ORDER BY source_name
+        """
+    ).fetchall()
+    return {
+        "jobs": [
+            {
+                "job_name": str(row["job_name"]),
+                "checkpoint": _optional_str(row["checkpoint"]),
+                "status": str(row["status"]),
+                "last_started_at": _optional_str(row["last_started_at"]),
+                "last_finished_at": _optional_str(row["last_finished_at"]),
+                "last_error": _optional_str(row["last_error"]),
+                "updated_at": str(row["updated_at"]),
+            }
+            for row in job_rows
+        ],
+        "sources": [_source_health_row(row) for row in source_rows],
+    }
+
+
 def get_static_asset(path: str) -> StaticAsset | None:
     asset_path = _asset_path(path)
     if asset_path is None:
@@ -201,7 +327,21 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
             if parsed.path == "/api/health":
-                self._write_json({"status": "ok"})
+                with connect(db_path) as connection:
+                    payload = get_health_payload(connection)
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/watchlists":
+                with connect(db_path) as connection:
+                    payload = get_watchlists_payload(connection)
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/jobs":
+                with connect(db_path) as connection:
+                    payload = get_jobs_payload(connection)
+                self._write_json(payload)
                 return
 
             if parsed.path.startswith("/api/boards/"):
@@ -296,9 +436,11 @@ def _asset_path(path: str) -> Path | None:
         "/": "index.html",
         "/index.html": "index.html",
         "/instrument.html": "instrument.html",
+        "/status.html": "status.html",
         "/styles.css": "styles.css",
         "/app.js": "app.js",
         "/instrument.js": "instrument.js",
+        "/status.js": "status.js",
         "/manifest.webmanifest": "manifest.webmanifest",
     }
     filename = allowed.get(path)
@@ -385,3 +527,35 @@ def _optional_float(value: object) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _database_is_writable(connection: sqlite3.Connection) -> bool:
+    try:
+        connection.execute("PRAGMA quick_check").fetchone()
+    except sqlite3.DatabaseError:
+        return False
+    return True
+
+
+def _journal_mode(connection: sqlite3.Connection) -> str:
+    row = connection.execute("PRAGMA journal_mode").fetchone()
+    if row is None:
+        return "unknown"
+    return str(row[0])
+
+
+def _source_health_row(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "source_name": str(row["source_name"]),
+        "status": str(row["status"]),
+        "last_success_at": _optional_str(row["last_success_at"]),
+        "last_error_at": _optional_str(row["last_error_at"]),
+        "last_error": _optional_str(row["last_error"]),
+        "updated_at": _optional_str(row["updated_at"]) if "updated_at" in row.keys() else None,
+    }

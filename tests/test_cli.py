@@ -7,7 +7,9 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
+from market.binance import BinanceSyncResult
 from market.cli import main
 
 
@@ -192,6 +194,53 @@ class CliTests(unittest.TestCase):
         )
 
         self.assertEqual(exit_code, 0)
+
+    def test_sync_crypto_board_records_job_and_source_health(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+
+            def fake_sync(connection, *, symbol, interval, limit):
+                return BinanceSyncResult(
+                    symbol=symbol.upper(),
+                    interval=interval,
+                    bars=2,
+                    latest_close=100.0,
+                )
+
+            with redirect_stdout(stdout), patch("market.cli.sync_binance_klines", fake_sync):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "sync-crypto-board",
+                        "--db-path",
+                        str(db_path),
+                        "--symbol",
+                        "BTCUSDT",
+                        "--interval",
+                        "15m",
+                        "--limit",
+                        "2",
+                        "--snapshot-ts-utc",
+                        "2026-04-24T20:00:00Z",
+                        "--trade-date-local",
+                        "2026-04-24",
+                    ]
+                )
+
+            with sqlite3.connect(db_path) as connection:
+                job = connection.execute(
+                    "SELECT status, checkpoint, last_error FROM job_state WHERE job_name = ?",
+                    ("sync-crypto-board",),
+                ).fetchone()
+                source = connection.execute(
+                    "SELECT status, last_error FROM source_health WHERE source_name = ?",
+                    ("binance",),
+                ).fetchone()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(job, ("success", "BTCUSDT:15m", None))
+        self.assertEqual(source, ("ok", None))
 
 
 if __name__ == "__main__":

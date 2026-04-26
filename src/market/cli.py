@@ -190,23 +190,33 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         with connect(db_path) as connection:
-            results = [
-                sync_binance_klines(
-                    connection,
-                    symbol=symbol,
-                    interval=args.interval,
-                    limit=args.limit,
+            checkpoint = ",".join(symbol.upper() for symbol in symbols) + f":{args.interval}"
+            _record_job_started(connection, "sync-crypto-board", checkpoint, snapshot_ts_utc)
+            try:
+                results = [
+                    sync_binance_klines(
+                        connection,
+                        symbol=symbol,
+                        interval=args.interval,
+                        limit=args.limit,
+                    )
+                    for symbol in symbols
+                ]
+                ranking_count = RankingRepository(connection).refresh_turnover_board(
+                    board_name=args.board_name,
+                    snapshot_ts_utc=snapshot_ts_utc,
+                    trade_date_local=trade_date_local,
+                    market="CRYPTO",
+                    instrument_type="crypto",
+                    limit=args.board_limit,
                 )
-                for symbol in symbols
-            ]
-            ranking_count = RankingRepository(connection).refresh_turnover_board(
-                board_name=args.board_name,
-                snapshot_ts_utc=snapshot_ts_utc,
-                trade_date_local=trade_date_local,
-                market="CRYPTO",
-                instrument_type="crypto",
-                limit=args.board_limit,
-            )
+            except Exception as error:
+                error_ts = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+                _record_job_failed(connection, "sync-crypto-board", error_ts, str(error))
+                _record_source_failed(connection, "binance", error_ts, str(error))
+                raise
+            _record_job_finished(connection, "sync-crypto-board", snapshot_ts_utc)
+            _record_source_success(connection, "binance", snapshot_ts_utc)
         print(
             "crypto board synced: "
             f"{len(results)} symbols, {ranking_count} ranking rows, "
@@ -215,6 +225,122 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     return 0
+
+
+def _record_job_started(
+    connection: sqlite3.Connection,
+    job_name: str,
+    checkpoint: str,
+    started_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO job_state (
+            job_name,
+            checkpoint,
+            status,
+            last_started_at,
+            last_error,
+            updated_at
+        )
+        VALUES (?, ?, 'running', ?, NULL, CURRENT_TIMESTAMP)
+        ON CONFLICT(job_name) DO UPDATE SET
+            checkpoint = excluded.checkpoint,
+            status = excluded.status,
+            last_started_at = excluded.last_started_at,
+            last_error = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (job_name, checkpoint, started_at),
+    )
+
+
+def _record_job_finished(
+    connection: sqlite3.Connection,
+    job_name: str,
+    finished_at: str,
+) -> None:
+    connection.execute(
+        """
+        UPDATE job_state
+        SET status = 'success',
+            last_finished_at = ?,
+            last_error = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE job_name = ?
+        """,
+        (finished_at, job_name),
+    )
+
+
+def _record_job_failed(
+    connection: sqlite3.Connection,
+    job_name: str,
+    failed_at: str,
+    error: str,
+) -> None:
+    connection.execute(
+        """
+        UPDATE job_state
+        SET status = 'failed',
+            last_finished_at = ?,
+            last_error = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE job_name = ?
+        """,
+        (failed_at, error, job_name),
+    )
+
+
+def _record_source_success(
+    connection: sqlite3.Connection,
+    source_name: str,
+    success_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO source_health (
+            source_name,
+            status,
+            last_success_at,
+            last_error,
+            updated_at
+        )
+        VALUES (?, 'ok', ?, NULL, CURRENT_TIMESTAMP)
+        ON CONFLICT(source_name) DO UPDATE SET
+            status = excluded.status,
+            last_success_at = excluded.last_success_at,
+            last_error = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (source_name, success_at),
+    )
+
+
+def _record_source_failed(
+    connection: sqlite3.Connection,
+    source_name: str,
+    failed_at: str,
+    error: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO source_health (
+            source_name,
+            status,
+            last_error_at,
+            last_error,
+            updated_at
+        )
+        VALUES (?, 'failed', ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(source_name) DO UPDATE SET
+            status = excluded.status,
+            last_error_at = excluded.last_error_at,
+            last_error = excluded.last_error,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (source_name, failed_at, error),
+    )
 
 
 if __name__ == "__main__":

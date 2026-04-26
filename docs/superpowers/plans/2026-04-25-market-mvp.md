@@ -84,6 +84,6 @@
 - [x] Add the first mobile Web/PWA screen for boards.
 - [x] Add read-only API routes for instruments and bars.
 - [x] Add local K-line chart preview with interval, volume, and turnover fields.
-- [ ] Add read-only API routes for watchlists, health, and jobs.
-- [ ] Add mobile PWA pages for rankings, instrument detail, K line chart, watchlists, and system status.
+- [x] Add read-only API routes for watchlists, health, and jobs.
+- [x] Add mobile PWA pages for rankings, instrument detail, K line chart, watchlists, and system status.
 - [ ] Add later-stage indicator and alert modules after the data and K line MVP is usable.

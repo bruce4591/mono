@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f1419" />
+    <title>Market Status</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <a class="back-link" href="/">← 返回榜单</a>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Market MVP</p>
+          <h1>系统状态</h1>
+        </div>
+        <button class="icon-button" id="refreshButton" type="button" aria-label="刷新状态">
+          ↻
+        </button>
+      </header>
+
+      <section class="status-card">
+        <p class="label">健康状态</p>
+        <p class="value" id="healthStatus">--</p>
+        <p class="name" id="databaseStatus">数据库 --</p>
+      </section>
+
+      <section class="data-section">
+        <h2>最新榜单</h2>
+        <div class="board-list" id="boardStatusList"></div>
+      </section>
+
+      <section class="data-section">
+        <h2>关注池</h2>
+        <div class="board-list" id="watchlistList"></div>
+      </section>
+
+      <section class="data-section">
+        <h2>任务</h2>
+        <div class="board-list" id="jobList"></div>
+      </section>
+
+      <section class="data-section">
+        <h2>数据源</h2>
+        <div class="board-list" id="sourceList"></div>
+      </section>
+    </main>
+    <script src="/status.js" defer></script>
+  </body>
+</html>
