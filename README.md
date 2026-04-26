@@ -98,15 +98,16 @@ Sync daily bars for Binance USDT quoteVolume Top50:
 ```
 
 Sync the crypto board in one command. If no `--symbol` is provided, the command
-selects Binance USDT quoteVolume Top50 before syncing 15m bars and refreshing
-the board:
+selects a Binance USDT quoteVolume candidate pool before syncing 15m bars and
+refreshing the board. The default candidate pool is larger than 50 so stale or
+inactive symbols do not shrink the final Top50 output:
 
 ```bash
 .venv/bin/market sync-crypto-board \
   --db-path ./data/market.sqlite3 \
   --interval 15m \
   --limit 96 \
-  --top-usdt-limit 50
+  --top-usdt-limit 60
 ```
 
 Apply one Binance ticker WebSocket event payload to the latest snapshot path:

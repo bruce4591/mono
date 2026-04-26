@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     sync_crypto_board.add_argument("--limit", type=int, default=96)
     sync_crypto_board.add_argument("--board-name", default="CRYPTO_TURNOVER_TOP50")
     sync_crypto_board.add_argument("--board-limit", type=int, default=50)
-    sync_crypto_board.add_argument("--top-usdt-limit", type=int, default=50)
+    sync_crypto_board.add_argument("--top-usdt-limit", type=int, default=60)
     sync_crypto_board.add_argument("--snapshot-ts-utc", default=None)
     sync_crypto_board.add_argument("--trade-date-local", default=None)
     sync_crypto_board.add_argument("--dry-run", action="store_true")
