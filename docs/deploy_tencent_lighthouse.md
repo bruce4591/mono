@@ -58,6 +58,20 @@ chmod +x /home/ubuntu/bin/market-sync-crypto.sh
 (crontab -l 2>/dev/null | grep -v market-sync-crypto.sh; echo "*/15 * * * * /home/ubuntu/bin/market-sync-crypto.sh >> /home/ubuntu/github/mono/logs/crypto-sync.log 2>&1") | crontab -
 ```
 
+## Aggregate Crypto K Lines Every 5 Minutes
+
+This job only reads local WebSocket 1m bars and incrementally upserts higher
+intervals. It does not call Binance REST. Each target interval starts after its
+last existing aggregate bar, so a normal 5m run writes only the new 5m windows
+plus any currently open 15m/8h/1d windows.
+
+```bash
+mkdir -p /home/ubuntu/bin
+cp deploy/scripts/market-aggregate-crypto.sh /home/ubuntu/bin/market-aggregate-crypto.sh
+chmod +x /home/ubuntu/bin/market-aggregate-crypto.sh
+(crontab -l 2>/dev/null | grep -v market-aggregate-crypto.sh; echo "*/5 * * * * /home/ubuntu/bin/market-aggregate-crypto.sh >> /home/ubuntu/github/mono/logs/crypto-aggregate.log 2>&1") | crontab -
+```
+
 ## Sync Crypto Daily History
 
 ```bash

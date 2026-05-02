@@ -114,6 +114,21 @@ def build_parser() -> argparse.ArgumentParser:
     sync_crypto_board.add_argument("--skip-kline-sync", action="store_true")
     sync_crypto_board.add_argument("--dry-run", action="store_true")
 
+    aggregate_crypto = subparsers.add_parser(
+        "aggregate-crypto-klines",
+        help="Aggregate local crypto 1m bars into higher intervals without REST sync",
+    )
+    aggregate_crypto.add_argument("--db-path", type=Path, default=None)
+    aggregate_crypto.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="Crypto symbol to aggregate; can be provided multiple times",
+    )
+    aggregate_crypto.add_argument("--top-usdt-limit", type=int, default=60)
+    aggregate_crypto.add_argument("--started-at-utc", default=None)
+    aggregate_crypto.add_argument("--dry-run", action="store_true")
+
     fill_crypto_gaps = subparsers.add_parser(
         "fill-crypto-kline-gaps",
         help="Fill missing Binance 1m crypto bars with REST and aggregate local periods",
@@ -295,6 +310,44 @@ def main(argv: list[str] | None = None) -> int:
             "binance daily synced: "
             f"{result.symbol} {result.interval} "
             f"({result.bars} bars, latest_close={result.latest_close})"
+        )
+        return 0
+
+    if args.command == "aggregate-crypto-klines":
+        now = datetime.now(tz=UTC)
+        started_at_utc = args.started_at_utc or now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if args.dry_run:
+            normalized_symbols = [symbol.upper() for symbol in args.symbol]
+            symbol_text = ",".join(normalized_symbols) or f"top_usdt_limit={args.top_usdt_limit}"
+            print(f"crypto kline aggregate ready: {symbol_text}")
+            return 0
+        with connect(db_path) as connection:
+            normalized_symbols = _crypto_symbols_for_aggregation(
+                connection,
+                symbols=args.symbol,
+                limit=args.top_usdt_limit,
+            )
+            checkpoint = ",".join(normalized_symbols) + ":local_1m"
+
+            def aggregate_local():
+                result = aggregate_crypto_from_1m(connection, normalized_symbols)
+                return CollectorResult(
+                    source_name="local_aggregate",
+                    items_synced=result.bars_written,
+                    metadata={"symbols": normalized_symbols, "source_interval": "1m"},
+                )
+
+            result = run_collector_job(
+                connection,
+                job_name="aggregate-crypto-klines",
+                source_name="local_aggregate",
+                checkpoint=checkpoint,
+                started_at_utc=started_at_utc,
+                operation=aggregate_local,
+            )
+        print(
+            "crypto klines aggregated: "
+            f"{len(normalized_symbols)} symbols, {result.items_synced} bars"
         )
         return 0
 
@@ -550,6 +603,53 @@ def _parse_utc_arg(value: str) -> datetime:
 
 def _format_utc_arg(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _crypto_symbols_for_aggregation(
+    connection: sqlite3.Connection,
+    *,
+    symbols: list[str],
+    limit: int,
+) -> list[str]:
+    if symbols:
+        return [symbol.upper() for symbol in symbols]
+    rows = connection.execute(
+        """
+        WITH latest_snapshot AS (
+            SELECT instrument_id, MAX(snapshot_ts_utc) AS snapshot_ts_utc
+            FROM market_snapshot
+            GROUP BY instrument_id
+        )
+        SELECT instrument.symbol
+        FROM instrument
+        JOIN latest_snapshot
+            ON latest_snapshot.instrument_id = instrument.instrument_id
+        JOIN market_snapshot
+            ON market_snapshot.instrument_id = latest_snapshot.instrument_id
+            AND market_snapshot.snapshot_ts_utc = latest_snapshot.snapshot_ts_utc
+        WHERE instrument.market = 'CRYPTO'
+            AND instrument.instrument_type = 'crypto'
+            AND instrument.is_active = 1
+        ORDER BY market_snapshot.turnover_raw DESC, instrument.symbol
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    if rows:
+        return [str(row["symbol"]).upper() for row in rows]
+    rows = connection.execute(
+        """
+        SELECT symbol
+        FROM instrument
+        WHERE market = 'CRYPTO'
+            AND instrument_type = 'crypto'
+            AND is_active = 1
+        ORDER BY symbol
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [str(row["symbol"]).upper() for row in rows]
 
 
 if __name__ == "__main__":

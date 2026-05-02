@@ -690,6 +690,93 @@ class CliTests(unittest.TestCase):
         self.assertEqual(aggregate_calls, [])
         self.assertIn("crypto board synced: 1 symbols, 1 ranking rows", stdout.getvalue())
 
+    def test_aggregate_crypto_klines_aggregates_local_one_minute_bars(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+            aggregate_calls = []
+
+            def aggregate(connection, symbols):
+                aggregate_calls.append(symbols)
+                return type("Result", (), {"bars_written": 3})()
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.aggregate_crypto_from_1m",
+                side_effect=aggregate,
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "aggregate-crypto-klines",
+                        "--db-path",
+                        str(db_path),
+                        "--symbol",
+                        "btcusdt",
+                        "--symbol",
+                        "ETHUSDT",
+                        "--started-at-utc",
+                        "2026-04-24T20:00:00Z",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(aggregate_calls, [["BTCUSDT", "ETHUSDT"]])
+        self.assertIn("crypto klines aggregated: 2 symbols", stdout.getvalue())
+
+    def test_aggregate_crypto_klines_defaults_to_local_snapshot_turnover_order(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+            aggregate_calls = []
+
+            def aggregate(connection, symbols):
+                aggregate_calls.append(symbols)
+                return type("Result", (), {"bars_written": 0})()
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.aggregate_crypto_from_1m",
+                side_effect=aggregate,
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                with sqlite3.connect(db_path) as connection:
+                    connection.execute(
+                        """
+                        INSERT INTO instrument (
+                            instrument_id, market, symbol, display_name, exchange,
+                            instrument_type, quote_currency, timezone, extra_meta
+                        )
+                        VALUES
+                            (1, 'CRYPTO', 'BTCUSDT', 'BTCUSDT', 'BINANCE', 'crypto', 'USDT', 'UTC', '{}'),
+                            (2, 'CRYPTO', 'ETHUSDT', 'ETHUSDT', 'BINANCE', 'crypto', 'USDT', 'UTC', '{}')
+                        """
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO market_snapshot (
+                            instrument_id, snapshot_ts_utc, trade_date_local,
+                            last_price, turnover_raw, quote_currency, source
+                        )
+                        VALUES
+                            (1, '2026-04-24T20:00:00Z', '2026-04-24', 1, 10, 'USDT', 'binance_24hr'),
+                            (2, '2026-04-24T20:00:00Z', '2026-04-24', 1, 20, 'USDT', 'binance_24hr')
+                        """
+                    )
+                    connection.commit()
+                exit_code = main(
+                    [
+                        "aggregate-crypto-klines",
+                        "--db-path",
+                        str(db_path),
+                        "--top-usdt-limit",
+                        "2",
+                        "--started-at-utc",
+                        "2026-04-24T20:00:00Z",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(aggregate_calls, [["ETHUSDT", "BTCUSDT"]])
+
     def test_sync_crypto_board_marks_job_failed_when_ranking_refresh_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

@@ -112,6 +112,16 @@ the scheduled board job stays lightweight:
   --skip-kline-sync
 ```
 
+Aggregate higher crypto K line intervals from local 1m bars without REST calls.
+The aggregator starts from the last existing target interval bar, then only
+uses later 1m bars to upsert 5m/15m/8h/1d windows:
+
+```bash
+.venv/bin/market aggregate-crypto-klines \
+  --db-path ./data/market.sqlite3 \
+  --top-usdt-limit 60
+```
+
 Run the optional Binance 1m kline WebSocket collector after installing
 `websocket-client` into the Python environment:
 

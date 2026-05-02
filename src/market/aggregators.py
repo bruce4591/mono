@@ -20,10 +20,19 @@ def aggregate_intraday_from_1m(
     target_intervals: list[str],
 ) -> AggregationResult:
     bars_written = 0
-    repository = IntradayBarRepository(connection)
     for instrument_id in instrument_ids:
-        source_bars = repository.list_for_instrument(instrument_id, "1m")
         for target_interval in target_intervals:
+            source_bars = _list_intraday_bars(
+                connection,
+                instrument_id=instrument_id,
+                interval="1m",
+                since_ts_utc=_intraday_checkpoint(
+                    connection,
+                    instrument_id=instrument_id,
+                    interval=target_interval,
+                ),
+            )
+            repository = IntradayBarRepository(connection)
             for bar in _aggregate_intraday_bars(source_bars, target_interval):
                 repository.upsert(bar)
                 bars_written += 1
@@ -37,12 +46,16 @@ def aggregate_daily_from_intraday(
     source_interval: str = "1m",
 ) -> AggregationResult:
     bars_written = 0
-    intraday_repository = IntradayBarRepository(connection)
     daily_repository = DailyBarRepository(connection)
     for instrument_id in instrument_ids:
-        source_bars = intraday_repository.list_for_instrument(
+        source_bars = _list_intraday_bars(
+            connection,
             instrument_id,
             source_interval,
+            since_trade_date=_daily_checkpoint(
+                connection,
+                instrument_id=instrument_id,
+            ),
         )
         for bar in _aggregate_daily_bars(source_bars):
             daily_repository.upsert(bar)
@@ -118,6 +131,107 @@ def _aggregate_intraday_bars(
     return results
 
 
+def _intraday_checkpoint(
+    connection: sqlite3.Connection,
+    *,
+    instrument_id: int,
+    interval: str,
+) -> str | None:
+    row = connection.execute(
+        """
+        SELECT bar_start_ts_utc, bar_end_ts_utc, is_closed_bar
+        FROM bar_intraday
+        WHERE instrument_id = ? AND interval = ?
+        ORDER BY bar_start_ts_utc DESC
+        LIMIT 1
+        """,
+        (instrument_id, interval),
+    ).fetchone()
+    if row is None:
+        return None
+    if bool(row["is_closed_bar"]):
+        return str(row["bar_end_ts_utc"])
+    return str(row["bar_start_ts_utc"])
+
+
+def _daily_checkpoint(
+    connection: sqlite3.Connection,
+    *,
+    instrument_id: int,
+) -> str | None:
+    row = connection.execute(
+        """
+        SELECT trade_date
+        FROM bar_daily
+        WHERE instrument_id = ?
+        ORDER BY trade_date DESC
+        LIMIT 1
+        """,
+        (instrument_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return str(row["trade_date"])
+
+
+def _list_intraday_bars(
+    connection: sqlite3.Connection,
+    instrument_id: int,
+    interval: str,
+    *,
+    since_ts_utc: str | None = None,
+    since_trade_date: str | None = None,
+) -> list[IntradayBar]:
+    filters = ["instrument_id = ?", "interval = ?"]
+    params: list[object] = [instrument_id, interval]
+    if since_ts_utc is not None:
+        filters.append("bar_start_ts_utc >= ?")
+        params.append(since_ts_utc)
+    if since_trade_date is not None:
+        filters.append("trade_date_local >= ?")
+        params.append(since_trade_date)
+    rows = connection.execute(
+        f"""
+        SELECT
+            instrument_id,
+            interval,
+            bar_start_ts_utc,
+            bar_end_ts_utc,
+            trade_date_local,
+            open,
+            high,
+            low,
+            close,
+            volume_raw,
+            turnover_raw,
+            is_closed_bar,
+            source
+        FROM bar_intraday
+        WHERE {" AND ".join(filters)}
+        ORDER BY bar_start_ts_utc
+        """,
+        params,
+    ).fetchall()
+    return [
+        IntradayBar(
+            instrument_id=int(row["instrument_id"]),
+            interval=str(row["interval"]),
+            bar_start_ts_utc=str(row["bar_start_ts_utc"]),
+            bar_end_ts_utc=str(row["bar_end_ts_utc"]),
+            trade_date_local=str(row["trade_date_local"]),
+            open=_optional_float(row["open"]),
+            high=_optional_float(row["high"]),
+            low=_optional_float(row["low"]),
+            close=_optional_float(row["close"]),
+            volume_raw=_optional_float(row["volume_raw"]),
+            turnover_raw=_optional_float(row["turnover_raw"]),
+            is_closed_bar=bool(row["is_closed_bar"]),
+            source=str(row["source"]),
+        )
+        for row in rows
+    ]
+
+
 def _aggregate_daily_bars(bars: list[IntradayBar]) -> list[DailyBar]:
     grouped: dict[str, list[IntradayBar]] = {}
     for bar in bars:
@@ -178,3 +292,9 @@ def _min_optional(values) -> float | None:
     if not numbers:
         return None
     return float(min(numbers))
+
+
+def _optional_float(value) -> float | None:
+    if value is None:
+        return None
+    return float(value)

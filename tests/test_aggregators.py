@@ -71,6 +71,34 @@ class AggregatorTests(unittest.TestCase):
         self.assertEqual(bars[0].bar_end_ts_utc, "2026-04-12T16:00:00Z")
         self.assertFalse(bars[0].is_closed_bar)
 
+    def test_aggregate_intraday_from_1m_only_writes_after_latest_target_bar(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instrument_id = _seed_btc_1m_bars(connection, minutes=15)
+                aggregate_intraday_from_1m(
+                    connection,
+                    instrument_ids=[instrument_id],
+                    target_intervals=["5m"],
+                )
+                _seed_btc_1m_bars(connection, minutes=20)
+
+                result = aggregate_intraday_from_1m(
+                    connection,
+                    instrument_ids=[instrument_id],
+                    target_intervals=["5m"],
+                )
+                bars_5m = IntradayBarRepository(connection).list_for_instrument(
+                    instrument_id,
+                    "5m",
+                )
+
+        self.assertEqual(result.bars_written, 1)
+        self.assertEqual(len(bars_5m), 4)
+        self.assertEqual(bars_5m[-1].bar_start_ts_utc, "2026-04-12T13:30:00Z")
+
     def test_aggregate_daily_from_intraday_builds_daily_bar(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
