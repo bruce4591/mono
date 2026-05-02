@@ -89,11 +89,23 @@ class BinanceWebSocketTests(unittest.TestCase):
             ]
 
             class FakeWebSocketApp:
-                def __init__(self, url, on_message, on_error, on_close):
+                def __init__(
+                    self,
+                    url,
+                    on_message,
+                    on_error,
+                    on_close,
+                    on_open,
+                    on_ping,
+                    on_pong,
+                ):
                     self.url = url
                     self.on_message = on_message
                     self.on_error = on_error
                     self.on_close = on_close
+                    self.on_open = on_open
+                    self.on_ping = on_ping
+                    self.on_pong = on_pong
 
                 def run_forever(self, **kwargs):
                     for message in messages:
@@ -101,15 +113,24 @@ class BinanceWebSocketTests(unittest.TestCase):
 
             created_urls = []
 
-            def factory(url, on_message, on_error, on_close):
+            def factory(url, on_message, on_error, on_close, on_open, on_ping, on_pong):
                 created_urls.append(url)
-                return FakeWebSocketApp(url, on_message, on_error, on_close)
+                return FakeWebSocketApp(
+                    url,
+                    on_message,
+                    on_error,
+                    on_close,
+                    on_open,
+                    on_ping,
+                    on_pong,
+                )
 
             collector = BinanceKlineWebSocketCollector(
                 db_path=db_path,
                 symbols=["BTCUSDT"],
                 interval="1m",
                 websocket_app_factory=factory,
+                logger=lambda _message: None,
             )
 
             result = collector.run_once()
@@ -142,6 +163,153 @@ class BinanceWebSocketTests(unittest.TestCase):
         self.assertEqual(bars_by_interval["15m"]["source"], "aggregate_1m")
         self.assertEqual(bars_by_interval["8h"]["source"], "aggregate_1m")
         self.assertEqual(ranking_count, 0)
+
+    def test_kline_collector_logs_websocket_lifecycle_callbacks(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            logs = []
+
+            class FakeWebSocketApp:
+                def __init__(self, url, on_message, on_error, on_close, on_open, on_ping, on_pong):
+                    self.on_close = on_close
+                    self.on_open = on_open
+                    self.on_ping = on_ping
+                    self.on_pong = on_pong
+
+                def run_forever(self, **kwargs):
+                    self.on_open(self)
+                    self.on_ping(self, b"ping")
+                    self.on_pong(self, b"pong")
+                    self.on_close(self, 1000, "normal")
+
+            def factory(url, on_message, on_error, on_close, on_open, on_ping, on_pong):
+                return FakeWebSocketApp(
+                    url,
+                    on_message,
+                    on_error,
+                    on_close,
+                    on_open,
+                    on_ping,
+                    on_pong,
+                )
+
+            collector = BinanceKlineWebSocketCollector(
+                db_path=db_path,
+                symbols=["BTCUSDT"],
+                websocket_app_factory=factory,
+                logger=logs.append,
+            )
+
+            collector.run_once()
+
+        self.assertTrue(any("opened" in message for message in logs))
+        self.assertTrue(any("ping" in message for message in logs))
+        self.assertTrue(any("pong" in message for message in logs))
+        self.assertTrue(any("closed" in message for message in logs))
+
+    def test_kline_collector_run_forever_reconnects_after_closed_cycle(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            messages = [
+                {
+                    "stream": "btcusdt@kline_1m",
+                    "data": {
+                        "e": "kline",
+                        "E": 1_776_000_030_000,
+                        "s": "BTCUSDT",
+                        "k": {
+                            "t": 1_776_000_000_000,
+                            "T": 1_776_000_059_999,
+                            "s": "BTCUSDT",
+                            "i": "1m",
+                            "o": "64000.00",
+                            "c": "64100.00",
+                            "h": "64150.00",
+                            "l": "63990.00",
+                            "v": "2.5",
+                            "q": "160250.00",
+                            "x": False,
+                        },
+                    },
+                },
+                {
+                    "stream": "btcusdt@kline_1m",
+                    "data": {
+                        "e": "kline",
+                        "E": 1_776_000_090_000,
+                        "s": "BTCUSDT",
+                        "k": {
+                            "t": 1_776_000_060_000,
+                            "T": 1_776_000_119_999,
+                            "s": "BTCUSDT",
+                            "i": "1m",
+                            "o": "64100.00",
+                            "c": "64120.00",
+                            "h": "64125.00",
+                            "l": "64090.00",
+                            "v": "1.5",
+                            "q": "96180.00",
+                            "x": False,
+                        },
+                    },
+                },
+            ]
+            runs = []
+            sleeps = []
+
+            class FakeWebSocketApp:
+                def __init__(self, url, on_message, on_error, on_close, on_open, on_ping, on_pong):
+                    self.on_message = on_message
+                    self.on_close = on_close
+
+                def run_forever(self, **kwargs):
+                    message = messages[len(runs)]
+                    runs.append(kwargs)
+                    self.on_message(self, json.dumps(message))
+                    self.on_close(self, 1000, "test close")
+
+            def factory(url, on_message, on_error, on_close, on_open, on_ping, on_pong):
+                return FakeWebSocketApp(
+                    url,
+                    on_message,
+                    on_error,
+                    on_close,
+                    on_open,
+                    on_ping,
+                    on_pong,
+                )
+
+            collector = BinanceKlineWebSocketCollector(
+                db_path=db_path,
+                symbols=["BTCUSDT"],
+                websocket_app_factory=factory,
+                sleep=sleeps.append,
+                logger=lambda _message: None,
+            )
+
+            result = collector.run_forever(
+                reconnect_delay_seconds=3,
+                max_reconnects=1,
+            )
+
+            with connect(db_path) as connection:
+                count = connection.execute(
+                    """
+                    SELECT count(*)
+                    FROM bar_intraday
+                    JOIN instrument
+                        ON instrument.instrument_id = bar_intraday.instrument_id
+                    WHERE instrument.symbol = 'BTCUSDT'
+                        AND bar_intraday.interval = '1m'
+                    """
+                ).fetchone()[0]
+
+        self.assertEqual(len(runs), 2)
+        self.assertEqual(sleeps, [3])
+        self.assertEqual(result.items_synced, 2)
+        self.assertEqual(count, 2)
 
 
 if __name__ == "__main__":

@@ -50,12 +50,20 @@ class BinanceKlineWebSocketCollector:
         interval: str = "1m",
         max_streams_per_connection: int = 200,
         websocket_app_factory=None,
+        logger: Callable[[str], None] | None = None,
+        sleep: Callable[[float], None] = default_sleep,
+        ping_interval_seconds: int = 15,
+        ping_timeout_seconds: int = 10,
     ) -> None:
         self.db_path = Path(db_path)
         self.symbols = [symbol.upper() for symbol in symbols]
         self.interval = interval
         self.max_streams_per_connection = max_streams_per_connection
         self.websocket_app_factory = websocket_app_factory or _default_websocket_app_factory
+        self.logger = logger or _default_logger
+        self.sleep = sleep
+        self.ping_interval_seconds = ping_interval_seconds
+        self.ping_timeout_seconds = ping_timeout_seconds
         self.items_synced = 0
         self.last_error: str | None = None
 
@@ -70,8 +78,15 @@ class BinanceKlineWebSocketCollector:
                 self._on_message,
                 self._on_error,
                 self._on_close,
+                self._on_open,
+                self._on_ping,
+                self._on_pong,
             )
-            app.run_forever(ping_interval=15, ping_timeout=10)
+            self._log(f"binance ws connecting: url={_redact_stream_url(url)}")
+            app.run_forever(
+                ping_interval=self.ping_interval_seconds,
+                ping_timeout=self.ping_timeout_seconds,
+            )
         return CollectorResult(
             source_name=self.source_name,
             items_synced=self.items_synced,
@@ -82,17 +97,78 @@ class BinanceKlineWebSocketCollector:
             },
         )
 
+    def run_forever(
+        self,
+        *,
+        reconnect_delay_seconds: float = 5.0,
+        max_reconnects: int | None = None,
+    ) -> CollectorResult:
+        reconnects = 0
+        while True:
+            try:
+                result = self.run_once()
+            except KeyboardInterrupt:
+                raise
+            except Exception as error:
+                self.last_error = str(error)
+                self._log(f"binance ws cycle error: {type(error).__name__}: {error}")
+                result = self._result()
+            if max_reconnects is not None and reconnects >= max_reconnects:
+                return result
+            reconnects += 1
+            self._log(
+                "binance ws reconnect scheduled: "
+                f"delay={reconnect_delay_seconds}s reconnect={reconnects}"
+            )
+            self.sleep(reconnect_delay_seconds)
+
     def _on_message(self, _app, message: str) -> None:
-        payload = json.loads(message)
-        with connect(self.db_path) as connection:
-            apply_binance_kline_event(connection, payload)
-            self.items_synced += 1
+        try:
+            payload = json.loads(message)
+            with connect(self.db_path) as connection:
+                apply_binance_kline_event(connection, payload)
+                self.items_synced += 1
+        except Exception as error:
+            self.last_error = str(error)
+            self._log(f"binance ws message error: {type(error).__name__}: {error}")
+            raise
 
     def _on_error(self, _app, error) -> None:
         self.last_error = str(error)
+        self._log(f"binance ws error: {error}")
 
-    def _on_close(self, _app, _status_code, _message) -> None:
-        return
+    def _on_close(self, _app, status_code, message) -> None:
+        self._log(
+            "binance ws closed: "
+            f"status={status_code} message={message!r} messages={self.items_synced}"
+        )
+
+    def _on_open(self, _app) -> None:
+        self._log(
+            "binance ws opened: "
+            f"symbols={len(self.symbols)} interval={self.interval}"
+        )
+
+    def _on_ping(self, _app, message) -> None:
+        self._log(f"binance ws ping: bytes={len(message or b'')}")
+
+    def _on_pong(self, _app, message) -> None:
+        self._log(f"binance ws pong: bytes={len(message or b'')}")
+
+    def _result(self) -> CollectorResult:
+        return CollectorResult(
+            source_name=self.source_name,
+            items_synced=self.items_synced,
+            metadata={
+                "symbols": self.symbols,
+                "interval": self.interval,
+                "connection_lifetime_seconds": BINANCE_WS_CONNECTION_LIFETIME_SECONDS,
+                "last_error": self.last_error,
+            },
+        )
+
+    def _log(self, message: str) -> None:
+        self.logger(message)
 
 
 def build_combined_kline_stream_urls(
@@ -110,7 +186,15 @@ def build_combined_kline_stream_urls(
     return [f"{base_url}/stream?streams={'/'.join(group)}" for group in grouped]
 
 
-def _default_websocket_app_factory(url, on_message, on_error, on_close):
+def _default_websocket_app_factory(
+    url,
+    on_message,
+    on_error,
+    on_close,
+    on_open,
+    on_ping,
+    on_pong,
+):
     try:
         import websocket
     except ImportError as error:
@@ -122,4 +206,19 @@ def _default_websocket_app_factory(url, on_message, on_error, on_close):
         on_message=on_message,
         on_error=on_error,
         on_close=on_close,
+        on_open=on_open,
+        on_ping=on_ping,
+        on_pong=on_pong,
     )
+
+
+def _default_logger(message: str) -> None:
+    print(message, flush=True)
+
+
+def _redact_stream_url(url: str) -> str:
+    if "streams=" not in url:
+        return url
+    prefix, streams = url.split("streams=", 1)
+    stream_count = len([stream for stream in streams.split("/") if stream])
+    return f"{prefix}streams=<{stream_count} streams>"

@@ -477,7 +477,7 @@ def main(argv: list[str] | None = None) -> int:
             interval=args.interval,
             max_streams_per_connection=args.max_streams_per_connection,
         )
-        result = collector.run_once()
+        result = collector.run_forever()
         print(
             "binance kline ws stopped: "
             f"{result.items_synced} messages, interval={args.interval}"
