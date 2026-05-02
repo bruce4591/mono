@@ -15,6 +15,9 @@ from market.collectors.binance_ws import (
     build_combined_kline_stream_urls,
 )
 from market.db import connect, init_database
+from market.models import IntradayBar
+from market.repositories import InstrumentRepository, IntradayBarRepository
+from market.binance import binance_symbol_to_instrument
 
 
 class BinanceWebSocketTests(unittest.TestCase):
@@ -378,6 +381,153 @@ class BinanceWebSocketTests(unittest.TestCase):
         self.assertEqual(result.items_synced, 2)
         self.assertEqual(count, 2)
 
+    def test_kline_collector_fills_disconnect_gap_before_reconnecting(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            gap_calls = []
+            runs = []
+            sleeps = []
+            messages = [
+                _kline_message("BTCUSDT", "2026-04-24T00:00:00Z", "64000.00"),
+                _kline_message("BTCUSDT", "2026-04-24T00:03:00Z", "64030.00"),
+            ]
+
+            class FakeWebSocketApp:
+                def __init__(self, url, on_message, on_error, on_close, on_open, on_ping, on_pong):
+                    self.on_message = on_message
+                    self.on_close = on_close
+
+                def run_forever(self, **kwargs):
+                    message = messages[len(runs)]
+                    runs.append(kwargs)
+                    self.on_message(self, json.dumps(message))
+                    self.on_close(self, 1000, "test close")
+
+            def factory(url, on_message, on_error, on_close, on_open, on_ping, on_pong):
+                return FakeWebSocketApp(
+                    url,
+                    on_message,
+                    on_error,
+                    on_close,
+                    on_open,
+                    on_ping,
+                    on_pong,
+                )
+
+            def fill_gaps(connection, symbols, start_ts_utc, end_ts_utc):
+                gap_calls.append((symbols, start_ts_utc, end_ts_utc))
+                instrument_id = InstrumentRepository(connection).upsert(
+                    binance_symbol_to_instrument("BTCUSDT")
+                )
+                repository = IntradayBarRepository(connection)
+                repository.upsert(_bar(instrument_id, "2026-04-24T00:01:00Z", 64010.0))
+                repository.upsert(_bar(instrument_id, "2026-04-24T00:02:00Z", 64020.0))
+
+            collector = BinanceKlineWebSocketCollector(
+                db_path=db_path,
+                symbols=["BTCUSDT"],
+                websocket_app_factory=factory,
+                sleep=sleeps.append,
+                logger=lambda _message: None,
+                gap_fill_on_reconnect=True,
+                gap_filler=fill_gaps,
+            )
+
+            result = collector.run_forever(
+                reconnect_delay_seconds=3,
+                max_reconnects=1,
+            )
+
+            with connect(db_path) as connection:
+                starts = [
+                    row["bar_start_ts_utc"]
+                    for row in connection.execute(
+                        """
+                        SELECT bar_start_ts_utc
+                        FROM bar_intraday
+                        JOIN instrument
+                            ON instrument.instrument_id = bar_intraday.instrument_id
+                        WHERE instrument.symbol = 'BTCUSDT'
+                            AND bar_intraday.interval = '1m'
+                        ORDER BY bar_start_ts_utc
+                        """
+                    ).fetchall()
+                ]
+
+        self.assertEqual(len(gap_calls), 1)
+        self.assertEqual(gap_calls[0][0], ["BTCUSDT"])
+        self.assertEqual(gap_calls[0][1], "2026-04-24T00:00:00Z")
+        self.assertEqual(gap_calls[0][2], "2026-04-24T00:03:00Z")
+        self.assertEqual(sleeps, [3])
+        self.assertEqual(result.items_synced, 4)
+        self.assertEqual(
+            starts,
+            [
+                "2026-04-24T00:00:00Z",
+                "2026-04-24T00:01:00Z",
+                "2026-04-24T00:02:00Z",
+                "2026-04-24T00:03:00Z",
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _kline_message(symbol: str, start: str, close: str) -> dict[str, object]:
+    start_ms = _ms(start)
+    return {
+        "stream": f"{symbol.lower()}@kline_1m",
+        "data": {
+            "e": "kline",
+            "E": start_ms + 30_000,
+            "s": symbol,
+            "k": {
+                "t": start_ms,
+                "T": start_ms + 59_999,
+                "s": symbol,
+                "i": "1m",
+                "o": close,
+                "c": close,
+                "h": close,
+                "l": close,
+                "v": "1",
+                "q": close,
+                "x": False,
+            },
+        },
+    }
+
+
+def _bar(instrument_id: int, start: str, close: float) -> IntradayBar:
+    start_ms = _ms(start)
+    end = start_ms + 60_000
+    return IntradayBar(
+        instrument_id=instrument_id,
+        interval="1m",
+        bar_start_ts_utc=start,
+        bar_end_ts_utc=_format_ms(end),
+        trade_date_local=start[:10],
+        open=close,
+        high=close,
+        low=close,
+        close=close,
+        volume_raw=1.0,
+        turnover_raw=close,
+        is_closed_bar=True,
+        source="binance_gap_fill",
+    )
+
+
+def _ms(value: str) -> int:
+    from datetime import UTC, datetime
+
+    return int(datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC).timestamp() * 1000)
+
+
+def _format_ms(value: int) -> str:
+    from datetime import UTC, datetime
+
+    return datetime.fromtimestamp(value / 1000, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")

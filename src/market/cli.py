@@ -476,6 +476,7 @@ def main(argv: list[str] | None = None) -> int:
             symbols=normalized_symbols,
             interval=args.interval,
             max_streams_per_connection=args.max_streams_per_connection,
+            gap_fill_on_reconnect=True,
         )
         result = collector.run_forever()
         print(

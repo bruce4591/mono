@@ -7,8 +7,9 @@ from time import monotonic, sleep as default_sleep
 from typing import Callable
 
 from market.collectors.base import CollectorResult
+from market.crypto_gaps import fill_binance_1m_gaps
 from market.db import connect
-from market.realtime import apply_binance_kline_event
+from market.realtime import apply_binance_kline_event, parse_binance_kline_event
 
 BINANCE_WS_BASE_URL = "wss://stream.binance.com:9443"
 BINANCE_WS_CONTROL_MESSAGE_INTERVAL_SECONDS = 0.25
@@ -54,6 +55,8 @@ class BinanceKlineWebSocketCollector:
         sleep: Callable[[float], None] = default_sleep,
         ping_interval_seconds: int = 0,
         ping_timeout_seconds: int | None = None,
+        gap_fill_on_reconnect: bool = False,
+        gap_filler=None,
     ) -> None:
         self.db_path = Path(db_path)
         self.symbols = [symbol.upper() for symbol in symbols]
@@ -64,8 +67,11 @@ class BinanceKlineWebSocketCollector:
         self.sleep = sleep
         self.ping_interval_seconds = ping_interval_seconds
         self.ping_timeout_seconds = ping_timeout_seconds
+        self.gap_fill_on_reconnect = gap_fill_on_reconnect
+        self.gap_filler = gap_filler or _default_gap_filler
         self.items_synced = 0
         self.last_error: str | None = None
+        self._latest_bar_ts_utc: str | None = None
 
     def run_once(self) -> CollectorResult:
         for url in build_combined_kline_stream_urls(
@@ -125,9 +131,14 @@ class BinanceKlineWebSocketCollector:
     def _on_message(self, _app, message: str) -> None:
         try:
             payload = json.loads(message)
+            bar_start_ts_utc = _extract_kline_start_ts(payload)
             with connect(self.db_path) as connection:
+                if self.gap_fill_on_reconnect and bar_start_ts_utc is not None:
+                    self._fill_gap_before_bar(connection, bar_start_ts_utc)
                 apply_binance_kline_event(connection, payload)
                 self.items_synced += 1
+            if bar_start_ts_utc is not None:
+                self._latest_bar_ts_utc = bar_start_ts_utc
         except sqlite3.OperationalError as error:
             if "locked" in str(error).lower():
                 self.last_error = str(error)
@@ -176,6 +187,53 @@ class BinanceKlineWebSocketCollector:
     def _log(self, message: str) -> None:
         self.logger(message)
 
+    def _fill_gap_before_bar(
+        self,
+        connection: sqlite3.Connection,
+        current_bar_ts_utc: str,
+    ) -> None:
+        if self.interval != "1m":
+            return
+        if self._latest_bar_ts_utc is None:
+            return
+        if _utc_diff_seconds(self._latest_bar_ts_utc, current_bar_ts_utc) <= 60:
+            return
+        self._log(
+            "binance ws gap check: "
+            f"start={self._latest_bar_ts_utc} end={current_bar_ts_utc}"
+        )
+        try:
+            before_count = _count_1m_bars(
+                connection,
+                self.symbols,
+                self._latest_bar_ts_utc,
+                current_bar_ts_utc,
+            )
+            self.gap_filler(
+                connection,
+                self.symbols,
+                self._latest_bar_ts_utc,
+                current_bar_ts_utc,
+            )
+            after_count = _count_1m_bars(
+                connection,
+                self.symbols,
+                self._latest_bar_ts_utc,
+                current_bar_ts_utc,
+            )
+            written = max(after_count - before_count, 0)
+            self.items_synced += written
+            self._log(f"binance ws gap check done: bars_written={written}")
+        except sqlite3.OperationalError as error:
+            if "locked" in str(error).lower():
+                self.last_error = str(error)
+                self._log(f"binance ws gap check skipped: database locked: {error}")
+                return
+            raise
+        except Exception as error:
+            self.last_error = str(error)
+            self._log(f"binance ws gap check error: {type(error).__name__}: {error}")
+
 
 def build_combined_kline_stream_urls(
     symbols: list[str],
@@ -220,6 +278,65 @@ def _default_websocket_app_factory(
 
 def _default_logger(message: str) -> None:
     print(message, flush=True)
+
+
+def _default_gap_filler(
+    connection: sqlite3.Connection,
+    symbols: list[str],
+    start_ts_utc: str,
+    end_ts_utc: str,
+) -> None:
+    fill_binance_1m_gaps(
+        connection,
+        symbols=symbols,
+        start_ts_utc=start_ts_utc,
+        end_ts_utc=end_ts_utc,
+    )
+
+
+def _count_1m_bars(
+    connection: sqlite3.Connection,
+    symbols: list[str],
+    start_ts_utc: str,
+    end_ts_utc: str,
+) -> int:
+    if not symbols:
+        return 0
+    placeholders = ",".join("?" for _symbol in symbols)
+    row = connection.execute(
+        f"""
+        SELECT count(*)
+        FROM bar_intraday
+        JOIN instrument
+            ON instrument.instrument_id = bar_intraday.instrument_id
+        WHERE instrument.symbol IN ({placeholders})
+            AND bar_intraday.interval = '1m'
+            AND bar_intraday.bar_start_ts_utc >= ?
+            AND bar_intraday.bar_start_ts_utc <= ?
+        """,
+        [*symbols, start_ts_utc, end_ts_utc],
+    ).fetchone()
+    return int(row[0])
+
+
+def _extract_kline_start_ts(payload: dict[str, object]) -> str | None:
+    try:
+        bar = parse_binance_kline_event(
+            payload,
+            instrument_id=0,
+            timezone_name="UTC",
+        )
+    except Exception:
+        return None
+    return bar.bar_start_ts_utc
+
+
+def _utc_diff_seconds(start_ts_utc: str, end_ts_utc: str) -> int:
+    from datetime import datetime
+
+    start = datetime.fromisoformat(start_ts_utc.replace("Z", "+00:00"))
+    end = datetime.fromisoformat(end_ts_utc.replace("Z", "+00:00"))
+    return int((end - start).total_seconds())
 
 
 def _redact_stream_url(url: str) -> str:
