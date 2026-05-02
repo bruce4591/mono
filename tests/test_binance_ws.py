@@ -307,6 +307,8 @@ class BinanceWebSocketTests(unittest.TestCase):
                 ).fetchone()[0]
 
         self.assertEqual(len(runs), 2)
+        self.assertEqual(runs[0]["ping_interval"], 0)
+        self.assertIsNone(runs[0]["ping_timeout"])
         self.assertEqual(sleeps, [3])
         self.assertEqual(result.items_synced, 2)
         self.assertEqual(count, 2)

@@ -52,8 +52,8 @@ class BinanceKlineWebSocketCollector:
         websocket_app_factory=None,
         logger: Callable[[str], None] | None = None,
         sleep: Callable[[float], None] = default_sleep,
-        ping_interval_seconds: int = 15,
-        ping_timeout_seconds: int = 10,
+        ping_interval_seconds: int = 0,
+        ping_timeout_seconds: int | None = None,
     ) -> None:
         self.db_path = Path(db_path)
         self.symbols = [symbol.upper() for symbol in symbols]
