@@ -640,7 +640,7 @@ class CliTests(unittest.TestCase):
         )
         self.assertIn("crypto board synced: 2 symbols, 2 ranking rows", stdout.getvalue())
 
-    def test_sync_crypto_board_can_skip_rest_kline_sync(self):
+    def test_sync_crypto_board_can_skip_rest_kline_sync_without_aggregating(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
             stdout = io.StringIO()
@@ -687,7 +687,7 @@ class CliTests(unittest.TestCase):
                 )
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(aggregate_calls, [["BTCUSDT"]])
+        self.assertEqual(aggregate_calls, [])
         self.assertIn("crypto board synced: 1 symbols, 1 ranking rows", stdout.getvalue())
 
     def test_sync_crypto_board_marks_job_failed_when_ranking_refresh_fails(self):

@@ -100,8 +100,8 @@ Sync daily bars for Binance USDT quoteVolume Top50:
 Sync the crypto board in one command. If no `--symbol` is provided, the command
 selects a Binance USDT quoteVolume candidate pool before refreshing 24h
 snapshots and the board. Use `--skip-kline-sync` when WebSocket 1m collection is
-running; it avoids REST K line pulls while still aggregating existing local 1m
-bars into 5m/15m/8h/1d:
+running; it avoids REST K line pulls and does not aggregate local 1m bars, so
+the scheduled board job stays lightweight:
 
 ```bash
 .venv/bin/market sync-crypto-board \

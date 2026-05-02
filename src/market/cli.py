@@ -348,7 +348,7 @@ def main(argv: list[str] | None = None) -> int:
                     snapshot_ts_utc=snapshot_ts_utc,
                     trade_date_local=trade_date_local,
                 )
-                if args.interval == "1m":
+                if args.interval == "1m" and not args.skip_kline_sync:
                     aggregate_crypto_from_1m(connection, normalized_symbols)
                 ranking_count = RankingRepository(connection).refresh_turnover_board(
                     board_name=args.board_name,

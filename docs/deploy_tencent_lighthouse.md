@@ -46,6 +46,11 @@ sudo systemctl status market-binance-kline-ws.service
 
 ## Sync Crypto Every 15 Minutes
 
+This job refreshes 24h snapshots and the turnover board only. It runs
+`sync-crypto-board --skip-kline-sync`, so it does not pull REST K lines or
+aggregate local 1m bars; missing K-line windows should be filled only when a
+gap is detected.
+
 ```bash
 mkdir -p /home/ubuntu/bin
 cp deploy/scripts/market-sync-crypto.sh /home/ubuntu/bin/market-sync-crypto.sh
