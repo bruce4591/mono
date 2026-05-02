@@ -258,6 +258,7 @@ function renderCandles(container, bars) {
   });
   applyChartPrecision(activeChart, activePriceTickSize);
   activeChart.applyNewData(data);
+  setupChartHistoryLoader();
   activeChart.createIndicator("MA", true, { id: "candle_pane" });
   activeChart.createIndicator("VOL", false, { height: 82 });
   activeChart.createIndicator("MACD", false, { height: 92 });
@@ -367,6 +368,46 @@ async function loadOlderBars() {
   const incoming = await fetchOlderBars();
   if (!incoming?.length) return;
   renderSelectedPeriod(activePeriod);
+}
+
+function setupChartHistoryLoader() {
+  if (!activeChart || typeof activeChart.setLoadDataCallback !== "function") return;
+  activeChart.setLoadDataCallback(async (params) => {
+    const complete = typeof params.callback === "function" ? params.callback : () => {};
+    if (!activePeriod || activePeriod.type !== "intraday") {
+      complete([], false);
+      return;
+    }
+    const earliest = activePeriod.items[0];
+    const earliestTimestamp = normalizeChartTimestamp(earliest);
+    const boundaryTimestamp = params.data?.timestamp;
+    const isLeftBoundary =
+      params.type === "backward" ||
+      !Number.isFinite(boundaryTimestamp) ||
+      boundaryTimestamp <= earliestTimestamp;
+
+    if (!isLeftBoundary) {
+      complete([], false);
+      return;
+    }
+
+    try {
+      const incoming = await fetchOlderBars();
+      const data = (incoming || []).map(toKLineData).filter((bar) => {
+        return (
+          Number.isFinite(bar.timestamp) &&
+          Number.isFinite(bar.open) &&
+          Number.isFinite(bar.high) &&
+          Number.isFinite(bar.low) &&
+          Number.isFinite(bar.close)
+        );
+      });
+      complete(data, data.length > 0);
+      if (data.length) renderRangeControls(activePeriod);
+    } catch {
+      complete([], true);
+    }
+  });
 }
 
 refreshButton.addEventListener("click", loadInstrument);
