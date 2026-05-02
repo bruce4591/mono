@@ -66,7 +66,8 @@ def get_board_payload(
             instrument.symbol,
             instrument.display_name,
             instrument.exchange,
-            instrument.instrument_type
+            instrument.instrument_type,
+            instrument.extra_meta
         FROM ranking_snapshot
         JOIN instrument
             ON instrument.instrument_id = ranking_snapshot.instrument_id
@@ -106,6 +107,7 @@ def get_board_payload(
                 "display_name": str(row["display_name"]),
                 "exchange": str(row["exchange"]),
                 "instrument_type": str(row["instrument_type"]),
+                "price_tick_size": _price_tick_size(row["extra_meta"]),
                 "last_price": _optional_float(row["last_price"]),
                 "volume_raw": _optional_float(row["volume_raw"]),
                 "turnover_raw": float(row["turnover_raw"]),
@@ -854,6 +856,15 @@ def _optional_float(value: object) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _price_tick_size(extra_meta: object) -> str | None:
+    try:
+        metadata = json.loads(str(extra_meta))
+    except json.JSONDecodeError:
+        return None
+    tick_size = metadata.get("price_tick_size")
+    return str(tick_size) if tick_size is not None else None
 
 
 def _optional_str(value: object) -> str | None:

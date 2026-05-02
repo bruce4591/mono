@@ -33,9 +33,27 @@ function formatVolume(value) {
   return Number(value || 0).toFixed(2);
 }
 
-function formatPrice(value) {
+function pricePrecisionFromTickSize(tickSize) {
+  if (tickSize === null || tickSize === undefined) return null;
+  const normalized = String(tickSize).trim();
+  if (!normalized || Number(normalized) <= 0) return null;
+  if (normalized.toLowerCase().includes("e-")) {
+    const precision = Math.ceil(Math.abs(Math.log10(Number(normalized))));
+    return Number.isFinite(precision) ? precision : null;
+  }
+  return (normalized.split(".")[1] || "").replace(/0+$/, "").length;
+}
+
+function formatPrice(value, tickSize = null) {
   if (value === null || value === undefined) return "--";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 6 });
+  const precision = pricePrecisionFromTickSize(tickSize);
+  if (precision === null) {
+    return String(value);
+  }
+  return Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: precision,
+    maximumFractionDigits: precision,
+  });
 }
 
 function formatPriceDirection(item) {
@@ -87,7 +105,7 @@ function renderBoard(payload) {
             <p class="name">${item.display_name}</p>
           </div>
           <div class="metrics">
-            <p class="price">${formatPrice(item.last_price)} ${priceDirection}</p>
+            <p class="price">${formatPrice(item.last_price, item.price_tick_size)} ${priceDirection}</p>
             <p class="turnover">${formatTurnover(item.turnover_raw, item.quote_currency)}</p>
             <p class="name">24h量 ${formatVolume(item.volume_raw)}</p>
             <p class="${changeClass}">24h ${sign}${change.toFixed(2)}%</p>

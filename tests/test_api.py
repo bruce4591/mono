@@ -97,6 +97,14 @@ class ApiTests(unittest.TestCase):
                 eth = get_instrument_payload(connection, "CRYPTO", "ETHUSDT")
                 assert btc is not None
                 assert eth is not None
+                get_instrument_payload(
+                    connection,
+                    "CRYPTO",
+                    "BTCUSDT",
+                    instrument_metadata_fetcher=lambda _symbol: {
+                        "price_tick_size": "0.01000000",
+                    },
+                )
                 connection.executemany(
                     """
                     INSERT INTO ranking_snapshot (
@@ -146,6 +154,7 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(payload["items"][0]["symbol"], "BTCUSDT")
         self.assertEqual(payload["items"][0]["last_price"], 64250.0)
+        self.assertEqual(payload["items"][0]["price_tick_size"], "0.01000000")
         self.assertEqual(payload["previous_snapshot_ts_utc"], "2026-04-24T19:45:00Z")
         self.assertEqual(payload["items"][0]["previous_rank"], 2)
         self.assertEqual(payload["items"][0]["rank_change"], 1)
@@ -636,6 +645,9 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"LOAD_MORE_CANDLES", asset.body)
         self.assertIn(b"getVisibleCandles", asset.body)
         self.assertIn(b"pricePrecisionFromTickSize", asset.body)
+        self.assertIn(b"formatPrice(snapshot.last_price, activePriceTickSize)", asset.body)
+        self.assertIn(b"formatRawPrice", asset.body)
+        self.assertIn(b'replace(/0+$/, "")', asset.body)
         self.assertIn(b"setPriceVolumePrecision", asset.body)
         self.assertIn(b"fetchOlderBars", asset.body)
         self.assertIn(b"setupChartHistoryLoader", asset.body)
@@ -663,6 +675,10 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"previous_snapshot_ts_utc", asset.body)
         self.assertIn(b"rank-change", asset.body)
         self.assertIn(b"previousPrices", asset.body)
+        self.assertIn(b"pricePrecisionFromTickSize", asset.body)
+        self.assertIn(b"formatPrice(item.last_price, item.price_tick_size)", asset.body)
+        self.assertIn(b"return String(value)", asset.body)
+        self.assertIn(b'replace(/0+$/, "")', asset.body)
         self.assertIn(b"formatPriceDirection", asset.body)
         self.assertIn(b"price-direction", asset.body)
         self.assertIn(b"setInterval(() => loadBoard(activeBoard, { silent: true })", asset.body)

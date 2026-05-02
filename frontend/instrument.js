@@ -38,9 +38,9 @@ const LOAD_MORE_CANDLES = {
   "1d": 60,
 };
 
-function formatNumber(value) {
+function formatRawPrice(value) {
   if (value === null || value === undefined) return "--";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return String(value);
 }
 
 function formatTurnover(value, currency) {
@@ -93,7 +93,17 @@ function pricePrecisionFromTickSize(tickSize) {
     const precision = Math.ceil(Math.abs(Math.log10(Number(normalized))));
     return Number.isFinite(precision) ? precision : null;
   }
-  return (normalized.split(".")[1] || "").length;
+  return (normalized.split(".")[1] || "").replace(/0+$/, "").length;
+}
+
+function formatPrice(value, tickSize = null) {
+  if (value === null || value === undefined) return "--";
+  const precision = pricePrecisionFromTickSize(tickSize);
+  if (precision === null) return formatRawPrice(value);
+  return Number(value).toLocaleString(undefined, {
+    minimumFractionDigits: precision,
+    maximumFractionDigits: precision,
+  });
 }
 
 function applyChartPrecision(chart, priceTickSize) {
@@ -265,7 +275,7 @@ function renderCandles(container, bars) {
 }
 
 function renderSnapshot(snapshot) {
-  lastPrice.textContent = formatNumber(snapshot.last_price);
+  lastPrice.textContent = formatPrice(snapshot.last_price, activePriceTickSize);
   changePct.textContent =
     snapshot.change_pct === null || snapshot.change_pct === undefined
       ? "--"
