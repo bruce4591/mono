@@ -128,6 +128,12 @@ class BinanceKlineWebSocketCollector:
             with connect(self.db_path) as connection:
                 apply_binance_kline_event(connection, payload)
                 self.items_synced += 1
+        except sqlite3.OperationalError as error:
+            if "locked" in str(error).lower():
+                self.last_error = str(error)
+                self._log(f"binance ws message skipped: database locked: {error}")
+                return
+            raise
         except Exception as error:
             self.last_error = str(error)
             self._log(f"binance ws message error: {type(error).__name__}: {error}")

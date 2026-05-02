@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from market.collectors.binance_ws import (
     BINANCE_WS_CONNECTION_LIFETIME_SECONDS,
@@ -207,6 +209,69 @@ class BinanceWebSocketTests(unittest.TestCase):
         self.assertTrue(any("ping" in message for message in logs))
         self.assertTrue(any("pong" in message for message in logs))
         self.assertTrue(any("closed" in message for message in logs))
+
+    def test_kline_collector_skips_database_locked_message_without_closing_callback(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            logs = []
+            message = {
+                "stream": "btcusdt@kline_1m",
+                "data": {
+                    "e": "kline",
+                    "E": 1_776_000_030_000,
+                    "s": "BTCUSDT",
+                    "k": {
+                        "t": 1_776_000_000_000,
+                        "T": 1_776_000_059_999,
+                        "s": "BTCUSDT",
+                        "i": "1m",
+                        "o": "64000.00",
+                        "c": "64100.00",
+                        "h": "64150.00",
+                        "l": "63990.00",
+                        "v": "2.5",
+                        "q": "160250.00",
+                        "x": False,
+                    },
+                },
+            }
+
+            class FakeWebSocketApp:
+                def __init__(self, url, on_message, on_error, on_close, on_open, on_ping, on_pong):
+                    self.on_message = on_message
+                    self.on_close = on_close
+
+                def run_forever(self, **kwargs):
+                    self.on_message(self, json.dumps(message))
+                    self.on_close(self, 1000, "test close")
+
+            def factory(url, on_message, on_error, on_close, on_open, on_ping, on_pong):
+                return FakeWebSocketApp(
+                    url,
+                    on_message,
+                    on_error,
+                    on_close,
+                    on_open,
+                    on_ping,
+                    on_pong,
+                )
+
+            collector = BinanceKlineWebSocketCollector(
+                db_path=db_path,
+                symbols=["BTCUSDT"],
+                websocket_app_factory=factory,
+                logger=logs.append,
+            )
+
+            with patch(
+                "market.collectors.binance_ws.apply_binance_kline_event",
+                side_effect=sqlite3.OperationalError("database is locked"),
+            ):
+                result = collector.run_once()
+
+        self.assertEqual(result.items_synced, 0)
+        self.assertTrue(any("database locked" in message for message in logs))
 
     def test_kline_collector_run_forever_reconnects_after_closed_cycle(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
