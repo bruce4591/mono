@@ -97,7 +97,7 @@ def _missing_ranges(
     start: datetime,
     end: datetime,
 ) -> list[_GapRange]:
-    existing = {
+    closed_starts = {
         _parse_utc(str(row["bar_start_ts_utc"]))
         for row in connection.execute(
             """
@@ -105,6 +105,7 @@ def _missing_ranges(
             FROM bar_intraday
             WHERE instrument_id = ?
                 AND interval = '1m'
+                AND is_closed_bar = 1
                 AND bar_start_ts_utc >= ?
                 AND bar_start_ts_utc < ?
             """,
@@ -114,7 +115,7 @@ def _missing_ranges(
     missing = []
     cursor = start
     while cursor < end:
-        if cursor not in existing:
+        if cursor not in closed_starts:
             missing.append(cursor)
         cursor += timedelta(minutes=1)
     return _contiguous_ranges(missing)

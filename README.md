@@ -228,4 +228,16 @@ Note: the current chart page loads `klinecharts@9.8.12` from jsDelivr. If you ne
 
 ## Next Implementation Slice
 
-- Then wire Binance crypto 15m as the first real data source.
+- Add the AKShare market data MVP for ETF and index focus pools:
+  - confirm the `akshare` dependency before adding it;
+  - implement fixture-backed normalizer tests first;
+  - add `sync-akshare-focus` behind the existing collector contract;
+  - refresh `ETF_FOCUS20` and `INDEX_FOCUS20` boards from daily snapshots;
+  - add a daily post-close cron script after the local sync is stable.
+- Harden personal mobile access before leaving the API broadly reachable:
+  - prefer IP restriction when the client network is stable;
+  - otherwise add a simple shared token or Nginx basic auth;
+  - move to domain + HTTPS once domain review/备案 is ready.
+- Keep the Binance WebSocket collector as the realtime crypto K-line path. The
+  remaining realtime gap is a separate ticker/miniTicker price collector if
+  sub-minute latest-price updates become necessary.

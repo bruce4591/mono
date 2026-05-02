@@ -29,6 +29,21 @@ sudo systemctl enable --now market-api.service
 sudo systemctl status market-api.service
 ```
 
+## Run Binance Kline WebSocket With systemd
+
+The WebSocket service keeps local crypto 1m K lines warm. It defaults to the
+Binance USDT quoteVolume Top60 through `MARKET_WS_TOP_USDT_LIMIT=60` in
+`deploy/systemd/market-binance-kline-ws.service`. To pin explicit symbols
+instead, set `MARKET_WS_SYMBOLS` in the service environment.
+
+```bash
+chmod +x deploy/scripts/market-run-binance-kline-ws.sh
+sudo cp deploy/systemd/market-binance-kline-ws.service /etc/systemd/system/market-binance-kline-ws.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now market-binance-kline-ws.service
+sudo systemctl status market-binance-kline-ws.service
+```
+
 ## Sync Crypto Every 15 Minutes
 
 ```bash
@@ -55,6 +70,7 @@ git pull
 .venv/bin/python -m pip install -e .
 .venv/bin/python -m unittest discover -s tests -v
 sudo systemctl restart market-api.service
+sudo systemctl restart market-binance-kline-ws.service
 ```
 
 ## Firewall

@@ -100,10 +100,11 @@ Completed:
 - CLI jobs for database initialization, health checks, watchlist sync, sample data, Binance crypto sync, ranking refresh, and combined crypto board sync.
 - Static ETF and index focus watchlists.
 - Binance crypto 15m K-line sync for `BTCUSDT` and `ETHUSDT`.
+- Binance crypto 1m K-line WebSocket collector with local aggregation and gap fill.
 - Turnover ranking snapshots.
 - Read-only API for boards, instruments, bars, watchlists, health, and jobs.
 - Mobile Web/PWA pages for rankings, instrument detail, KLineCharts K-line chart, and system status.
-- Tencent Lighthouse deployment with systemd API service and cron-based crypto sync.
+- Tencent Lighthouse deployment with systemd API and Binance K-line WebSocket services, plus cron-based crypto sync.
 
 Not yet complete:
 
@@ -207,13 +208,14 @@ Not yet complete:
 - [ ] Apply the same default rate-limit and no-retry behavior to the future AKShare collector.
 
 **Realtime price direction:**
-- [ ] Keep historical K lines, turnover, and ranking refresh on REST/scheduled jobs.
+- [x] Keep historical K lines, turnover, and ranking refresh on REST/scheduled jobs.
 - [x] Add a no-network Binance ticker event processor that updates `market_snapshot`.
 - [x] Add a CLI entry point to apply one Binance ticker event JSON payload for smoke testing.
 - [x] Poll the instrument detail snapshot every 5 seconds so latest price can update without reloading K lines.
-- [ ] Add a Binance WebSocket realtime price collector for fast price updates.
-- [ ] Respect Binance WS limits by using grouped combined streams, throttling subscribe/unsubscribe messages, and reconnecting before/after the 24-hour connection lifetime.
-- [ ] Keep board ranking refresh at minute-level cadence; do not tie ranking recompute to every realtime tick.
+- [x] Add a Binance WebSocket 1m K-line collector for realtime crypto K-line updates.
+- [x] Respect Binance WS limits by using grouped combined streams, throttling subscribe/unsubscribe messages, and reconnecting before/after the 24-hour connection lifetime.
+- [x] Keep board ranking refresh at minute-level cadence; do not tie ranking recompute to every realtime tick.
+- [ ] Add a Binance WebSocket ticker/miniTicker collector if sub-minute latest-price updates are needed.
 
 ### Slice 3: AKShare Market Data MVP
 

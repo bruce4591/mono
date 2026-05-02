@@ -150,6 +150,87 @@ class CryptoGapFillTests(unittest.TestCase):
         self.assertEqual(result.gaps_filled, 0)
         self.assertEqual(result.bars_written, 0)
 
+    def test_fill_binance_1m_gaps_refetches_open_partial_bars(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(
+                symbol: str,
+                interval: str,
+                start_time_ms: int,
+                end_time_ms: int,
+                limit: int,
+            ) -> list[list[object]]:
+                calls.append((symbol, interval, start_time_ms, end_time_ms, limit))
+                return [
+                    [
+                        _ms("2026-05-02T14:51:00Z"),
+                        "2306.74",
+                        "2308.00",
+                        "2306.73",
+                        "2308.00",
+                        "36.1682",
+                        _ms("2026-05-02T14:51:59.999Z"),
+                        "83449.000684",
+                    ]
+                ]
+
+            with connect(db_path) as connection:
+                instrument_id = InstrumentRepository(connection).upsert(
+                    binance_symbol_to_instrument("ETHUSDT")
+                )
+                IntradayBarRepository(connection).upsert(
+                    _bar(
+                        instrument_id,
+                        start="2026-05-02T14:51:00Z",
+                        end="2026-05-02T14:52:00Z",
+                        close=2306.94,
+                        is_closed_bar=False,
+                    )
+                )
+
+                result = fill_binance_1m_gaps(
+                    connection,
+                    symbols=["ETHUSDT"],
+                    start_ts_utc="2026-05-02T14:51:00Z",
+                    end_ts_utc="2026-05-02T14:52:00Z",
+                    fetcher=fetcher,
+                    now_ms=_ms("2026-05-02T14:53:00Z"),
+                )
+
+                row = connection.execute(
+                    """
+                    SELECT high, low, close, volume_raw, turnover_raw, is_closed_bar, source
+                    FROM bar_intraday
+                    JOIN instrument
+                        ON instrument.instrument_id = bar_intraday.instrument_id
+                    WHERE instrument.symbol = 'ETHUSDT'
+                        AND interval = '1m'
+                        AND bar_start_ts_utc = '2026-05-02T14:51:00Z'
+                    """
+                ).fetchone()
+
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "ETHUSDT",
+                    "1m",
+                    _ms("2026-05-02T14:51:00Z"),
+                    _ms("2026-05-02T14:51:59.999Z"),
+                    1,
+                )
+            ],
+        )
+        self.assertEqual(result.gaps_filled, 1)
+        self.assertEqual(result.bars_written, 1)
+        self.assertEqual(
+            tuple(row),
+            (2308.0, 2306.73, 2308.0, 36.1682, 83449.000684, 1, "binance_gap_fill"),
+        )
+
 
 def _bar(
     instrument_id: int,
@@ -157,6 +238,7 @@ def _bar(
     start: str,
     end: str,
     close: float,
+    is_closed_bar: bool = True,
 ) -> IntradayBar:
     return IntradayBar(
         instrument_id=instrument_id,
@@ -170,7 +252,7 @@ def _bar(
         close=close,
         volume_raw=1.0,
         turnover_raw=close,
-        is_closed_bar=True,
+        is_closed_bar=is_closed_bar,
         source="binance_ws_kline",
     )
 
