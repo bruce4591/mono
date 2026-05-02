@@ -291,6 +291,37 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("BTCUSDT,ETHUSDT interval=1m", stdout.getvalue())
 
+    def test_run_binance_kline_ws_does_not_gap_fill_in_realtime_path_by_default(self):
+        created = []
+
+        class FakeCollector:
+            def __init__(self, **kwargs):
+                created.append(kwargs)
+
+            def run_forever(self):
+                return CollectorResult(
+                    source_name="binance_ws_kline",
+                    items_synced=0,
+                    metadata={},
+                )
+
+        with patch("market.cli.BinanceKlineWebSocketCollector", FakeCollector):
+            exit_code = main(
+                [
+                    "run-binance-kline-ws",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--symbol",
+                    "BTCUSDT",
+                    "--interval",
+                    "1m",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(created[0]["symbols"], ["BTCUSDT"])
+        self.assertFalse(created[0]["gap_fill_on_reconnect"])
+
     def test_fill_crypto_kline_gaps_uses_top_symbols_and_lookback_window(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

@@ -111,6 +111,8 @@ def parse_binance_kline_event(
 def apply_binance_kline_event(
     connection: sqlite3.Connection,
     payload: dict[str, Any],
+    *,
+    aggregate: bool = True,
 ) -> IntradayBar:
     data = payload.get("data", payload)
     if not isinstance(data, dict):
@@ -129,7 +131,7 @@ def apply_binance_kline_event(
         timezone_name=instrument.timezone,
     )
     IntradayBarRepository(connection).upsert(bar)
-    if bar.interval == "1m":
+    if aggregate and bar.interval == "1m":
         aggregate_crypto_from_1m(connection, [symbol])
     _upsert_kline_price_snapshot(
         connection,

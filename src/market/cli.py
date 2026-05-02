@@ -167,6 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_kline_ws.add_argument("--interval", default="1m")
     run_kline_ws.add_argument("--max-streams-per-connection", type=int, default=200)
     run_kline_ws.add_argument("--top-usdt-limit", type=int, default=0)
+    run_kline_ws.add_argument("--gap-fill-on-reconnect", action="store_true")
     run_kline_ws.add_argument("--dry-run", action="store_true")
 
     add_alert_rule = subparsers.add_parser(
@@ -476,7 +477,7 @@ def main(argv: list[str] | None = None) -> int:
             symbols=normalized_symbols,
             interval=args.interval,
             max_streams_per_connection=args.max_streams_per_connection,
-            gap_fill_on_reconnect=True,
+            gap_fill_on_reconnect=args.gap_fill_on_reconnect,
         )
         result = collector.run_forever()
         print(

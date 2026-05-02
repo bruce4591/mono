@@ -218,7 +218,8 @@ http://127.0.0.1:8000/api/bars/intraday?market=CRYPTO&symbol=BTCUSDT&interval=15
   latency, so it can run every few minutes.
 - Real-time crypto 1m K lines use Binance WebSocket combined streams through
   `run-binance-kline-ws`. The collector writes `bar_intraday(interval='1m',
-  source='binance_ws_kline')`; local aggregation derives 5m/15m/8h/1d bars.
+  source='binance_ws_kline')` only, keeping the realtime path lightweight.
+  REST / scheduled jobs fill missing windows and derive 5m/15m/8h/1d bars.
 - Binance WebSocket connections disconnect at 24 hours and incoming control
   messages are limited to `5` per second. The collector uses grouped combined
   streams and exposes conservative throttling/reconnect constants; the packaged

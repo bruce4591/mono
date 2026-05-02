@@ -135,7 +135,7 @@ class BinanceKlineWebSocketCollector:
             with connect(self.db_path) as connection:
                 if self.gap_fill_on_reconnect and bar_start_ts_utc is not None:
                     self._fill_gap_before_bar(connection, bar_start_ts_utc)
-                apply_binance_kline_event(connection, payload)
+                apply_binance_kline_event(connection, payload, aggregate=False)
                 self.items_synced += 1
             if bar_start_ts_utc is not None:
                 self._latest_bar_ts_utc = bar_start_ts_utc
