@@ -382,7 +382,7 @@ function setupChartHistoryLoader() {
     const earliestTimestamp = normalizeChartTimestamp(earliest);
     const boundaryTimestamp = params.data?.timestamp;
     const isLeftBoundary =
-      params.type === "backward" ||
+      params.type === "forward" ||
       !Number.isFinite(boundaryTimestamp) ||
       boundaryTimestamp <= earliestTimestamp;
 

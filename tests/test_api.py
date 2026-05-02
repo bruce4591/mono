@@ -640,6 +640,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"fetchOlderBars", asset.body)
         self.assertIn(b"setupChartHistoryLoader", asset.body)
         self.assertIn(b"setLoadDataCallback", asset.body)
+        self.assertIn(b'params.type === "forward"', asset.body)
         self.assertIn(b"applyNewData(data)", asset.body)
         self.assertNotIn(b"applyNewData(data, true)", asset.body)
         self.assertIn(b"loadMoreBars", asset.body)
