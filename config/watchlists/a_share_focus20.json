@@ -3,103 +3,303 @@
   "entries": [
     {
       "market": "A_SHARE",
-      "symbol": "600519",
-      "display_name": "Kweichow Moutai",
       "exchange": "SSE",
       "instrument_type": "stock",
       "quote_currency": "CNY",
       "timezone": "Asia/Shanghai",
+      "symbol": "600519",
+      "display_name": "Kweichow Moutai",
       "sort_order": 1
     },
     {
       "market": "A_SHARE",
-      "symbol": "601318",
-      "display_name": "Ping An Insurance",
       "exchange": "SSE",
       "instrument_type": "stock",
       "quote_currency": "CNY",
       "timezone": "Asia/Shanghai",
+      "symbol": "601318",
+      "display_name": "Ping An Insurance",
       "sort_order": 2
     },
     {
       "market": "A_SHARE",
-      "symbol": "600036",
-      "display_name": "China Merchants Bank",
       "exchange": "SSE",
       "instrument_type": "stock",
       "quote_currency": "CNY",
       "timezone": "Asia/Shanghai",
+      "symbol": "600036",
+      "display_name": "China Merchants Bank",
       "sort_order": 3
     },
     {
       "market": "A_SHARE",
-      "symbol": "000001",
-      "display_name": "Ping An Bank",
       "exchange": "SZSE",
       "instrument_type": "stock",
       "quote_currency": "CNY",
       "timezone": "Asia/Shanghai",
+      "symbol": "000001",
+      "display_name": "Ping An Bank",
       "sort_order": 4
     },
     {
       "market": "A_SHARE",
-      "symbol": "000858",
-      "display_name": "Wuliangye Yibin",
       "exchange": "SZSE",
       "instrument_type": "stock",
       "quote_currency": "CNY",
       "timezone": "Asia/Shanghai",
+      "symbol": "000858",
+      "display_name": "Wuliangye Yibin",
       "sort_order": 5
     },
     {
       "market": "A_SHARE",
-      "symbol": "002594",
-      "display_name": "BYD",
       "exchange": "SZSE",
       "instrument_type": "stock",
       "quote_currency": "CNY",
       "timezone": "Asia/Shanghai",
+      "symbol": "002594",
+      "display_name": "BYD",
       "sort_order": 6
     },
     {
       "market": "A_SHARE",
-      "symbol": "300750",
-      "display_name": "CATL",
       "exchange": "SZSE",
       "instrument_type": "stock",
       "quote_currency": "CNY",
       "timezone": "Asia/Shanghai",
+      "symbol": "300750",
+      "display_name": "CATL",
       "sort_order": 7
     },
     {
       "market": "A_SHARE",
-      "symbol": "600900",
-      "display_name": "China Yangtze Power",
       "exchange": "SSE",
       "instrument_type": "stock",
       "quote_currency": "CNY",
       "timezone": "Asia/Shanghai",
+      "symbol": "600900",
+      "display_name": "China Yangtze Power",
       "sort_order": 8
     },
     {
       "market": "A_SHARE",
-      "symbol": "601899",
-      "display_name": "Zijin Mining",
       "exchange": "SSE",
       "instrument_type": "stock",
       "quote_currency": "CNY",
       "timezone": "Asia/Shanghai",
+      "symbol": "601899",
+      "display_name": "Zijin Mining",
       "sort_order": 9
     },
     {
       "market": "A_SHARE",
-      "symbol": "600030",
-      "display_name": "CITIC Securities",
       "exchange": "SSE",
       "instrument_type": "stock",
       "quote_currency": "CNY",
       "timezone": "Asia/Shanghai",
+      "symbol": "600030",
+      "display_name": "CITIC Securities",
       "sort_order": 10
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "601398",
+      "display_name": "Industrial and Commercial Bank of China",
+      "sort_order": 11
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "601288",
+      "display_name": "Agricultural Bank of China",
+      "sort_order": 12
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "601988",
+      "display_name": "Bank of China",
+      "sort_order": 13
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "600000",
+      "display_name": "Shanghai Pudong Development Bank",
+      "sort_order": 14
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "600276",
+      "display_name": "Hengrui Medicine",
+      "sort_order": 15
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SZSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "000333",
+      "display_name": "Midea Group",
+      "sort_order": 16
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SZSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "000651",
+      "display_name": "Gree Electric Appliances",
+      "sort_order": 17
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "601166",
+      "display_name": "Industrial Bank",
+      "sort_order": 18
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "600309",
+      "display_name": "Wanhua Chemical",
+      "sort_order": 19
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SZSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "002415",
+      "display_name": "Hikvision",
+      "sort_order": 20
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "601668",
+      "display_name": "China State Construction",
+      "sort_order": 21
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "600887",
+      "display_name": "Yili Group",
+      "sort_order": 22
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "600031",
+      "display_name": "Sany Heavy Industry",
+      "sort_order": 23
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "601857",
+      "display_name": "PetroChina",
+      "sort_order": 24
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "600028",
+      "display_name": "Sinopec",
+      "sort_order": 25
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SZSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "000725",
+      "display_name": "BOE Technology",
+      "sort_order": 26
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SZSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "002475",
+      "display_name": "Luxshare Precision",
+      "sort_order": 27
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SZSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "300760",
+      "display_name": "Mindray Bio-Medical",
+      "sort_order": 28
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "603259",
+      "display_name": "WuXi AppTec",
+      "sort_order": 29
+    },
+    {
+      "market": "A_SHARE",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "symbol": "600438",
+      "display_name": "Tongwei",
+      "sort_order": 30
     }
   ]
 }

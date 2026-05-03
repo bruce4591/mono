@@ -60,6 +60,7 @@ class DeployConfigTests(unittest.TestCase):
         )
 
         self.assertIn("sync-akshare-focus", script)
+        self.assertIn("--board-limit 30", script)
         self.assertIn("market-sync-akshare-focus.sh", docs)
         self.assertIn("A_SHARE_FOCUS20", docs)
         self.assertIn("HK_STOCK_FOCUS20", docs)

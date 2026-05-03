@@ -3,103 +3,303 @@
   "entries": [
     {
       "market": "US",
-      "symbol": "AAPL",
-      "display_name": "Apple",
       "exchange": "NASDAQ",
       "instrument_type": "stock",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "AAPL",
+      "display_name": "Apple",
       "sort_order": 1
     },
     {
       "market": "US",
-      "symbol": "MSFT",
-      "display_name": "Microsoft",
       "exchange": "NASDAQ",
       "instrument_type": "stock",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "MSFT",
+      "display_name": "Microsoft",
       "sort_order": 2
     },
     {
       "market": "US",
-      "symbol": "NVDA",
-      "display_name": "NVIDIA",
       "exchange": "NASDAQ",
       "instrument_type": "stock",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "NVDA",
+      "display_name": "NVIDIA",
       "sort_order": 3
     },
     {
       "market": "US",
-      "symbol": "AMZN",
-      "display_name": "Amazon",
       "exchange": "NASDAQ",
       "instrument_type": "stock",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "AMZN",
+      "display_name": "Amazon",
       "sort_order": 4
     },
     {
       "market": "US",
-      "symbol": "GOOGL",
-      "display_name": "Alphabet Class A",
       "exchange": "NASDAQ",
       "instrument_type": "stock",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "GOOGL",
+      "display_name": "Alphabet Class A",
       "sort_order": 5
     },
     {
       "market": "US",
-      "symbol": "META",
-      "display_name": "Meta Platforms",
       "exchange": "NASDAQ",
       "instrument_type": "stock",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "META",
+      "display_name": "Meta Platforms",
       "sort_order": 6
     },
     {
       "market": "US",
-      "symbol": "TSLA",
-      "display_name": "Tesla",
       "exchange": "NASDAQ",
       "instrument_type": "stock",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "TSLA",
+      "display_name": "Tesla",
       "sort_order": 7
     },
     {
       "market": "US",
-      "symbol": "AVGO",
-      "display_name": "Broadcom",
       "exchange": "NASDAQ",
       "instrument_type": "stock",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "AVGO",
+      "display_name": "Broadcom",
       "sort_order": 8
     },
     {
       "market": "US",
-      "symbol": "JPM",
-      "display_name": "JPMorgan Chase",
       "exchange": "NYSE",
       "instrument_type": "stock",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "JPM",
+      "display_name": "JPMorgan Chase",
       "sort_order": 9
     },
     {
       "market": "US",
-      "symbol": "ORCL",
-      "display_name": "Oracle",
       "exchange": "NYSE",
       "instrument_type": "stock",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "ORCL",
+      "display_name": "Oracle",
       "sort_order": 10
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "WMT",
+      "display_name": "Walmart",
+      "sort_order": 11
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "LLY",
+      "display_name": "Eli Lilly",
+      "sort_order": 12
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "V",
+      "display_name": "Visa",
+      "sort_order": 13
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "MA",
+      "display_name": "Mastercard",
+      "sort_order": 14
+    },
+    {
+      "market": "US",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "NFLX",
+      "display_name": "Netflix",
+      "sort_order": 15
+    },
+    {
+      "market": "US",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "COST",
+      "display_name": "Costco",
+      "sort_order": 16
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "XOM",
+      "display_name": "Exxon Mobil",
+      "sort_order": 17
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "PG",
+      "display_name": "Procter and Gamble",
+      "sort_order": 18
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "JNJ",
+      "display_name": "Johnson and Johnson",
+      "sort_order": 19
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "HD",
+      "display_name": "Home Depot",
+      "sort_order": 20
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "BAC",
+      "display_name": "Bank of America",
+      "sort_order": 21
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "ABBV",
+      "display_name": "AbbVie",
+      "sort_order": 22
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "KO",
+      "display_name": "Coca-Cola",
+      "sort_order": 23
+    },
+    {
+      "market": "US",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "PLTR",
+      "display_name": "Palantir",
+      "sort_order": 24
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "CRM",
+      "display_name": "Salesforce",
+      "sort_order": 25
+    },
+    {
+      "market": "US",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "AMD",
+      "display_name": "Advanced Micro Devices",
+      "sort_order": 26
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "GE",
+      "display_name": "GE Aerospace",
+      "sort_order": 27
+    },
+    {
+      "market": "US",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "CSCO",
+      "display_name": "Cisco Systems",
+      "sort_order": 28
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "IBM",
+      "display_name": "IBM",
+      "sort_order": 29
+    },
+    {
+      "market": "US",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "NOW",
+      "display_name": "ServiceNow",
+      "sort_order": 30
     }
   ]
 }

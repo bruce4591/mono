@@ -13,35 +13,35 @@ from market.watchlists import sync_watchlist_from_file
 class WatchlistConfigTests(unittest.TestCase):
     def test_akshare_focus_configs_cover_tradfi_tabs(self):
         expected = {
-            "a_share_focus20.json": ("A_SHARE_FOCUS20", "A_SHARE", "stock"),
-            "hk_stock_focus20.json": ("HK_STOCK_FOCUS20", "HK", "stock"),
-            "us_stock_focus20.json": ("US_STOCK_FOCUS20", "US", "stock"),
-            "etf_focus20.json": ("ETF_FOCUS20", "US", "etf"),
-            "index_focus20.json": ("INDEX_FOCUS20", "US", "index"),
-            "commodity_focus20.json": ("COMMODITY_FOCUS20", "CMDTY", "commodity"),
+            "a_share_focus20.json": ("A_SHARE_FOCUS20", "A_SHARE", "stock", 30),
+            "hk_stock_focus20.json": ("HK_STOCK_FOCUS20", "HK", "stock", 30),
+            "us_stock_focus20.json": ("US_STOCK_FOCUS20", "US", "stock", 30),
+            "etf_focus20.json": ("ETF_FOCUS20", "US", "etf", 30),
+            "index_focus20.json": ("INDEX_FOCUS20", "US", "index", 3),
+            "commodity_focus20.json": ("COMMODITY_FOCUS20", "CMDTY", "commodity", 30),
         }
 
-        for filename, (watchlist_name, market, instrument_type) in expected.items():
+        for filename, (watchlist_name, market, instrument_type, count) in expected.items():
             with self.subTest(filename=filename):
                 payload = json.loads((Path("config/watchlists") / filename).read_text())
                 entries = payload["entries"]
 
                 self.assertEqual(payload["watchlist_name"], watchlist_name)
-                self.assertGreaterEqual(len(entries), 3)
+                self.assertEqual(len(entries), count)
                 self.assertTrue(all(entry["market"] == market for entry in entries))
                 self.assertTrue(
                     all(entry["instrument_type"] == instrument_type for entry in entries)
                 )
 
-    def test_etf_focus_config_contains_ten_entries(self):
+    def test_etf_focus_config_contains_thirty_entries(self):
         payload = json.loads(Path("config/watchlists/etf_focus20.json").read_text())
 
         symbols = [entry["symbol"] for entry in payload["entries"]]
 
         self.assertEqual(payload["watchlist_name"], "ETF_FOCUS20")
-        self.assertEqual(len(symbols), 10)
+        self.assertEqual(len(symbols), 30)
         self.assertEqual(
-            symbols,
+            symbols[:10],
             ["SPY", "QQQ", "IWM", "DIA", "GLD", "TLT", "EEM", "XLK", "XLF", "XLE"],
         )
 

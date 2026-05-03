@@ -3,103 +3,303 @@
   "entries": [
     {
       "market": "HK",
-      "symbol": "00700",
-      "display_name": "Tencent Holdings",
       "exchange": "HKEX",
       "instrument_type": "stock",
       "quote_currency": "HKD",
       "timezone": "Asia/Hong_Kong",
+      "symbol": "00700",
+      "display_name": "Tencent Holdings",
       "sort_order": 1
     },
     {
       "market": "HK",
-      "symbol": "09988",
-      "display_name": "Alibaba Group",
       "exchange": "HKEX",
       "instrument_type": "stock",
       "quote_currency": "HKD",
       "timezone": "Asia/Hong_Kong",
+      "symbol": "09988",
+      "display_name": "Alibaba Group",
       "sort_order": 2
     },
     {
       "market": "HK",
-      "symbol": "03690",
-      "display_name": "Meituan",
       "exchange": "HKEX",
       "instrument_type": "stock",
       "quote_currency": "HKD",
       "timezone": "Asia/Hong_Kong",
+      "symbol": "03690",
+      "display_name": "Meituan",
       "sort_order": 3
     },
     {
       "market": "HK",
-      "symbol": "00941",
-      "display_name": "China Mobile",
       "exchange": "HKEX",
       "instrument_type": "stock",
       "quote_currency": "HKD",
       "timezone": "Asia/Hong_Kong",
+      "symbol": "00941",
+      "display_name": "China Mobile",
       "sort_order": 4
     },
     {
       "market": "HK",
-      "symbol": "01299",
-      "display_name": "AIA Group",
       "exchange": "HKEX",
       "instrument_type": "stock",
       "quote_currency": "HKD",
       "timezone": "Asia/Hong_Kong",
+      "symbol": "01299",
+      "display_name": "AIA Group",
       "sort_order": 5
     },
     {
       "market": "HK",
-      "symbol": "00005",
-      "display_name": "HSBC Holdings",
       "exchange": "HKEX",
       "instrument_type": "stock",
       "quote_currency": "HKD",
       "timezone": "Asia/Hong_Kong",
+      "symbol": "00005",
+      "display_name": "HSBC Holdings",
       "sort_order": 6
     },
     {
       "market": "HK",
-      "symbol": "01810",
-      "display_name": "Xiaomi",
       "exchange": "HKEX",
       "instrument_type": "stock",
       "quote_currency": "HKD",
       "timezone": "Asia/Hong_Kong",
+      "symbol": "01810",
+      "display_name": "Xiaomi",
       "sort_order": 7
     },
     {
       "market": "HK",
-      "symbol": "02318",
-      "display_name": "Ping An Insurance",
       "exchange": "HKEX",
       "instrument_type": "stock",
       "quote_currency": "HKD",
       "timezone": "Asia/Hong_Kong",
+      "symbol": "02318",
+      "display_name": "Ping An Insurance",
       "sort_order": 8
     },
     {
       "market": "HK",
-      "symbol": "03988",
-      "display_name": "Bank of China",
       "exchange": "HKEX",
       "instrument_type": "stock",
       "quote_currency": "HKD",
       "timezone": "Asia/Hong_Kong",
+      "symbol": "03988",
+      "display_name": "Bank of China",
       "sort_order": 9
     },
     {
       "market": "HK",
-      "symbol": "09618",
-      "display_name": "JD.com",
       "exchange": "HKEX",
       "instrument_type": "stock",
       "quote_currency": "HKD",
       "timezone": "Asia/Hong_Kong",
+      "symbol": "09618",
+      "display_name": "JD.com",
       "sort_order": 10
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "09888",
+      "display_name": "Baidu",
+      "sort_order": 11
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "02015",
+      "display_name": "Li Auto",
+      "sort_order": 12
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "02269",
+      "display_name": "WuXi Biologics",
+      "sort_order": 13
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "01024",
+      "display_name": "Kuaishou",
+      "sort_order": 14
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "02382",
+      "display_name": "Sunny Optical",
+      "sort_order": 15
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "01398",
+      "display_name": "ICBC",
+      "sort_order": 16
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "00883",
+      "display_name": "CNOOC",
+      "sort_order": 17
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "00857",
+      "display_name": "PetroChina",
+      "sort_order": 18
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "00388",
+      "display_name": "Hong Kong Exchanges and Clearing",
+      "sort_order": 19
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "00001",
+      "display_name": "CK Hutchison",
+      "sort_order": 20
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "00002",
+      "display_name": "CLP Holdings",
+      "sort_order": 21
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "00003",
+      "display_name": "Hong Kong and China Gas",
+      "sort_order": 22
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "01113",
+      "display_name": "CK Asset",
+      "sort_order": 23
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "00669",
+      "display_name": "Techtronic Industries",
+      "sort_order": 24
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "02628",
+      "display_name": "China Life Insurance",
+      "sort_order": 25
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "02319",
+      "display_name": "China Mengniu Dairy",
+      "sort_order": 26
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "00939",
+      "display_name": "China Construction Bank",
+      "sort_order": 27
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "01347",
+      "display_name": "Hua Hong Semiconductor",
+      "sort_order": 28
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "06618",
+      "display_name": "JD Health",
+      "sort_order": 29
+    },
+    {
+      "market": "HK",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "symbol": "09626",
+      "display_name": "Bilibili",
+      "sort_order": 30
     }
   ]
 }

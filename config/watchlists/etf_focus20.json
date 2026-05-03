@@ -3,103 +3,303 @@
   "entries": [
     {
       "market": "US",
-      "symbol": "SPY",
-      "display_name": "SPDR S&P 500 ETF Trust",
       "exchange": "NYSEARCA",
       "instrument_type": "etf",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "SPY",
+      "display_name": "SPDR S&P 500 ETF Trust",
       "sort_order": 1
     },
     {
       "market": "US",
-      "symbol": "QQQ",
-      "display_name": "Invesco QQQ Trust",
       "exchange": "NASDAQ",
       "instrument_type": "etf",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "QQQ",
+      "display_name": "Invesco QQQ Trust",
       "sort_order": 2
     },
     {
       "market": "US",
-      "symbol": "IWM",
-      "display_name": "iShares Russell 2000 ETF",
       "exchange": "NYSEARCA",
       "instrument_type": "etf",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "IWM",
+      "display_name": "iShares Russell 2000 ETF",
       "sort_order": 3
     },
     {
       "market": "US",
-      "symbol": "DIA",
-      "display_name": "SPDR Dow Jones Industrial Average ETF Trust",
       "exchange": "NYSEARCA",
       "instrument_type": "etf",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "DIA",
+      "display_name": "SPDR Dow Jones Industrial Average ETF Trust",
       "sort_order": 4
     },
     {
       "market": "US",
-      "symbol": "GLD",
-      "display_name": "SPDR Gold Shares",
       "exchange": "NYSEARCA",
       "instrument_type": "etf",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "GLD",
+      "display_name": "SPDR Gold Shares",
       "sort_order": 5
     },
     {
       "market": "US",
-      "symbol": "TLT",
-      "display_name": "iShares 20+ Year Treasury Bond ETF",
       "exchange": "NASDAQ",
       "instrument_type": "etf",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "TLT",
+      "display_name": "iShares 20+ Year Treasury Bond ETF",
       "sort_order": 6
     },
     {
       "market": "US",
-      "symbol": "EEM",
-      "display_name": "iShares MSCI Emerging Markets ETF",
       "exchange": "NYSEARCA",
       "instrument_type": "etf",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "EEM",
+      "display_name": "iShares MSCI Emerging Markets ETF",
       "sort_order": 7
     },
     {
       "market": "US",
-      "symbol": "XLK",
-      "display_name": "Technology Select Sector SPDR Fund",
       "exchange": "NYSEARCA",
       "instrument_type": "etf",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "XLK",
+      "display_name": "Technology Select Sector SPDR Fund",
       "sort_order": 8
     },
     {
       "market": "US",
-      "symbol": "XLF",
-      "display_name": "Financial Select Sector SPDR Fund",
       "exchange": "NYSEARCA",
       "instrument_type": "etf",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "XLF",
+      "display_name": "Financial Select Sector SPDR Fund",
       "sort_order": 9
     },
     {
       "market": "US",
-      "symbol": "XLE",
-      "display_name": "Energy Select Sector SPDR Fund",
       "exchange": "NYSEARCA",
       "instrument_type": "etf",
       "quote_currency": "USD",
       "timezone": "America/New_York",
+      "symbol": "XLE",
+      "display_name": "Energy Select Sector SPDR Fund",
       "sort_order": 10
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "VOO",
+      "display_name": "Vanguard S&P 500 ETF",
+      "sort_order": 11
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "IVV",
+      "display_name": "iShares Core S&P 500 ETF",
+      "sort_order": 12
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "VTI",
+      "display_name": "Vanguard Total Stock Market ETF",
+      "sort_order": 13
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "AGG",
+      "display_name": "iShares Core U.S. Aggregate Bond ETF",
+      "sort_order": 14
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "HYG",
+      "display_name": "iShares iBoxx High Yield Corporate Bond ETF",
+      "sort_order": 15
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "LQD",
+      "display_name": "iShares iBoxx Investment Grade Corporate Bond ETF",
+      "sort_order": 16
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "VNQ",
+      "display_name": "Vanguard Real Estate ETF",
+      "sort_order": 17
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "XLI",
+      "display_name": "Industrial Select Sector SPDR Fund",
+      "sort_order": 18
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "XLV",
+      "display_name": "Health Care Select Sector SPDR Fund",
+      "sort_order": 19
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "XLY",
+      "display_name": "Consumer Discretionary Select Sector SPDR Fund",
+      "sort_order": 20
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "XLP",
+      "display_name": "Consumer Staples Select Sector SPDR Fund",
+      "sort_order": 21
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "XLU",
+      "display_name": "Utilities Select Sector SPDR Fund",
+      "sort_order": 22
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "XLB",
+      "display_name": "Materials Select Sector SPDR Fund",
+      "sort_order": 23
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "XLC",
+      "display_name": "Communication Services Select Sector SPDR Fund",
+      "sort_order": 24
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "IEMG",
+      "display_name": "iShares Core MSCI Emerging Markets ETF",
+      "sort_order": 25
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "SLV",
+      "display_name": "iShares Silver Trust",
+      "sort_order": 26
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "USO",
+      "display_name": "United States Oil Fund",
+      "sort_order": 27
+    },
+    {
+      "market": "US",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "UNG",
+      "display_name": "United States Natural Gas Fund",
+      "sort_order": 28
+    },
+    {
+      "market": "US",
+      "exchange": "NASDAQ",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "TQQQ",
+      "display_name": "ProShares UltraPro QQQ",
+      "sort_order": 29
+    },
+    {
+      "market": "US",
+      "exchange": "NASDAQ",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "symbol": "SHY",
+      "display_name": "iShares 1-3 Year Treasury Bond ETF",
+      "sort_order": 30
     }
   ]
 }
