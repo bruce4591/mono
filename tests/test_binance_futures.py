@@ -124,18 +124,24 @@ class BinanceFuturesTests(unittest.TestCase):
                 {"symbol": "OLDUSDT", "quoteVolume": "9999"},
                 {"symbol": "BTCUSDT", "quoteVolume": "1000"},
                 {"symbol": "ETHUSDT", "quoteVolume": "2000"},
+                {"symbol": "COINUSDT", "quoteVolume": "3000"},
                 {"symbol": "BTCUSD_PERP", "quoteVolume": "999999"},
             ],
             {
                 "OLDUSDT": {"contractType": "PERPETUAL", "status": "BREAK", "quoteAsset": "USDT"},
                 "BTCUSDT": {"contractType": "PERPETUAL", "status": "TRADING", "quoteAsset": "USDT"},
                 "ETHUSDT": {"contractType": "PERPETUAL", "status": "TRADING", "quoteAsset": "USDT"},
+                "COINUSDT": {
+                    "contractType": "TRADIFI_PERPETUAL",
+                    "status": "TRADING",
+                    "quoteAsset": "USDT",
+                },
                 "BTCUSD_PERP": {"contractType": "PERPETUAL", "status": "TRADING", "quoteAsset": "USD"},
             },
             limit=2,
         )
 
-        self.assertEqual(symbols, ["ETHUSDT", "BTCUSDT"])
+        self.assertEqual(symbols, ["COINUSDT", "ETHUSDT"])
 
     def test_select_futures_tradefi_symbols_uses_metadata_then_allowlist(self):
         symbols = select_futures_tradefi_symbols(
@@ -146,7 +152,7 @@ class BinanceFuturesTests(unittest.TestCase):
             ],
             {
                 "COINUSDT": {
-                    "contractType": "PERPETUAL",
+                    "contractType": "TRADIFI_PERPETUAL",
                     "status": "TRADING",
                     "quoteAsset": "USDT",
                     "underlyingSubType": ["TradFi"],

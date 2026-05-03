@@ -11,6 +11,7 @@ FUTURES_TRADEFI_WATCHLIST = (
     "COINUSDT",
     "MSTRUSDT",
 )
+_ACTIVE_USDT_PERPETUAL_CONTRACT_TYPES = {"PERPETUAL", "TRADIFI_PERPETUAL"}
 
 
 def fetch_binance_futures_24hr_tickers(
@@ -149,7 +150,8 @@ def _select_ranked_futures_symbols(
 
 def _is_active_usdt_perpetual(symbol_info: dict[str, object]) -> bool:
     return (
-        str(symbol_info.get("contractType", "")).upper() == "PERPETUAL"
+        str(symbol_info.get("contractType", "")).upper()
+        in _ACTIVE_USDT_PERPETUAL_CONTRACT_TYPES
         and str(symbol_info.get("status", "")).upper() == "TRADING"
         and str(symbol_info.get("quoteAsset", "")).upper() == "USDT"
     )
