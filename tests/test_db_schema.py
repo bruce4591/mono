@@ -52,7 +52,17 @@ class DatabaseSchemaTests(unittest.TestCase):
 
         self.assertEqual(instrument_count, 1)
 
+    def test_connect_context_manager_closes_connection(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                connection.execute("SELECT 1").fetchone()
+
+            with self.assertRaises(sqlite3.ProgrammingError):
+                connection.execute("SELECT 1").fetchone()
+
 
 if __name__ == "__main__":
     unittest.main()
-
