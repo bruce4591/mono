@@ -17,7 +17,9 @@ from market.binance import (
     fetch_binance_symbol_trading_meta,
 )
 from market.binance_futures import (
+    FuturesFundingFetcher,
     fetch_binance_futures_klines_range,
+    fetch_binance_futures_premium_index,
     sync_binance_futures_daily_bars_range,
     sync_binance_futures_klines_range,
 )
@@ -27,7 +29,7 @@ from market.crypto_gaps import (
     fill_binance_futures_1m_gaps,
 )
 from market.db import connect
-from market.models import Instrument, IntradayBar
+from market.models import DailyBar, Instrument, IntradayBar
 from market.repositories import (
     AlertEventRepository,
     AlertRuleRepository,
@@ -138,6 +140,8 @@ def get_instrument_payload(
     symbol: str,
     *,
     instrument_metadata_fetcher: InstrumentMetadataFetcher = fetch_binance_symbol_trading_meta,
+    include_funding: bool = False,
+    futures_funding_fetcher: FuturesFundingFetcher = fetch_binance_futures_premium_index,
 ) -> dict[str, object] | None:
     instrument_repository = InstrumentRepository(connection)
     instrument = instrument_repository.get_by_market_symbol(market, symbol)
@@ -151,6 +155,11 @@ def get_instrument_payload(
         )
 
     snapshot = _latest_snapshot(connection, instrument.instrument_id)
+    funding_rate = (
+        _safe_futures_funding(symbol, futures_funding_fetcher)
+        if include_funding and market == "CRYPTO_FUTURES"
+        else None
+    )
     return {
         "instrument_id": instrument.instrument_id,
         "market": instrument.market,
@@ -163,7 +172,18 @@ def get_instrument_payload(
         "is_active": instrument.is_active,
         "extra_meta": instrument.extra_meta,
         "latest_snapshot": snapshot,
+        "funding_rate": funding_rate,
     }
+
+
+def _safe_futures_funding(
+    symbol: str,
+    funding_fetcher: FuturesFundingFetcher,
+) -> dict[str, object] | None:
+    try:
+        return funding_fetcher(symbol.upper())
+    except Exception:
+        return None
 
 
 def _ensure_crypto_instrument_metadata(
@@ -196,17 +216,22 @@ def get_daily_bars_payload(
     market: str,
     symbol: str,
     *,
+    before_trade_date: str | None = None,
+    limit: int | None = None,
     now_ts_utc: str | None = None,
     futures_fetcher: RangeKlineFetcher = fetch_binance_futures_klines_range,
 ) -> dict[str, object]:
     instrument_repository = InstrumentRepository(connection)
     instrument = instrument_repository.get_by_market_symbol(market, symbol)
+    resolved_limit = _clamp_limit(limit) if limit is not None else None
     if market == "CRYPTO_FUTURES" and (
         instrument is None or instrument.instrument_id is None
     ):
         _ensure_binance_futures_daily_window(
             connection,
             symbol=symbol,
+            before_trade_date=before_trade_date,
+            limit=resolved_limit or FUTURES_MIN_HISTORY_BARS,
             now_ts_utc=now_ts_utc,
             fetcher=futures_fetcher,
         )
@@ -214,15 +239,33 @@ def get_daily_bars_payload(
     if instrument is None or instrument.instrument_id is None:
         return {"market": market, "symbol": symbol, "interval": "1d", "items": []}
 
-    bars = DailyBarRepository(connection).list_for_instrument(instrument.instrument_id)
-    if market == "CRYPTO_FUTURES" and len(bars) < FUTURES_MIN_HISTORY_BARS:
+    bars = _list_daily_window(
+        connection,
+        instrument_id=instrument.instrument_id,
+        before_trade_date=before_trade_date,
+        limit=resolved_limit,
+    )
+    requested_limit = resolved_limit or FUTURES_MIN_HISTORY_BARS
+    should_backfill = market == "CRYPTO_FUTURES" and (
+        not bars
+        or (before_trade_date is not None and len(bars) < requested_limit)
+        or (before_trade_date is None and len(bars) < FUTURES_MIN_HISTORY_BARS)
+    )
+    if should_backfill:
         _ensure_binance_futures_daily_window(
             connection,
             symbol=symbol,
+            before_trade_date=before_trade_date,
+            limit=requested_limit,
             now_ts_utc=now_ts_utc,
             fetcher=futures_fetcher,
         )
-        bars = DailyBarRepository(connection).list_for_instrument(instrument.instrument_id)
+        bars = _list_daily_window(
+            connection,
+            instrument_id=instrument.instrument_id,
+            before_trade_date=before_trade_date,
+            limit=resolved_limit,
+        )
     return {
         "market": market,
         "symbol": symbol,
@@ -431,20 +474,72 @@ def _ensure_binance_futures_daily_window(
     connection: sqlite3.Connection,
     *,
     symbol: str,
+    before_trade_date: str | None,
+    limit: int,
     now_ts_utc: str | None,
     fetcher: RangeKlineFetcher,
 ) -> None:
-    current_day = _resolve_now(now_ts_utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    end = current_day + timedelta(days=1)
-    start = end - timedelta(days=FUTURES_MIN_HISTORY_BARS)
+    if before_trade_date is None:
+        current_day = _resolve_now(now_ts_utc).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        end = current_day + timedelta(days=1)
+    else:
+        end = _parse_trade_date(before_trade_date)
+    start = end - timedelta(days=limit)
     sync_binance_futures_daily_bars_range(
         connection,
         symbol=symbol,
         start_time_ms=_to_ms(start),
         end_time_ms=_to_ms(end) - 1,
-        limit=FUTURES_MIN_HISTORY_BARS,
+        limit=limit,
         fetcher=fetcher,
     )
+
+
+def _list_daily_window(
+    connection: sqlite3.Connection,
+    *,
+    instrument_id: int,
+    before_trade_date: str | None,
+    limit: int | None,
+) -> list[DailyBar]:
+    if limit is None and before_trade_date is None:
+        return DailyBarRepository(connection).list_for_instrument(instrument_id)
+    params: list[object] = [instrument_id]
+    before_filter = ""
+    if before_trade_date is not None:
+        before_filter = "AND trade_date < ?"
+        params.append(_normalize_trade_date(before_trade_date))
+    limit_clause = ""
+    if limit is not None:
+        limit_clause = "LIMIT ?"
+        params.append(limit)
+    rows = connection.execute(
+        f"""
+        SELECT
+            instrument_id,
+            trade_date,
+            open,
+            high,
+            low,
+            close,
+            volume_raw,
+            turnover_raw,
+            quote_currency,
+            source
+        FROM bar_daily
+        WHERE instrument_id = ?
+            {before_filter}
+        ORDER BY trade_date DESC
+        {limit_clause}
+        """,
+        params,
+    ).fetchall()
+    return [_daily_bar_from_row(row) for row in reversed(rows)]
 
 
 def _list_intraday_window(
@@ -487,6 +582,21 @@ def _list_intraday_window(
         params,
     ).fetchall()
     return [_intraday_bar_from_row(row) for row in reversed(rows)]
+
+
+def _daily_bar_from_row(row: sqlite3.Row) -> DailyBar:
+    return DailyBar(
+        instrument_id=int(row["instrument_id"]),
+        trade_date=str(row["trade_date"]),
+        open=_optional_float(row["open"]),
+        high=_optional_float(row["high"]),
+        low=_optional_float(row["low"]),
+        close=_optional_float(row["close"]),
+        volume_raw=_optional_float(row["volume_raw"]),
+        turnover_raw=_optional_float(row["turnover_raw"]),
+        quote_currency=str(row["quote_currency"]),
+        source=str(row["source"]),
+    )
 
 
 def _latest_intraday_window_is_stale(
@@ -779,8 +889,15 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                     return
                 market = unquote(parts[0])
                 symbol = unquote(parts[1])
+                query = parse_qs(parsed.query)
+                include_funding = _first_query(query, "include_funding") == "1"
                 with connect(db_path) as connection:
-                    payload = get_instrument_payload(connection, market, symbol)
+                    payload = get_instrument_payload(
+                        connection,
+                        market,
+                        symbol,
+                        include_funding=include_funding,
+                    )
                 if payload is None:
                     self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
                     return
@@ -791,11 +908,19 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 query = parse_qs(parsed.query)
                 market = _first_query(query, "market")
                 symbol = _first_query(query, "symbol")
+                before_trade_date = _first_query(query, "before_trade_date")
+                limit = _optional_query_int(query, "limit")
                 if market is None or symbol is None:
                     self._write_json({"error": "market and symbol required"}, HTTPStatus.BAD_REQUEST)
                     return
                 with connect(db_path) as connection:
-                    payload = get_daily_bars_payload(connection, market, symbol)
+                    payload = get_daily_bars_payload(
+                        connection,
+                        market,
+                        symbol,
+                        before_trade_date=before_trade_date,
+                        limit=limit,
+                    )
                 self._write_json(payload)
                 return
 
@@ -998,6 +1123,20 @@ def _interval_minutes(interval: str) -> int | None:
 
 def _parse_utc(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def _normalize_trade_date(value: str) -> str:
+    return datetime.fromisoformat(value).date().isoformat()
+
+
+def _parse_trade_date(value: str) -> datetime:
+    trade_date = datetime.fromisoformat(value).date()
+    return datetime(
+        trade_date.year,
+        trade_date.month,
+        trade_date.day,
+        tzinfo=UTC,
+    )
 
 
 def _resolve_now(now_ts_utc: str | None) -> datetime:

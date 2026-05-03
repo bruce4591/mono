@@ -229,6 +229,37 @@ class ApiTests(unittest.TestCase):
         assert stored is not None
         self.assertEqual(stored.extra_meta["price_tick_size"], "0.00001000")
 
+    def test_get_instrument_payload_includes_futures_funding_when_requested(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                InstrumentRepository(connection).upsert(
+                    binance_futures_symbol_to_instrument({"symbol": "ETHUSDT"})
+                )
+                payload = get_instrument_payload(
+                    connection,
+                    "CRYPTO_FUTURES",
+                    "ETHUSDT",
+                    include_funding=True,
+                    futures_funding_fetcher=lambda symbol: {
+                        "symbol": symbol,
+                        "last_funding_rate": 0.0001,
+                        "last_funding_rate_pct": 0.01,
+                        "next_funding_time_utc": "2026-05-03T12:00:00Z",
+                        "mark_price": 2301.25,
+                        "index_price": 2300.5,
+                        "source": "binance_futures_premium_index",
+                    },
+                )
+
+        self.assertIsNotNone(payload)
+        assert payload is not None
+        self.assertEqual(payload["funding_rate"]["symbol"], "ETHUSDT")
+        self.assertEqual(payload["funding_rate"]["last_funding_rate_pct"], 0.01)
+        self.assertEqual(payload["funding_rate"]["next_funding_time_utc"], "2026-05-03T12:00:00Z")
+
     def test_get_daily_bars_payload_returns_symbol_bars(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -601,6 +632,62 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["source"], "binance_futures_gap_fill")
         self.assertEqual(calls, [("ETHUSDT", "1d", 60)])
 
+    def test_get_daily_bars_payload_fetches_older_futures_daily_window(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
+                calls.append((symbol, interval, start_time_ms, end_time_ms, limit))
+                rows = []
+                start_ms = _ms("2026-03-04T00:00:00Z")
+                for index in range(60):
+                    open_time = start_ms + index * 24 * 60 * 60 * 1000
+                    rows.append(
+                        [
+                            open_time,
+                            str(100 + index),
+                            str(101 + index),
+                            str(99 + index),
+                            str(100.5 + index),
+                            "10",
+                            open_time + 24 * 60 * 60 * 1000 - 1,
+                            "1000",
+                        ]
+                    )
+                return rows
+
+            with connect(db_path) as connection:
+                InstrumentRepository(connection).upsert(
+                    binance_futures_symbol_to_instrument({"symbol": "ETHUSDT"})
+                )
+                payload = get_daily_bars_payload(
+                    connection,
+                    "CRYPTO_FUTURES",
+                    "ETHUSDT",
+                    before_trade_date="2026-05-03",
+                    limit=60,
+                    futures_fetcher=fetcher,
+                )
+
+        self.assertEqual(payload["interval"], "1d")
+        self.assertEqual(len(payload["items"]), 60)
+        self.assertEqual(payload["items"][0]["trade_date"], "2026-03-04")
+        self.assertEqual(payload["items"][-1]["trade_date"], "2026-05-02")
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "ETHUSDT",
+                    "1d",
+                    _ms("2026-03-04T00:00:00Z"),
+                    _ms("2026-05-02T23:59:59.999Z"),
+                    60,
+                )
+            ],
+        )
+
     def test_get_intraday_bars_payload_backfills_stale_latest_futures_window(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -926,6 +1013,9 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"klinecharts@9.8.12", asset.body)
         self.assertIn(b"KLineCharts", asset.body)
         self.assertIn(b'id="volume"', asset.body)
+        self.assertIn(b'id="fundingRatePanel"', asset.body)
+        self.assertIn(b'id="fundingRate"', asset.body)
+        self.assertIn(b'id="nextFundingTime"', asset.body)
         self.assertIn(b'id="intradayTitle"', asset.body)
         self.assertIn(b'/instrument.js?v=', asset.body)
         self.assertNotIn(b'id="dailyBars"', asset.body)
@@ -950,6 +1040,10 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"formatPrice(snapshot.last_price, activePriceTickSize)", asset.body)
         self.assertIn(b"formatRawPrice", asset.body)
         self.assertIn(b'replace(/0+$/, "")', asset.body)
+        self.assertIn(b"renderFundingRate", asset.body)
+        self.assertIn(b"formatFundingRate", asset.body)
+        self.assertIn(b"fetchDailyBars", asset.body)
+        self.assertIn(b"before_trade_date", asset.body)
         self.assertIn(b"setPriceVolumePrecision", asset.body)
         self.assertIn(b"fetchOlderBars", asset.body)
         self.assertIn(b"setupChartHistoryLoader", asset.body)

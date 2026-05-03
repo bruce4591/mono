@@ -7,6 +7,7 @@ from pathlib import Path
 from market.binance_futures import (
     FUTURES_TRADEFI_WATCHLIST,
     binance_futures_symbol_to_instrument,
+    parse_binance_futures_funding_rate,
     parse_binance_futures_kline,
     parse_binance_futures_24hr_ticker_snapshot,
     select_futures_tradefi_symbols,
@@ -119,6 +120,25 @@ class BinanceFuturesTests(unittest.TestCase):
         self.assertIsNone(snapshot.change_pct)
         self.assertIsNone(snapshot.volume_raw)
         self.assertIsNone(snapshot.turnover_raw)
+
+    def test_parse_futures_funding_rate_uses_premium_index_payload(self):
+        funding = parse_binance_futures_funding_rate(
+            {
+                "symbol": "ETHUSDT",
+                "lastFundingRate": "0.00010000",
+                "nextFundingTime": 1777809600000,
+                "markPrice": "2301.25",
+                "indexPrice": "2300.50",
+            }
+        )
+
+        self.assertEqual(funding["symbol"], "ETHUSDT")
+        self.assertEqual(funding["last_funding_rate"], 0.0001)
+        self.assertEqual(funding["last_funding_rate_pct"], 0.01)
+        self.assertEqual(funding["next_funding_time_utc"], "2026-05-03T12:00:00Z")
+        self.assertEqual(funding["mark_price"], 2301.25)
+        self.assertEqual(funding["index_price"], 2300.5)
+        self.assertEqual(funding["source"], "binance_futures_premium_index")
 
     def test_parse_futures_kline_uses_futures_instrument_id(self):
         bar = parse_binance_futures_kline(

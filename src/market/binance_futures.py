@@ -20,6 +20,7 @@ FUTURES_TRADEFI_WATCHLIST = (
 _ACTIVE_USDT_PERPETUAL_CONTRACT_TYPES = {"PERPETUAL", "TRADIFI_PERPETUAL"}
 
 FuturesRangeKlineFetcher = Callable[[str, str, int, int, int], list[list[object]]]
+FuturesFundingFetcher = Callable[[str], dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,42 @@ def fetch_binance_futures_klines_range(
     if not isinstance(payload, list):
         raise ValueError("unexpected Binance futures kline response")
     return payload
+
+
+def fetch_binance_futures_premium_index(
+    symbol: str,
+    *,
+    base_url: str = BINANCE_FUTURES_API_BASE,
+    timeout: float = 15.0,
+) -> dict[str, object]:
+    query = urlencode({"symbol": symbol.upper()})
+    request = Request(
+        f"{base_url}/fapi/v1/premiumIndex?{query}",
+        headers={"User-Agent": "market-mvp/0.1"},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("unexpected Binance futures premium index response")
+    return parse_binance_futures_funding_rate(payload)
+
+
+def parse_binance_futures_funding_rate(payload: dict[str, object]) -> dict[str, object]:
+    last_funding_rate = _optional_float(payload.get("lastFundingRate"))
+    next_funding_time = payload.get("nextFundingTime")
+    return {
+        "symbol": str(payload.get("symbol", "")).upper(),
+        "last_funding_rate": last_funding_rate,
+        "last_funding_rate_pct": None
+        if last_funding_rate is None
+        else last_funding_rate * 100,
+        "next_funding_time_utc": None
+        if next_funding_time in (None, "")
+        else _format_utc_ms(int(next_funding_time)),
+        "mark_price": _optional_float(payload.get("markPrice")),
+        "index_price": _optional_float(payload.get("indexPrice")),
+        "source": "binance_futures_premium_index",
+    }
 
 
 def binance_futures_symbol_to_instrument(symbol_info: dict[str, object]) -> Instrument:

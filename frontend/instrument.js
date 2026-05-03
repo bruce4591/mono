@@ -7,6 +7,9 @@ const lastPrice = document.querySelector("#lastPrice");
 const changePct = document.querySelector("#changePct");
 const turnover = document.querySelector("#turnover");
 const volume = document.querySelector("#volume");
+const fundingRatePanel = document.querySelector("#fundingRatePanel");
+const fundingRate = document.querySelector("#fundingRate");
+const nextFundingTime = document.querySelector("#nextFundingTime");
 const intradayTitle = document.querySelector("#intradayTitle");
 const chartTimezone = document.querySelector("#chartTimezone");
 const periodTabs = document.querySelector("#periodTabs");
@@ -64,6 +67,11 @@ function formatVolume(value) {
   if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
   if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
   return Number(value).toFixed(2);
+}
+
+function formatFundingRate(value) {
+  if (value === null || value === undefined) return "--";
+  return `${Number(value).toFixed(4)}%`;
 }
 
 function normalizeChartTimestamp(bar) {
@@ -176,7 +184,7 @@ function getVisibleCandles(period) {
 function renderRangeControls(period) {
   const earliest = period.items[0];
   const latest = period.items[period.items.length - 1];
-  const canLoadMore = period.type === "intraday" && Boolean(earliest);
+  const canLoadMore = (period.type === "intraday" || period.type === "daily") && Boolean(earliest);
   loadMoreBars.disabled = !canLoadMore;
   if (!earliest || !latest) {
     chartRangeHint.textContent = "--";
@@ -284,6 +292,16 @@ function renderSnapshot(snapshot) {
   volume.textContent = formatVolume(snapshot.volume_raw);
 }
 
+function renderFundingRate(funding) {
+  if (!fundingRatePanel || market !== "CRYPTO_FUTURES" || !funding) {
+    if (fundingRatePanel) fundingRatePanel.hidden = true;
+    return;
+  }
+  fundingRate.textContent = formatFundingRate(funding.last_funding_rate_pct);
+  nextFundingTime.textContent = funding.next_funding_time_utc || "--";
+  fundingRatePanel.hidden = false;
+}
+
 async function loadLatestSnapshot() {
   const response = await fetch(
     `/api/instruments/${encodeURIComponent(market)}/${encodeURIComponent(symbol)}`,
@@ -298,7 +316,9 @@ async function loadInstrument() {
   const intradayIntervals =
     market === "CRYPTO" || market === "CRYPTO_FUTURES" ? ["1m", "5m", "15m", "8h"] : ["60m"];
   const [instrumentResponse, dailyResponse, ...intradayResponses] = await Promise.all([
-    fetch(`/api/instruments/${encodeURIComponent(market)}/${encodeURIComponent(symbol)}`),
+    fetch(
+      `/api/instruments/${encodeURIComponent(market)}/${encodeURIComponent(symbol)}?include_funding=1`,
+    ),
     fetch(`/api/bars/daily?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}`),
     ...intradayIntervals.map((interval) =>
       fetchIntradayBars(interval, DEFAULT_VISIBLE_CANDLES[interval] || 96),
@@ -322,6 +342,7 @@ async function loadInstrument() {
   title.textContent = `${instrument.symbol}`;
   chartTimezone.textContent = `图表时区 ${activeTimezone} / 原始时间 UTC`;
   renderSnapshot(snapshot);
+  renderFundingRate(instrument.funding_rate);
   const periods = buildPeriods(daily, intradayPayloads);
   const selectedPeriod = periods[0];
   if (!selectedPeriod) {
@@ -348,18 +369,38 @@ async function fetchIntradayBars(interval, limit, beforeTsUtc = null) {
   return fetch(`/api/bars/intraday?${query.toString()}`);
 }
 
+async function fetchDailyBars(limit, beforeTradeDate = null) {
+  const query = new URLSearchParams({
+    market,
+    symbol,
+    limit: String(limit),
+  });
+  if (beforeTradeDate) query.set("before_trade_date", beforeTradeDate);
+  return fetch(`/api/bars/daily?${query.toString()}`);
+}
+
 async function fetchOlderBars() {
   if (isLoadingOlderBars) return;
-  if (!activePeriod || activePeriod.type !== "intraday" || !activePeriod.items.length) return;
+  if (
+    !activePeriod ||
+    !["intraday", "daily"].includes(activePeriod.type) ||
+    !activePeriod.items.length
+  ) {
+    return;
+  }
   const earliest = activePeriod.items[0];
-  const beforeTsUtc = earliest.bar_start_ts_utc;
-  if (!beforeTsUtc) return;
+  const beforeValue =
+    activePeriod.type === "daily" ? earliest.trade_date : earliest.bar_start_ts_utc;
+  if (!beforeValue) return;
   isLoadingOlderBars = true;
   loadMoreBars.disabled = true;
   loadMoreBars.textContent = "加载中";
   try {
     const limit = LOAD_MORE_CANDLES[activePeriod.label] || 96;
-    const response = await fetchIntradayBars(activePeriod.label, limit, beforeTsUtc);
+    const response =
+      activePeriod.type === "daily"
+        ? await fetchDailyBars(limit, beforeValue)
+        : await fetchIntradayBars(activePeriod.label, limit, beforeValue);
     if (!response.ok) return [];
     const payload = await response.json();
     if (!payload.items.length) {
@@ -371,7 +412,8 @@ async function fetchOlderBars() {
   } finally {
     isLoadingOlderBars = false;
     loadMoreBars.textContent = "更早";
-    loadMoreBars.disabled = !activePeriod || activePeriod.type !== "intraday";
+    loadMoreBars.disabled =
+      !activePeriod || !["intraday", "daily"].includes(activePeriod.type);
   }
 }
 
@@ -385,7 +427,7 @@ function setupChartHistoryLoader() {
   if (!activeChart || typeof activeChart.setLoadDataCallback !== "function") return;
   activeChart.setLoadDataCallback(async (params) => {
     const complete = typeof params.callback === "function" ? params.callback : () => {};
-    if (!activePeriod || activePeriod.type !== "intraday") {
+    if (!activePeriod || !["intraday", "daily"].includes(activePeriod.type)) {
       complete([], false);
       return;
     }
