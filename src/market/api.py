@@ -331,6 +331,8 @@ def _ensure_crypto_intraday_window(
     if minutes is None:
         return
     end = _parse_utc(before_ts_utc) if before_ts_utc else _resolve_now(now_ts_utc)
+    if before_ts_utc is None and market == "CRYPTO_FUTURES":
+        end += timedelta(minutes=1)
     start = end - timedelta(minutes=BINANCE_KLINES_MAX_LIMIT)
     if market == "CRYPTO_FUTURES":
         fill_func = fill_binance_futures_1m_gaps

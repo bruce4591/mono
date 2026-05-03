@@ -541,7 +541,7 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(payload["items"][-1]["bar_start_ts_utc"], "2026-05-03T00:02:00Z")
         self.assertEqual(payload["items"][-1]["high"], 3.0)
-        self.assertEqual(calls[-1], ("ETHUSDT", "1m", 2))
+        self.assertEqual(calls[-1], ("ETHUSDT", "1m", 3))
 
     def test_get_intraday_bars_payload_defaults_to_futures_fetcher_for_futures(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
