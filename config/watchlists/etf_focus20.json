@@ -50,7 +50,56 @@
       "quote_currency": "USD",
       "timezone": "America/New_York",
       "sort_order": 5
+    },
+    {
+      "market": "US",
+      "symbol": "TLT",
+      "display_name": "iShares 20+ Year Treasury Bond ETF",
+      "exchange": "NASDAQ",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 6
+    },
+    {
+      "market": "US",
+      "symbol": "EEM",
+      "display_name": "iShares MSCI Emerging Markets ETF",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 7
+    },
+    {
+      "market": "US",
+      "symbol": "XLK",
+      "display_name": "Technology Select Sector SPDR Fund",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 8
+    },
+    {
+      "market": "US",
+      "symbol": "XLF",
+      "display_name": "Financial Select Sector SPDR Fund",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 9
+    },
+    {
+      "market": "US",
+      "symbol": "XLE",
+      "display_name": "Energy Select Sector SPDR Fund",
+      "exchange": "NYSEARCA",
+      "instrument_type": "etf",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 10
     }
   ]
 }
-

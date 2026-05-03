@@ -11,6 +11,18 @@ from market.watchlists import sync_watchlist_from_file
 
 
 class WatchlistConfigTests(unittest.TestCase):
+    def test_etf_focus_config_contains_ten_entries(self):
+        payload = json.loads(Path("config/watchlists/etf_focus20.json").read_text())
+
+        symbols = [entry["symbol"] for entry in payload["entries"]]
+
+        self.assertEqual(payload["watchlist_name"], "ETF_FOCUS20")
+        self.assertEqual(len(symbols), 10)
+        self.assertEqual(
+            symbols,
+            ["SPY", "QQQ", "IWM", "DIA", "GLD", "TLT", "EEM", "XLK", "XLF", "XLE"],
+        )
+
     def test_sync_watchlist_from_file_upserts_instruments_and_replaces_entries(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -60,4 +72,3 @@ class WatchlistConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
