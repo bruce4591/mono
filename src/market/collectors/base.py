@@ -82,6 +82,7 @@ def run_collector_job(
     operation,
 ) -> CollectorResult:
     _record_job_started(connection, job_name, checkpoint, started_at_utc)
+    connection.commit()
     try:
         result = operation()
     except Exception as error:

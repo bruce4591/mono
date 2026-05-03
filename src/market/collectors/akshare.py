@@ -157,6 +157,7 @@ class AkshareCollector:
             if snapshot is not None:
                 snapshot_repository.upsert(snapshot)
                 snapshot_trade_dates.append(snapshot.trade_date_local)
+            connection.commit()
 
         resolved_trade_date = trade_date_local or (max(snapshot_trade_dates) if snapshot_trade_dates else None)
         return CollectorResult(

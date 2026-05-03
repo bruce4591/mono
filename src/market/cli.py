@@ -691,6 +691,7 @@ def main(argv: list[str] | None = None) -> int:
         with connect(db_path) as connection:
             for config_path in watchlist_configs:
                 sync_watchlist_from_file(connection, config_path)
+            connection.commit()
             ranking_counts: dict[str, int] = {}
 
             def sync_and_rank():
