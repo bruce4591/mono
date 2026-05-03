@@ -242,7 +242,7 @@ Not yet complete:
 - [x] Add CLI command `sync-akshare-focus`.
 - [x] Refresh `ETF_FOCUS20` and `INDEX_FOCUS20` boards after sync.
 - [x] Add cron script for daily post-close sync.
-- [ ] Deploy and validate status page shows updated ETF/index board snapshots.
+- [x] Deploy and validate status page shows updated ETF/index board snapshots.
 
 ### Slice 4: Access Hardening For Mobile Use
 
