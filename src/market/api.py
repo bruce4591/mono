@@ -230,9 +230,23 @@ def get_intraday_bars_payload(
     gap_fetcher: RangeKlineFetcher | None = None,
     gap_min_request_interval_seconds: float = 1.0,
 ) -> dict[str, object]:
-    instrument = InstrumentRepository(connection).get_by_market_symbol(market, symbol)
+    instrument_repository = InstrumentRepository(connection)
+    instrument = instrument_repository.get_by_market_symbol(market, symbol)
     if instrument is None or instrument.instrument_id is None:
-        return {"market": market, "symbol": symbol, "interval": interval, "items": []}
+        if market in {"CRYPTO", "CRYPTO_FUTURES"}:
+            _ensure_crypto_intraday_window(
+                connection,
+                market=market,
+                symbol=symbol,
+                interval=interval,
+                before_ts_utc=before_ts_utc,
+                now_ts_utc=now_ts_utc,
+                fetcher=gap_fetcher,
+                min_request_interval_seconds=gap_min_request_interval_seconds,
+            )
+            instrument = instrument_repository.get_by_market_symbol(market, symbol)
+        if instrument is None or instrument.instrument_id is None:
+            return {"market": market, "symbol": symbol, "interval": interval, "items": []}
 
     resolved_limit = _clamp_limit(limit)
     bars = _list_intraday_window(

@@ -451,6 +451,42 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["source"], "binance_futures_gap_fill")
         self.assertEqual(calls[0][0], "ETHUSDT")
 
+    def test_get_intraday_bars_payload_backfills_futures_window_without_existing_instrument(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
+                calls.append((symbol, interval, limit))
+                return [
+                    [
+                        _ms("2026-05-03T00:00:00Z"),
+                        "1",
+                        "2",
+                        "0.5",
+                        "1.5",
+                        "10",
+                        _ms("2026-05-03T00:00:59.999Z"),
+                        "15",
+                    ]
+                ]
+
+            with connect(db_path) as connection:
+                payload = get_intraday_bars_payload(
+                    connection,
+                    "CRYPTO_FUTURES",
+                    "ETHUSDT",
+                    "1m",
+                    now_ts_utc="2026-05-03T00:01:00Z",
+                    gap_fetcher=fetcher,
+                    gap_min_request_interval_seconds=0,
+                )
+
+        self.assertEqual(payload["items"][0]["source"], "binance_futures_gap_fill")
+        self.assertEqual(payload["items"][0]["high"], 2.0)
+        self.assertEqual(calls, [("ETHUSDT", "1m", 1000)])
+
     def test_get_intraday_bars_payload_defaults_to_futures_fetcher_for_futures(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
