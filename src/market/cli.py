@@ -683,7 +683,7 @@ def main(argv: list[str] | None = None) -> int:
             max_streams_per_connection=args.max_streams_per_connection,
             gap_fill_on_reconnect=args.gap_fill_on_reconnect,
             gap_filler=fill_futures_gaps,
-            ws_base_url="wss://fstream.binance.com",
+            ws_base_url="wss://fstream.binance.com/market",
             log_prefix="binance futures ws",
             message_handler=apply_binance_futures_kline_event,
         )

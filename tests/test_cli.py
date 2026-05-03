@@ -354,6 +354,36 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(observed_limits, [60])
 
+    def test_run_binance_futures_kline_ws_uses_market_websocket_route(self):
+        created = []
+
+        class FakeCollector:
+            def __init__(self, **kwargs):
+                created.append(kwargs)
+
+            def run_forever(self):
+                return CollectorResult(
+                    source_name="binance_futures_ws_kline",
+                    items_synced=0,
+                    metadata={},
+                )
+
+        with patch("market.cli.BinanceKlineWebSocketCollector", FakeCollector):
+            exit_code = main(
+                [
+                    "run-binance-futures-kline-ws",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--symbol",
+                    "ETHUSDT",
+                    "--interval",
+                    "1m",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(created[0]["ws_base_url"], "wss://fstream.binance.com/market")
+
     def test_run_binance_kline_ws_can_use_top_usdt_symbols(self):
         stdout = io.StringIO()
 
