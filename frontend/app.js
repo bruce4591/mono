@@ -1,3 +1,12 @@
+const TRADITIONAL_BOARDS = {
+  A_SHARE_FOCUS20: "A-SH",
+  HK_STOCK_FOCUS20: "HK",
+  US_STOCK_FOCUS20: "US",
+  ETF_FOCUS20: "ETF",
+  INDEX_FOCUS20: "IDX",
+  COMMODITY_FOCUS20: "CMDTY",
+};
+
 const CRYPTO_BOARDS = {
   CRYPTO_TURNOVER_TOP50: "Crypto",
   CRYPTO_FUTURES_TURNOVER_TOP50: "Futures",
@@ -5,7 +14,7 @@ const CRYPTO_BOARDS = {
 };
 
 const BOARD_LABELS = {
-  ETF_FOCUS20: "ETF",
+  ...TRADITIONAL_BOARDS,
   ...CRYPTO_BOARDS,
 };
 
@@ -17,6 +26,8 @@ const snapshotTime = document.querySelector("#snapshotTime");
 const boardList = document.querySelector("#boardList");
 const refreshButton = document.querySelector("#refreshButton");
 const sectionTabs = Array.from(document.querySelectorAll(".tab[data-section]"));
+const traditionalSubtabs = document.querySelector("#traditionalSubtabs");
+const traditionalBoardTabs = Array.from(document.querySelectorAll("#traditionalSubtabs [data-board]"));
 const cryptoSubtabs = document.querySelector("#cryptoSubtabs");
 const cryptoBoardTabs = Array.from(document.querySelectorAll("#cryptoSubtabs [data-board]"));
 
@@ -142,8 +153,16 @@ function renderBoard(payload) {
 
 function syncNavigation(board) {
   const isCryptoBoard = Object.prototype.hasOwnProperty.call(CRYPTO_BOARDS, board);
+  const isTraditionalBoard = Object.prototype.hasOwnProperty.call(TRADITIONAL_BOARDS, board);
   sectionTabs.forEach((tab) => {
-    tab.classList.toggle("is-active", tab.dataset.section === (isCryptoBoard ? "CRYPTO" : "ETF"));
+    tab.classList.toggle(
+      "is-active",
+      tab.dataset.section === (isCryptoBoard ? "CRYPTO" : "TRADITIONAL"),
+    );
+  });
+  traditionalSubtabs.classList.toggle("is-hidden", !isTraditionalBoard);
+  traditionalBoardTabs.forEach((tab) => {
+    tab.classList.toggle("is-active", tab.dataset.board === board);
   });
   cryptoSubtabs.classList.toggle("is-hidden", !isCryptoBoard);
   cryptoBoardTabs.forEach((tab) => {
@@ -167,6 +186,10 @@ async function loadBoard(board, options = {}) {
 }
 
 sectionTabs.forEach((tab) => {
+  tab.addEventListener("click", () => loadBoard(tab.dataset.board));
+});
+
+traditionalBoardTabs.forEach((tab) => {
   tab.addEventListener("click", () => loadBoard(tab.dataset.board));
 });
 
