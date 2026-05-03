@@ -973,6 +973,69 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(aggregate_calls, [["ETHUSDT", "BTCUSDT"]])
 
+    def test_aggregate_crypto_futures_klines_is_registered(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "aggregate-crypto-futures-klines",
+                        "--db-path",
+                        str(db_path),
+                        "--symbol",
+                        "ETHUSDT",
+                        "--dry-run",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("crypto futures aggregate ready: ETHUSDT", stdout.getvalue())
+
+    def test_aggregate_crypto_futures_klines_defaults_to_top_futures_symbols(self):
+        stdout = io.StringIO()
+        tickers = [
+            {"symbol": "ETHUSDT", "quoteVolume": "2000"},
+            {"symbol": "BTCUSDT", "quoteVolume": "1000"},
+        ]
+        exchange_info = {
+            "BTCUSDT": {
+                "symbol": "BTCUSDT",
+                "contractType": "PERPETUAL",
+                "status": "TRADING",
+                "quoteAsset": "USDT",
+            },
+            "ETHUSDT": {
+                "symbol": "ETHUSDT",
+                "contractType": "PERPETUAL",
+                "status": "TRADING",
+                "quoteAsset": "USDT",
+            },
+        }
+
+        with redirect_stdout(stdout), patch(
+            "market.cli.fetch_binance_futures_24hr_tickers",
+            return_value=tickers,
+        ), patch(
+            "market.cli.fetch_binance_futures_exchange_info",
+            return_value=exchange_info,
+        ):
+            exit_code = main(
+                [
+                    "aggregate-crypto-futures-klines",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--top-usdt-limit",
+                    "2",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("crypto futures aggregate ready: ETHUSDT,BTCUSDT", stdout.getvalue())
+
     def test_sync_crypto_board_marks_job_failed_when_ranking_refresh_fails(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

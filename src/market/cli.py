@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from market.alerts import evaluate_alert_rules
-from market.aggregators import aggregate_crypto_from_1m
+from market.aggregators import aggregate_crypto_from_1m, aggregate_market_from_1m
 from market.api import serve_api
 from market.binance import (
     fetch_binance_24hr_tickers,
@@ -154,6 +154,20 @@ def build_parser() -> argparse.ArgumentParser:
     aggregate_crypto.add_argument("--top-usdt-limit", type=int, default=60)
     aggregate_crypto.add_argument("--started-at-utc", default=None)
     aggregate_crypto.add_argument("--dry-run", action="store_true")
+
+    aggregate_futures = subparsers.add_parser(
+        "aggregate-crypto-futures-klines",
+        help="Aggregate local Binance USD-M futures 1m bars into higher intervals",
+    )
+    aggregate_futures.add_argument("--db-path", type=Path, default=None)
+    aggregate_futures.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="Futures symbol to aggregate; can be provided multiple times",
+    )
+    aggregate_futures.add_argument("--top-usdt-limit", type=int, default=60)
+    aggregate_futures.add_argument("--dry-run", action="store_true")
 
     fill_crypto_gaps = subparsers.add_parser(
         "fill-crypto-kline-gaps",
@@ -502,6 +516,25 @@ def main(argv: list[str] | None = None) -> int:
             "crypto board synced: "
             f"{len(normalized_symbols)} symbols, {ranking_count} ranking rows, "
             f"snapshot={snapshot_ts_utc}"
+        )
+        return 0
+
+    if args.command == "aggregate-crypto-futures-klines":
+        symbols = args.symbol or _top_futures_usdt_symbols(args.top_usdt_limit)
+        normalized_symbols = [symbol.upper() for symbol in symbols]
+        if args.dry_run:
+            symbol_text = ",".join(normalized_symbols) or "none"
+            print(f"crypto futures aggregate ready: {symbol_text}")
+            return 0
+        with connect(db_path) as connection:
+            result = aggregate_market_from_1m(
+                connection,
+                market="CRYPTO_FUTURES",
+                symbols=normalized_symbols,
+            )
+        print(
+            "crypto futures aggregate complete: "
+            f"{len(normalized_symbols)} symbols, {result.bars_written} bars"
         )
         return 0
 
