@@ -99,6 +99,29 @@ AKSHARE_FOCUS_CONFIGS = [
 ]
 
 
+def _watchlist_names_from_configs(configs: list[Path]) -> list[str]:
+    names: list[str] = []
+    for config in configs:
+        payload = json.loads(config.read_text(encoding="utf-8"))
+        name = str(payload["watchlist_name"])
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def _akshare_focus_specs_for_watchlists(watchlist_names: list[str]) -> list[dict[str, str]]:
+    selected = set(watchlist_names)
+    specs = [
+        spec
+        for spec in AKSHARE_FOCUS_BOARD_SPECS
+        if str(spec["watchlist_name"]) in selected
+    ]
+    if not specs:
+        raise ValueError(f"no AKShare focus board specs for watchlists: {watchlist_names}")
+    return specs
+    return specs
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="market")
     parser.add_argument("--version", action="version", version="market 0.1.0")
@@ -682,10 +705,12 @@ def main(argv: list[str] | None = None) -> int:
         now = datetime.now(tz=UTC)
         snapshot_ts_utc = args.snapshot_ts_utc or now.strftime("%Y-%m-%dT%H:%M:%SZ")
         watchlist_configs = args.watchlist_config or AKSHARE_FOCUS_CONFIGS
+        watchlist_names = _watchlist_names_from_configs(watchlist_configs)
+        board_specs = _akshare_focus_specs_for_watchlists(watchlist_names)
         if args.dry_run:
             print(
                 "akshare focus sync ready: "
-                f"{','.join(AKSHARE_FOCUS_WATCHLISTS)} days={args.days}"
+                f"{','.join(watchlist_names)} days={args.days}"
             )
             return 0
         with connect(db_path) as connection:
@@ -697,7 +722,7 @@ def main(argv: list[str] | None = None) -> int:
             def sync_and_rank():
                 result = AkshareCollector().sync_focus(
                     connection,
-                    watchlist_names=AKSHARE_FOCUS_WATCHLISTS,
+                    watchlist_names=watchlist_names,
                     days=args.days,
                     snapshot_ts_utc=snapshot_ts_utc,
                     trade_date_local=args.trade_date_local,
@@ -708,7 +733,7 @@ def main(argv: list[str] | None = None) -> int:
                     or now.date().isoformat()
                 )
                 ranking = RankingRepository(connection)
-                for spec in AKSHARE_FOCUS_BOARD_SPECS:
+                for spec in board_specs:
                     board_name = str(spec["board_name"])
                     board_trade_date = args.trade_date_local or _latest_watchlist_snapshot_trade_date(
                         connection,
@@ -733,14 +758,18 @@ def main(argv: list[str] | None = None) -> int:
                 connection,
                 job_name="sync-akshare-focus",
                 source_name="akshare",
-                checkpoint=f"{','.join(AKSHARE_FOCUS_WATCHLISTS)}:1d:{args.days}",
+                checkpoint=f"{','.join(watchlist_names)}:1d:{args.days}",
                 started_at_utc=snapshot_ts_utc,
                 operation=sync_and_rank,
             )
+        ranking_summary = ", ".join(
+            f"{spec['board_name']}={ranking_counts.get(str(spec['board_name']), 0)}"
+            for spec in board_specs
+        )
         print(
             "akshare focus synced: "
             f"{result.items_synced} daily bars, "
-            f"{', '.join(f'{board}={ranking_counts.get(board, 0)}' for board in AKSHARE_FOCUS_WATCHLISTS)}, "
+            f"{ranking_summary}, "
             f"snapshot={snapshot_ts_utc}"
         )
         return 0

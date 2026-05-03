@@ -373,6 +373,7 @@ class CliTests(unittest.TestCase):
     def test_sync_akshare_focus_ranks_each_board_by_its_latest_trade_date(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
+            calls = []
 
             class FakeAkshareCollector:
                 source_name = "akshare"
@@ -385,6 +386,7 @@ class CliTests(unittest.TestCase):
                     snapshot_ts_utc,
                     trade_date_local,
                 ):
+                    calls.append((watchlist_names, days, snapshot_ts_utc, trade_date_local))
                     rows = connection.execute(
                         """
                         SELECT instrument.instrument_id, instrument.market, instrument.quote_currency
@@ -459,10 +461,25 @@ class CliTests(unittest.TestCase):
                 us_count = connection.execute(
                     "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'US_STOCK_FOCUS20'"
                 ).fetchone()[0]
+                hk_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'HK_STOCK_FOCUS20'"
+                ).fetchone()[0]
 
         self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            calls,
+            [
+                (
+                    ["A_SHARE_FOCUS20", "US_STOCK_FOCUS20"],
+                    365,
+                    "2026-05-01T21:00:00Z",
+                    None,
+                )
+            ],
+        )
         self.assertGreater(a_share_count, 0)
         self.assertGreater(us_count, 0)
+        self.assertEqual(hk_count, 0)
 
     def test_sync_crypto_board_is_registered(self):
         exit_code = main(
