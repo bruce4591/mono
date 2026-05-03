@@ -419,7 +419,7 @@ class ApiTests(unittest.TestCase):
             calls = []
 
             def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
-                calls.append((symbol, interval, limit))
+                calls.append((symbol, interval, start_time_ms, end_time_ms, limit))
                 return [
                     [
                         _ms("2026-05-03T00:00:00Z"),
@@ -494,7 +494,7 @@ class ApiTests(unittest.TestCase):
             calls = []
 
             def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
-                calls.append((symbol, interval, limit))
+                calls.append((symbol, interval, start_time_ms, end_time_ms, limit))
                 rows = []
                 start_ms = _ms("2026-04-13T00:00:00Z")
                 for index in range(60):
@@ -540,7 +540,7 @@ class ApiTests(unittest.TestCase):
                     "ETHUSDT",
                     "8h",
                     limit=60,
-                    now_ts_utc="2026-05-03T00:00:00Z",
+                    now_ts_utc="2026-05-03T05:39:00Z",
                     gap_fetcher=fetcher,
                     gap_min_request_interval_seconds=0,
                 )
@@ -548,7 +548,18 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["interval"], "8h")
         self.assertEqual(len(payload["items"]), 60)
         self.assertEqual(payload["items"][0]["source"], "binance_futures_gap_fill")
-        self.assertEqual(calls, [("ETHUSDT", "8h", 60)])
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "ETHUSDT",
+                    "8h",
+                    _ms("2026-04-13T08:00:00Z"),
+                    _ms("2026-05-03T07:59:59.999Z"),
+                    60,
+                )
+            ],
+        )
 
     def test_get_daily_bars_payload_backfills_sixty_futures_daily_bars(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

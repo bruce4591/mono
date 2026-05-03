@@ -411,9 +411,10 @@ def _ensure_binance_futures_interval_window(
     minutes = _interval_minutes(interval)
     if minutes is None:
         return
-    end = _parse_utc(before_ts_utc) if before_ts_utc else _resolve_now(now_ts_utc)
     if before_ts_utc is None:
-        end += timedelta(minutes=minutes)
+        end = _next_interval_boundary(_resolve_now(now_ts_utc), minutes=minutes)
+    else:
+        end = _parse_utc(before_ts_utc)
     start = end - timedelta(minutes=minutes * limit)
     sync_binance_futures_klines_range(
         connection,
@@ -1003,6 +1004,13 @@ def _resolve_now(now_ts_utc: str | None) -> datetime:
     if now_ts_utc is not None:
         return _parse_utc(now_ts_utc)
     return datetime.now(UTC)
+
+
+def _next_interval_boundary(value: datetime, *, minutes: int) -> datetime:
+    interval_seconds = minutes * 60
+    epoch_seconds = int(value.astimezone(UTC).timestamp())
+    next_epoch = (epoch_seconds // interval_seconds + 1) * interval_seconds
+    return datetime.fromtimestamp(next_epoch, tz=UTC)
 
 
 def _format_utc(value: datetime) -> str:
