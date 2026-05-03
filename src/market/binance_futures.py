@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import json
-from typing import Iterable
+import sqlite3
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Callable, Iterable
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
-from market.models import Instrument, MarketSnapshot
+from market.models import Instrument, IntradayBar, MarketSnapshot
+from market.repositories import InstrumentRepository, IntradayBarRepository
 
 BINANCE_FUTURES_API_BASE = "https://fapi.binance.com"
 FUTURES_TRADEFI_WATCHLIST = (
@@ -12,6 +18,16 @@ FUTURES_TRADEFI_WATCHLIST = (
     "MSTRUSDT",
 )
 _ACTIVE_USDT_PERPETUAL_CONTRACT_TYPES = {"PERPETUAL", "TRADIFI_PERPETUAL"}
+
+FuturesRangeKlineFetcher = Callable[[str, str, int, int, int], list[list[object]]]
+
+
+@dataclass(frozen=True)
+class BinanceFuturesSyncResult:
+    symbol: str
+    interval: str
+    bars: int
+    latest_close: float | None
 
 
 def fetch_binance_futures_24hr_tickers(
@@ -53,6 +69,36 @@ def fetch_binance_futures_exchange_info(
     }
 
 
+def fetch_binance_futures_klines_range(
+    symbol: str,
+    interval: str,
+    start_time_ms: int,
+    end_time_ms: int,
+    limit: int,
+    *,
+    base_url: str = BINANCE_FUTURES_API_BASE,
+    timeout: float = 15.0,
+) -> list[list[object]]:
+    query = urlencode(
+        {
+            "symbol": symbol.upper(),
+            "interval": interval,
+            "startTime": start_time_ms,
+            "endTime": end_time_ms,
+            "limit": limit,
+        }
+    )
+    request = Request(
+        f"{base_url}/fapi/v1/klines?{query}",
+        headers={"User-Agent": "market-mvp/0.1"},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("unexpected Binance futures kline response")
+    return payload
+
+
 def binance_futures_symbol_to_instrument(symbol_info: dict[str, object]) -> Instrument:
     symbol = str(symbol_info.get("symbol", "")).upper()
     quote_asset = str(symbol_info.get("quoteAsset") or "USDT").upper()
@@ -70,6 +116,81 @@ def binance_futures_symbol_to_instrument(symbol_info: dict[str, object]) -> Inst
             "underlying_type": symbol_info.get("underlyingType"),
             "underlying_sub_type": symbol_info.get("underlyingSubType") or [],
         },
+    )
+
+
+def parse_binance_futures_kline(
+    *,
+    instrument_id: int,
+    interval: str,
+    row: list[object],
+    timezone_name: str,
+    now_ms: int | None = None,
+    source: str = "binance_futures",
+) -> IntradayBar:
+    if len(row) < 8:
+        raise ValueError("Binance futures kline row must include at least 8 fields")
+    open_time_ms = int(row[0])
+    close_time_ms = int(row[6])
+    resolved_now_ms = now_ms or int(datetime.now(tz=UTC).timestamp() * 1000)
+    timezone = ZoneInfo(timezone_name)
+    local_start = datetime.fromtimestamp(open_time_ms / 1000, tz=UTC).astimezone(timezone)
+    return IntradayBar(
+        instrument_id=instrument_id,
+        interval=interval,
+        bar_start_ts_utc=_format_utc_ms(open_time_ms),
+        bar_end_ts_utc=_format_utc_ms(close_time_ms + 1),
+        trade_date_local=local_start.date().isoformat(),
+        open=_optional_float(row[1]),
+        high=_optional_float(row[2]),
+        low=_optional_float(row[3]),
+        close=_optional_float(row[4]),
+        volume_raw=_optional_float(row[5]),
+        turnover_raw=_optional_float(row[7]),
+        is_closed_bar=close_time_ms < resolved_now_ms,
+        source=source,
+    )
+
+
+def sync_binance_futures_klines_range(
+    connection: sqlite3.Connection,
+    *,
+    symbol: str,
+    interval: str,
+    start_time_ms: int,
+    end_time_ms: int,
+    limit: int,
+    now_ms: int | None = None,
+    source: str = "binance_futures_gap_fill",
+    fetcher: FuturesRangeKlineFetcher = fetch_binance_futures_klines_range,
+) -> BinanceFuturesSyncResult:
+    normalized_symbol = symbol.upper()
+    instrument = binance_futures_symbol_to_instrument({"symbol": normalized_symbol})
+    instrument_id = InstrumentRepository(connection).upsert(instrument)
+    rows = fetcher(normalized_symbol, interval, start_time_ms, end_time_ms, limit)
+    resolved_now_ms = now_ms or int(datetime.now(tz=UTC).timestamp() * 1000)
+
+    bars = [
+        parse_binance_futures_kline(
+            instrument_id=instrument_id,
+            interval=interval,
+            row=row,
+            timezone_name=instrument.timezone,
+            now_ms=resolved_now_ms,
+            source=source,
+        )
+        for row in rows
+    ]
+    repository = IntradayBarRepository(connection)
+    for bar in bars:
+        repository.upsert(bar)
+
+    latest = bars[-1] if bars else None
+    return BinanceFuturesSyncResult(
+        symbol=normalized_symbol,
+        interval=interval,
+        bars=len(bars),
+        latest_close=latest.close if latest else None,
     )
 
 
@@ -168,3 +289,7 @@ def _optional_float(value) -> float | None:
     if value in (None, ""):
         return None
     return float(value)
+
+
+def _format_utc_ms(timestamp_ms: int) -> str:
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")

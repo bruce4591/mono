@@ -615,10 +615,13 @@ class ApiTests(unittest.TestCase):
         asset = get_static_asset("/index.html")
         script = get_static_asset("/app.js")
 
+        self.assertIn(b'data-section="ETF"', asset.body)
+        self.assertIn(b'data-section="CRYPTO"', asset.body)
+        self.assertIn(b'id="cryptoSubtabs"', asset.body)
         self.assertIn(b'data-board="CRYPTO_TURNOVER_TOP50"', asset.body)
         self.assertIn(b'data-board="CRYPTO_FUTURES_TURNOVER_TOP50"', asset.body)
         self.assertIn(b'data-board="CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50"', asset.body)
-        self.assertIn(b'CRYPTO_FUTURES_TURNOVER_TOP50: "Futures"', script.body)
+        self.assertIn(b"const CRYPTO_BOARDS =", script.body)
         self.assertIn(b'CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50: "TradeFi"', script.body)
 
     def test_get_static_asset_returns_instrument_detail_page(self):

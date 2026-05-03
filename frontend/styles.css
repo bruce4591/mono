@@ -105,6 +105,34 @@ h1 {
   color: var(--text);
 }
 
+.subtabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: -6px 0 14px;
+}
+
+.subtabs.is-hidden {
+  display: none;
+}
+
+.subtab {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(22, 29, 36, 0.78);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.subtab.is-active {
+  border-color: rgba(70, 194, 163, 0.58);
+  background: rgba(18, 50, 41, 0.82);
+  color: var(--text);
+}
+
 .board-meta {
   display: flex;
   justify-content: space-between;

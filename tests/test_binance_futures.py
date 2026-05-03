@@ -7,13 +7,15 @@ from pathlib import Path
 from market.binance_futures import (
     FUTURES_TRADEFI_WATCHLIST,
     binance_futures_symbol_to_instrument,
+    parse_binance_futures_kline,
     parse_binance_futures_24hr_ticker_snapshot,
     select_futures_tradefi_symbols,
     select_top_futures_usdt_symbols,
+    sync_binance_futures_klines_range,
 )
 from market.db import connect, init_database
 from market.models import Instrument
-from market.repositories import InstrumentRepository
+from market.repositories import InstrumentRepository, IntradayBarRepository
 
 
 class BinanceFuturesTests(unittest.TestCase):
@@ -117,6 +119,121 @@ class BinanceFuturesTests(unittest.TestCase):
         self.assertIsNone(snapshot.change_pct)
         self.assertIsNone(snapshot.volume_raw)
         self.assertIsNone(snapshot.turnover_raw)
+
+    def test_parse_futures_kline_uses_futures_instrument_id(self):
+        bar = parse_binance_futures_kline(
+            instrument_id=42,
+            interval="1m",
+            row=[
+                1777000000000,
+                "2300.10",
+                "2308.00",
+                "2299.50",
+                "2307.25",
+                "12.5",
+                1777000059999,
+                "28840.625",
+            ],
+            timezone_name="UTC",
+        )
+
+        self.assertEqual(bar.instrument_id, 42)
+        self.assertEqual(bar.interval, "1m")
+        self.assertEqual(bar.bar_start_ts_utc, "2026-04-24T03:06:40Z")
+        self.assertEqual(bar.bar_end_ts_utc, "2026-04-24T03:07:40Z")
+        self.assertEqual(bar.open, 2300.10)
+        self.assertEqual(bar.high, 2308.00)
+        self.assertEqual(bar.low, 2299.50)
+        self.assertEqual(bar.close, 2307.25)
+        self.assertEqual(bar.volume_raw, 12.5)
+        self.assertEqual(bar.turnover_raw, 28840.625)
+        self.assertEqual(bar.source, "binance_futures")
+
+    def test_parse_futures_kline_treats_empty_numeric_fields_as_missing(self):
+        bar = parse_binance_futures_kline(
+            instrument_id=42,
+            interval="1m",
+            row=[
+                1777000000000,
+                "",
+                "",
+                "",
+                "",
+                "",
+                1777000059999,
+                "",
+            ],
+            timezone_name="UTC",
+        )
+
+        self.assertIsNone(bar.open)
+        self.assertIsNone(bar.high)
+        self.assertIsNone(bar.low)
+        self.assertIsNone(bar.close)
+        self.assertIsNone(bar.volume_raw)
+        self.assertIsNone(bar.turnover_raw)
+
+    def test_sync_futures_klines_range_writes_crypto_futures_bars(self):
+        rows = [
+            [
+                1777000000000,
+                "2300.10",
+                "2308.00",
+                "2299.50",
+                "2307.25",
+                "12.5",
+                1777000059999,
+                "28840.625",
+            ]
+        ]
+
+        def fake_fetcher(
+            symbol: str,
+            interval: str,
+            start_time_ms: int,
+            end_time_ms: int,
+            limit: int,
+        ) -> list[list[object]]:
+            self.assertEqual(symbol, "ETHUSDT")
+            self.assertEqual(interval, "1m")
+            self.assertEqual(start_time_ms, 1777000000000)
+            self.assertEqual(end_time_ms, 1777000059999)
+            self.assertEqual(limit, 1500)
+            return rows
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                result = sync_binance_futures_klines_range(
+                    connection,
+                    symbol="ethusdt",
+                    interval="1m",
+                    start_time_ms=1777000000000,
+                    end_time_ms=1777000059999,
+                    limit=1500,
+                    fetcher=fake_fetcher,
+                )
+
+                instrument = InstrumentRepository(connection).get_by_market_symbol(
+                    "CRYPTO_FUTURES", "ETHUSDT"
+                )
+                self.assertIsNotNone(instrument)
+                assert instrument is not None
+                bars = IntradayBarRepository(connection).list_for_instrument(
+                    instrument.instrument_id,
+                    "1m",
+                )
+
+        self.assertEqual(result.symbol, "ETHUSDT")
+        self.assertEqual(result.interval, "1m")
+        self.assertEqual(result.bars, 1)
+        self.assertEqual(result.latest_close, 2307.25)
+        self.assertEqual(instrument.market, "CRYPTO_FUTURES")
+        self.assertEqual(instrument.instrument_type, "crypto_futures")
+        self.assertEqual(len(bars), 1)
+        self.assertEqual(bars[0].source, "binance_futures_gap_fill")
 
     def test_select_top_futures_usdt_symbols_filters_perpetual_trading_usdt(self):
         symbols = select_top_futures_usdt_symbols(

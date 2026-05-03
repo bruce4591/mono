@@ -1,8 +1,12 @@
-const BOARD_LABELS = {
-  ETF_FOCUS20: "ETF",
+const CRYPTO_BOARDS = {
   CRYPTO_TURNOVER_TOP50: "Crypto",
   CRYPTO_FUTURES_TURNOVER_TOP50: "Futures",
   CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50: "TradeFi",
+};
+
+const BOARD_LABELS = {
+  ETF_FOCUS20: "ETF",
+  ...CRYPTO_BOARDS,
 };
 
 let activeBoard = "ETF_FOCUS20";
@@ -12,7 +16,9 @@ const boardName = document.querySelector("#boardName");
 const snapshotTime = document.querySelector("#snapshotTime");
 const boardList = document.querySelector("#boardList");
 const refreshButton = document.querySelector("#refreshButton");
-const tabs = Array.from(document.querySelectorAll(".tab"));
+const sectionTabs = Array.from(document.querySelectorAll(".tab[data-section]"));
+const cryptoSubtabs = document.querySelector("#cryptoSubtabs");
+const cryptoBoardTabs = Array.from(document.querySelectorAll("#cryptoSubtabs [data-board]"));
 
 function formatTurnover(value, currency) {
   const abs = Math.abs(value);
@@ -118,11 +124,20 @@ function renderBoard(payload) {
     .join("");
 }
 
+function syncNavigation(board) {
+  const isCryptoBoard = Object.prototype.hasOwnProperty.call(CRYPTO_BOARDS, board);
+  sectionTabs.forEach((tab) => {
+    tab.classList.toggle("is-active", tab.dataset.section === (isCryptoBoard ? "CRYPTO" : "ETF"));
+  });
+  cryptoSubtabs.classList.toggle("is-hidden", !isCryptoBoard);
+  cryptoBoardTabs.forEach((tab) => {
+    tab.classList.toggle("is-active", tab.dataset.board === board);
+  });
+}
+
 async function loadBoard(board, options = {}) {
   activeBoard = board;
-  tabs.forEach((tab) => {
-    tab.classList.toggle("is-active", tab.dataset.board === activeBoard);
-  });
+  syncNavigation(board);
   if (!options.silent) boardList.innerHTML = '<div class="empty">加载中</div>';
   try {
     const response = await fetch(`/api/boards/${encodeURIComponent(board)}`);
@@ -135,7 +150,11 @@ async function loadBoard(board, options = {}) {
   }
 }
 
-tabs.forEach((tab) => {
+sectionTabs.forEach((tab) => {
+  tab.addEventListener("click", () => loadBoard(tab.dataset.board));
+});
+
+cryptoBoardTabs.forEach((tab) => {
   tab.addEventListener("click", () => loadBoard(tab.dataset.board));
 });
 

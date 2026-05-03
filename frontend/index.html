@@ -24,10 +24,14 @@
       </header>
 
       <nav class="tabs" aria-label="榜单切换">
-        <button class="tab is-active" type="button" data-board="ETF_FOCUS20">ETF</button>
-        <button class="tab" type="button" data-board="CRYPTO_TURNOVER_TOP50">Crypto</button>
-        <button class="tab" type="button" data-board="CRYPTO_FUTURES_TURNOVER_TOP50">Futures</button>
-        <button class="tab" type="button" data-board="CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50">TradeFi</button>
+        <button class="tab is-active" type="button" data-section="ETF" data-board="ETF_FOCUS20">ETF</button>
+        <button class="tab" type="button" data-section="CRYPTO" data-board="CRYPTO_TURNOVER_TOP50">Crypto</button>
+      </nav>
+
+      <nav class="subtabs is-hidden" id="cryptoSubtabs" aria-label="Crypto 榜单切换">
+        <button class="subtab is-active" type="button" data-board="CRYPTO_TURNOVER_TOP50">Crypto</button>
+        <button class="subtab" type="button" data-board="CRYPTO_FUTURES_TURNOVER_TOP50">Futures</button>
+        <button class="subtab" type="button" data-board="CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50">TradeFi</button>
       </nav>
 
       <section class="board-meta" aria-live="polite">
