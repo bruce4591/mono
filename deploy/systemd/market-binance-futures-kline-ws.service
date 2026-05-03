@@ -1,0 +1,18 @@
+[Unit]
+Description=Market Binance USD-M futures 1m kline WebSocket collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/github/mono
+Environment=MARKET_APP_DIR=/home/ubuntu/github/mono
+Environment=MARKET_DB_PATH=/home/ubuntu/github/mono/data/market.sqlite3
+Environment=MARKET_FUTURES_WS_TOP_USDT_LIMIT=60
+ExecStart=/home/ubuntu/github/mono/deploy/scripts/market-run-binance-futures-kline-ws.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

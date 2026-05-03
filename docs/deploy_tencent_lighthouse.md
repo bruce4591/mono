@@ -44,6 +44,21 @@ sudo systemctl enable --now market-binance-kline-ws.service
 sudo systemctl status market-binance-kline-ws.service
 ```
 
+## Run Binance Futures Kline WebSocket With systemd
+
+The futures WebSocket service keeps Binance USD-M futures 1m K lines warm under
+`market='CRYPTO_FUTURES'`. It defaults to the futures USDT quoteVolume Top60
+through `MARKET_FUTURES_WS_TOP_USDT_LIMIT=60`. TradeFi uses the same futures
+K-line storage; it does not need a separate WebSocket service.
+
+```bash
+chmod +x deploy/scripts/market-run-binance-futures-kline-ws.sh
+sudo cp deploy/systemd/market-binance-futures-kline-ws.service /etc/systemd/system/market-binance-futures-kline-ws.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now market-binance-futures-kline-ws.service
+sudo systemctl status market-binance-futures-kline-ws.service
+```
+
 ## Sync Crypto Every 15 Minutes
 
 This job refreshes 24h snapshots and the turnover board only. It runs
@@ -84,6 +99,19 @@ chmod +x /home/ubuntu/bin/market-aggregate-crypto.sh
 (crontab -l 2>/dev/null | grep -v market-aggregate-crypto.sh; echo "*/5 * * * * /home/ubuntu/bin/market-aggregate-crypto.sh >> /home/ubuntu/github/mono/logs/crypto-aggregate.log 2>&1") | crontab -
 ```
 
+## Aggregate Crypto Futures K Lines Every 5 Minutes
+
+This job only reads local futures WebSocket 1m bars and incrementally upserts
+higher intervals. It does not call Binance REST and it does not replace the
+futures ranking sync.
+
+```bash
+mkdir -p /home/ubuntu/bin
+cp deploy/scripts/market-aggregate-crypto-futures.sh /home/ubuntu/bin/market-aggregate-crypto-futures.sh
+chmod +x /home/ubuntu/bin/market-aggregate-crypto-futures.sh
+(crontab -l 2>/dev/null | grep -v market-aggregate-crypto-futures.sh; echo "*/5 * * * * /home/ubuntu/bin/market-aggregate-crypto-futures.sh >> /home/ubuntu/github/mono/logs/crypto-futures-aggregate.log 2>&1") | crontab -
+```
+
 ## Sync Crypto Daily History
 
 ```bash
@@ -102,6 +130,7 @@ git pull
 .venv/bin/python -m unittest discover -s tests -v
 sudo systemctl restart market-api.service
 sudo systemctl restart market-binance-kline-ws.service
+sudo systemctl restart market-binance-futures-kline-ws.service
 ```
 
 ## Firewall

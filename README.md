@@ -124,6 +124,15 @@ This command refreshes `CRYPTO_FUTURES_TURNOVER_TOP50` and
 `CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50`. It does not subscribe to WebSockets or
 aggregate local bars.
 
+Aggregate higher Binance USD-M futures K line intervals from local 1m bars
+without REST calls:
+
+```bash
+.venv/bin/market aggregate-crypto-futures-klines \
+  --db-path ./data/market.sqlite3 \
+  --top-usdt-limit 60
+```
+
 Aggregate higher crypto K line intervals from local 1m bars without REST calls.
 The aggregator starts from the last existing target interval bar, then only
 uses later 1m bars to upsert 5m/15m/8h/1d windows:
@@ -142,6 +151,17 @@ Run the optional Binance 1m kline WebSocket collector after installing
   --db-path ./data/market.sqlite3 \
   --top-usdt-limit 60 \
   --interval 1m
+```
+
+Run the Binance USD-M futures 1m kline WebSocket collector separately. It uses
+the same top-60 default and fills missing windows only after reconnect gaps:
+
+```bash
+.venv/bin/market run-binance-futures-kline-ws \
+  --db-path ./data/market.sqlite3 \
+  --top-usdt-limit 60 \
+  --interval 1m \
+  --gap-fill-on-reconnect
 ```
 
 Fill missing 1m crypto K line windows with REST only when gaps exist:
@@ -242,6 +262,11 @@ http://127.0.0.1:8000/api/bars/intraday?market=CRYPTO&symbol=BTCUSDT&interval=15
   `run-binance-kline-ws`. The collector writes `bar_intraday(interval='1m',
   source='binance_ws_kline')` only, keeping the realtime path lightweight.
   REST / scheduled jobs fill missing windows and derive 5m/15m/8h/1d bars.
+- Real-time Binance USD-M futures 1m K lines use
+  `run-binance-futures-kline-ws`. The collector writes
+  `bar_intraday(interval='1m', source='binance_futures_ws_kline')` under
+  `market='CRYPTO_FUTURES'`; TradeFi uses the same futures K-line storage.
+  Futures ranking sync remains separate and does not pull K lines.
 - Binance WebSocket connections disconnect at 24 hours and incoming control
   messages are limited to `5` per second. The collector uses grouped combined
   streams and exposes conservative throttling/reconnect constants; the packaged
