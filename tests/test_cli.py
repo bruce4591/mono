@@ -481,6 +481,51 @@ class CliTests(unittest.TestCase):
         self.assertGreater(us_count, 0)
         self.assertEqual(hk_count, 0)
 
+    def test_sync_akshare_focus_passes_request_timeout_to_collector(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            created_timeouts = []
+
+            class FakeAkshareCollector:
+                source_name = "akshare"
+
+                def __init__(self, request_timeout_seconds=30.0):
+                    created_timeouts.append(request_timeout_seconds)
+
+                def sync_focus(
+                    self,
+                    connection,
+                    watchlist_names,
+                    days,
+                    snapshot_ts_utc,
+                    trade_date_local,
+                ):
+                    return CollectorResult(
+                        source_name=self.source_name,
+                        items_synced=0,
+                        metadata={"watchlists": watchlist_names},
+                    )
+
+            with redirect_stdout(io.StringIO()), patch(
+                "market.cli.AkshareCollector",
+                FakeAkshareCollector,
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "sync-akshare-focus",
+                        "--db-path",
+                        str(db_path),
+                        "--watchlist-config",
+                        "config/watchlists/us_stock_focus20.json",
+                        "--request-timeout-seconds",
+                        "7.5",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(created_timeouts, [7.5])
+
     def test_sync_crypto_board_is_registered(self):
         exit_code = main(
             [

@@ -61,6 +61,7 @@ class DeployConfigTests(unittest.TestCase):
 
         self.assertIn("sync-akshare-focus", script)
         self.assertIn("--board-limit 30", script)
+        self.assertIn("--request-timeout-seconds 30", script)
         self.assertIn("--watchlist-config", script)
         self.assertIn("market-sync-akshare-focus.sh", docs)
         self.assertIn("A_SHARE_FOCUS20", docs)

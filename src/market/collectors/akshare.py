@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import math
+import signal
 import sqlite3
+from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from time import sleep as default_sleep
 from typing import Callable
@@ -12,6 +14,7 @@ from market.repositories import DailyBarRepository, MarketSnapshotRepository, Wa
 
 
 AKSHARE_DEFAULT_MIN_REQUEST_INTERVAL_SECONDS = 1.0
+AKSHARE_DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0
 AKSHARE_INDEX_SYMBOLS = {
     "SPX": ".INX",
     "NDX": ".NDX",
@@ -29,10 +32,12 @@ class AkshareCollector:
         *,
         daily_fetcher: AkshareDailyFetcher | None = None,
         min_request_interval_seconds: float = AKSHARE_DEFAULT_MIN_REQUEST_INTERVAL_SECONDS,
+        request_timeout_seconds: float = AKSHARE_DEFAULT_REQUEST_TIMEOUT_SECONDS,
         sleep: Callable[[float], None] = default_sleep,
     ) -> None:
         self.daily_fetcher = daily_fetcher or fetch_akshare_daily_frame
         self.min_request_interval_seconds = min_request_interval_seconds
+        self.request_timeout_seconds = request_timeout_seconds
         self.rate_limiter = RequestRateLimiter(
             min_request_interval_seconds,
             sleep=sleep,
@@ -136,7 +141,7 @@ class AkshareCollector:
             try:
                 bars = parse_akshare_daily_frame(
                     instrument_id=instrument.instrument_id,
-                    frame=self.daily_fetcher(instrument),
+                    frame=self._fetch_daily_frame(instrument),
                     quote_currency=instrument.quote_currency,
                     source=self.source_name,
                 )
@@ -169,8 +174,13 @@ class AkshareCollector:
                 "trade_date_local": resolved_trade_date,
                 "failed_symbols": failed_symbols,
                 "min_request_interval_seconds": self.min_request_interval_seconds,
+                "request_timeout_seconds": self.request_timeout_seconds,
             },
         )
+
+    def _fetch_daily_frame(self, instrument: Instrument):
+        with _request_timeout(self.request_timeout_seconds, instrument):
+            return self.daily_fetcher(instrument)
 
 
 def fetch_akshare_daily_frame(instrument: Instrument):
@@ -376,6 +386,31 @@ def _percent_change(previous: float | None, current: float | None) -> float | No
 
 def _now_utc() -> str:
     return datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@contextmanager
+def _request_timeout(timeout_seconds: float, instrument: Instrument):
+    if timeout_seconds <= 0:
+        yield
+        return
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, 0)
+
+    def handle_timeout(signum, frame):
+        raise TimeoutError(
+            f"akshare request timed out after {timeout_seconds:g}s: "
+            f"{instrument.market}:{instrument.symbol}"
+        )
+
+    signal.signal(signal.SIGALRM, handle_timeout)
+    signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        if previous_timer[0] > 0:
+            signal.setitimer(signal.ITIMER_REAL, previous_timer[0], previous_timer[1])
 
 
 def _load_akshare():

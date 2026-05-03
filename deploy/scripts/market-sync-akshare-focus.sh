@@ -20,5 +20,6 @@ for config in "${CONFIGS[@]}"; do
     --db-path "$DB_PATH" \
     --days 365 \
     --board-limit 30 \
+    --request-timeout-seconds 30 \
     --watchlist-config "$config"
 done

@@ -26,6 +26,7 @@ from market.binance_futures import (
     select_top_futures_usdt_symbols,
 )
 from market.collectors.akshare import AkshareCollector
+from market.collectors.akshare import AKSHARE_DEFAULT_REQUEST_TIMEOUT_SECONDS
 from market.collectors.binance import BinanceCollector
 from market.collectors.binance_ws import BinanceKlineWebSocketCollector
 from market.collectors.base import CollectorResult, run_collector_job
@@ -286,6 +287,12 @@ def build_parser() -> argparse.ArgumentParser:
     sync_akshare_focus.add_argument("--snapshot-ts-utc", default=None)
     sync_akshare_focus.add_argument("--trade-date-local", default=None)
     sync_akshare_focus.add_argument("--board-limit", type=int, default=20)
+    sync_akshare_focus.add_argument(
+        "--request-timeout-seconds",
+        type=float,
+        default=AKSHARE_DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        help="Maximum seconds to wait for one AKShare instrument request",
+    )
     sync_akshare_focus.add_argument(
         "--watchlist-config",
         action="append",
@@ -720,7 +727,9 @@ def main(argv: list[str] | None = None) -> int:
             ranking_counts: dict[str, int] = {}
 
             def sync_and_rank():
-                result = AkshareCollector().sync_focus(
+                result = AkshareCollector(
+                    request_timeout_seconds=args.request_timeout_seconds,
+                ).sync_focus(
                     connection,
                     watchlist_names=watchlist_names,
                     days=args.days,
