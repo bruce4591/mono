@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 
 from market.collectors.alpaca import AlpacaCollector, parse_alpaca_daily_bar
@@ -146,6 +147,65 @@ class AlpacaTests(unittest.TestCase):
         self.assertEqual(snapshot["turnover_raw"], 280.14 * 80105508)
         self.assertEqual(snapshot["trade_date_local"], "2026-05-01")
         self.assertEqual(snapshot["source"], "alpaca")
+
+    def test_alpaca_collector_uses_non_recent_end_time_for_basic_plan(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            config_path = Path(tmp_dir) / "us.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "watchlist_name": "US_STOCK_FOCUS20",
+                        "entries": [
+                            {
+                                "market": "US",
+                                "symbol": "AAPL",
+                                "display_name": "Apple",
+                                "exchange": "NASDAQ",
+                                "instrument_type": "stock",
+                                "quote_currency": "USD",
+                                "timezone": "America/New_York",
+                                "sort_order": 1,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbols, start, end, timeout):
+                calls.append((start, end))
+                return {
+                    "AAPL": [
+                        {
+                            "t": "2026-05-01T04:00:00Z",
+                            "o": 278.855,
+                            "h": 287.22,
+                            "l": 278.37,
+                            "c": 280.14,
+                            "v": 80105508,
+                        }
+                    ]
+                }
+
+            with connect(db_path) as connection:
+                sync_watchlist_from_file(connection, config_path)
+                AlpacaCollector(
+                    api_key_id="paper-key",
+                    api_secret_key="paper-secret",
+                    bars_fetcher=fetcher,
+                    now_utc=lambda: datetime(2026, 5, 3, 12, 30, tzinfo=UTC),
+                ).sync_focus(
+                    connection,
+                    watchlist_names=["US_STOCK_FOCUS20"],
+                    days=365,
+                    snapshot_ts_utc="2026-05-03T12:30:00Z",
+                    trade_date_local=None,
+                )
+
+        self.assertEqual(calls[0][1], "2026-05-03T12:10:00Z")
 
 
 if __name__ == "__main__":

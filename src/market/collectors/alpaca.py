@@ -30,12 +30,14 @@ class AlpacaCollector:
         data_base_url: str = ALPACA_DATA_BASE_URL,
         bars_fetcher: AlpacaBarsFetcher | None = None,
         request_timeout_seconds: float = ALPACA_DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        now_utc: Callable[[], datetime] | None = None,
     ) -> None:
         self.api_key_id = api_key_id or os.environ.get("ALPACA_API_KEY_ID")
         self.api_secret_key = api_secret_key or os.environ.get("ALPACA_API_SECRET_KEY")
         self.data_base_url = data_base_url.rstrip("/")
         self.bars_fetcher = bars_fetcher or self._fetch_daily_bars
         self.request_timeout_seconds = request_timeout_seconds
+        self.now_utc = now_utc or (lambda: datetime.now(tz=UTC))
 
     def sync_universe(self, connection: sqlite3.Connection) -> CollectorResult:
         return CollectorResult(source_name=self.source_name, items_synced=0)
@@ -116,8 +118,10 @@ class AlpacaCollector:
         if not symbols:
             return CollectorResult(source_name=self.source_name, items_synced=0, metadata=metadata)
 
-        end = (datetime.now(tz=UTC).date() + timedelta(days=1)).isoformat()
-        start = (datetime.now(tz=UTC).date() - timedelta(days=max(days * 2, 7))).isoformat()
+        end_at = self.now_utc() - timedelta(minutes=20)
+        start_at = end_at - timedelta(days=max(days * 2, 7))
+        end = end_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        start = start_at.strftime("%Y-%m-%dT%H:%M:%SZ")
         bars_by_symbol = self.bars_fetcher(symbols, start, end, self.request_timeout_seconds)
 
         bars_synced = 0
@@ -184,8 +188,8 @@ class AlpacaCollector:
             params = {
                 "symbols": ",".join(symbols),
                 "timeframe": "1Day",
-                "start": f"{start}T00:00:00Z",
-                "end": f"{end}T00:00:00Z",
+                "start": start,
+                "end": end,
                 "limit": "10000",
             }
             if page_token:
