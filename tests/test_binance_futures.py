@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -95,6 +94,29 @@ class BinanceFuturesTests(unittest.TestCase):
         self.assertEqual(snapshot.volume_raw, 1000.0)
         self.assertEqual(snapshot.turnover_raw, 255500.0)
         self.assertEqual(snapshot.source, "binance_futures_24hr")
+
+    def test_parse_futures_24hr_snapshot_treats_empty_numeric_fields_as_missing(self):
+        instrument = binance_futures_symbol_to_instrument(
+            {"symbol": "COINUSDT", "quoteAsset": "USDT"}
+        )
+        snapshot = parse_binance_futures_24hr_ticker_snapshot(
+            instrument_id=7,
+            instrument=instrument,
+            ticker={
+                "symbol": "COINUSDT",
+                "lastPrice": "",
+                "priceChangePercent": "",
+                "volume": "",
+                "quoteVolume": "",
+            },
+            snapshot_ts_utc="2026-05-03T02:00:00Z",
+            trade_date_local="2026-05-03",
+        )
+
+        self.assertIsNone(snapshot.last_price)
+        self.assertIsNone(snapshot.change_pct)
+        self.assertIsNone(snapshot.volume_raw)
+        self.assertIsNone(snapshot.turnover_raw)
 
     def test_select_top_futures_usdt_symbols_filters_perpetual_trading_usdt(self):
         symbols = select_top_futures_usdt_symbols(

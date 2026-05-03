@@ -163,6 +163,6 @@ def _is_tradefi_symbol(symbol_info: dict[str, object]) -> bool:
 
 
 def _optional_float(value) -> float | None:
-    if value is None:
+    if value in (None, ""):
         return None
     return float(value)
