@@ -520,7 +520,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "aggregate-crypto-futures-klines":
-        symbols = args.symbol or _top_futures_usdt_symbols(args.top_usdt_limit)
+        symbols = args.symbol or _futures_ws_symbols(args.top_usdt_limit)
         normalized_symbols = [symbol.upper() for symbol in symbols]
         if args.dry_run:
             symbol_text = ",".join(normalized_symbols) or "none"
@@ -650,7 +650,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run-binance-futures-kline-ws":
-        symbols = args.symbol or _top_futures_usdt_symbols(args.top_usdt_limit)
+        symbols = args.symbol or _futures_ws_symbols(args.top_usdt_limit)
         normalized_symbols = [symbol.upper() for symbol in symbols]
         if args.dry_run:
             symbol_text = ",".join(normalized_symbols) or "none"
@@ -770,6 +770,24 @@ def _top_futures_usdt_symbols(limit: int) -> list[str]:
         exchange_info,
         limit=limit,
     )
+
+
+def _futures_ws_symbols(limit: int) -> list[str]:
+    if limit <= 0:
+        return []
+    tickers = fetch_binance_futures_24hr_tickers()
+    exchange_info = fetch_binance_futures_exchange_info()
+    total_symbols = select_top_futures_usdt_symbols(
+        tickers,
+        exchange_info,
+        limit=limit,
+    )
+    tradefi_symbols = select_futures_tradefi_symbols(
+        tickers,
+        exchange_info,
+        limit=limit,
+    )
+    return list(dict.fromkeys([*total_symbols, *tradefi_symbols]))
 
 
 def _sync_crypto_futures_boards(

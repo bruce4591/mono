@@ -328,6 +328,52 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("ETHUSDT,BTCUSDT interval=1m", stdout.getvalue())
 
+    def test_run_binance_futures_kline_ws_includes_tradefi_symbols_by_default(self):
+        stdout = io.StringIO()
+        tickers = [
+            {"symbol": "BTCUSDT", "quoteVolume": "2000"},
+            {"symbol": "COINUSDT", "quoteVolume": "100"},
+        ]
+        exchange_info = {
+            "BTCUSDT": {
+                "symbol": "BTCUSDT",
+                "contractType": "PERPETUAL",
+                "status": "TRADING",
+                "quoteAsset": "USDT",
+                "underlyingSubType": ["PoW"],
+            },
+            "COINUSDT": {
+                "symbol": "COINUSDT",
+                "contractType": "PERPETUAL",
+                "status": "TRADING",
+                "quoteAsset": "USDT",
+                "underlyingSubType": ["TradFi"],
+            },
+        }
+
+        with redirect_stdout(stdout), patch(
+            "market.cli.fetch_binance_futures_24hr_tickers",
+            return_value=tickers,
+        ), patch(
+            "market.cli.fetch_binance_futures_exchange_info",
+            return_value=exchange_info,
+        ):
+            exit_code = main(
+                [
+                    "run-binance-futures-kline-ws",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--top-usdt-limit",
+                    "1",
+                    "--interval",
+                    "1m",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("BTCUSDT,COINUSDT interval=1m", stdout.getvalue())
+
     def test_run_binance_futures_kline_ws_default_limit_is_sixty(self):
         observed_limits = []
 
