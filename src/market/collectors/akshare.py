@@ -128,16 +128,21 @@ class AkshareCollector:
         snapshot_repository = MarketSnapshotRepository(connection)
         bars_synced = 0
         snapshot_trade_dates: list[str] = []
+        failed_symbols: list[str] = []
         for instrument in instruments:
             if instrument.instrument_id is None:
                 continue
             self.rate_limiter.wait()
-            bars = parse_akshare_daily_frame(
-                instrument_id=instrument.instrument_id,
-                frame=self.daily_fetcher(instrument),
-                quote_currency=instrument.quote_currency,
-                source=self.source_name,
-            )
+            try:
+                bars = parse_akshare_daily_frame(
+                    instrument_id=instrument.instrument_id,
+                    frame=self.daily_fetcher(instrument),
+                    quote_currency=instrument.quote_currency,
+                    source=self.source_name,
+                )
+            except Exception:
+                failed_symbols.append(f"{instrument.market}:{instrument.symbol}")
+                continue
             selected_bars = bars[-days:]
             for bar in selected_bars:
                 daily_repository.upsert(bar)
@@ -161,6 +166,7 @@ class AkshareCollector:
                 **metadata,
                 "days": days,
                 "trade_date_local": resolved_trade_date,
+                "failed_symbols": failed_symbols,
                 "min_request_interval_seconds": self.min_request_interval_seconds,
             },
         )

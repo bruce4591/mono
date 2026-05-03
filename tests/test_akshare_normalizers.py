@@ -223,6 +223,79 @@ class AkshareNormalizerTests(unittest.TestCase):
         self.assertEqual(snapshots[0]["last_price"], 106.0)
         self.assertAlmostEqual(snapshots[0]["change_pct"], ((106.0 - 104.0) / 104.0) * 100)
 
+    def test_akshare_collector_skips_failed_symbol_and_continues(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            config_path = Path(tmp_dir) / "stocks.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "watchlist_name": "US_STOCK_FOCUS20",
+                        "entries": [
+                            {
+                                "market": "US",
+                                "symbol": "AAPL",
+                                "display_name": "Apple",
+                                "exchange": "NASDAQ",
+                                "instrument_type": "stock",
+                                "quote_currency": "USD",
+                                "timezone": "America/New_York",
+                                "sort_order": 1,
+                            },
+                            {
+                                "market": "US",
+                                "symbol": "MSFT",
+                                "display_name": "Microsoft",
+                                "exchange": "NASDAQ",
+                                "instrument_type": "stock",
+                                "quote_currency": "USD",
+                                "timezone": "America/New_York",
+                                "sort_order": 2,
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            init_database(db_path)
+
+            def fetcher(instrument):
+                if instrument.symbol == "AAPL":
+                    raise TimeoutError("upstream timeout")
+                return FakeFrame(
+                    [
+                        {
+                            "date": "2026-05-01",
+                            "open": "100",
+                            "high": "105",
+                            "low": "99",
+                            "close": "104",
+                            "volume": "1000",
+                            "amount": "104000",
+                        }
+                    ]
+                )
+
+            with connect(db_path) as connection:
+                sync_watchlist_from_file(connection, config_path)
+                result = AkshareCollector(
+                    daily_fetcher=fetcher,
+                    min_request_interval_seconds=0,
+                ).sync_focus(
+                    connection,
+                    watchlist_names=["US_STOCK_FOCUS20"],
+                    days=2,
+                    snapshot_ts_utc="2026-05-01T21:00:00Z",
+                    trade_date_local=None,
+                )
+                snapshot_count = connection.execute(
+                    "SELECT count(*) FROM market_snapshot"
+                ).fetchone()[0]
+
+        self.assertEqual(result.items_synced, 1)
+        self.assertEqual(result.metadata["failed_symbols"], ["US:AAPL"])
+        self.assertEqual(snapshot_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
