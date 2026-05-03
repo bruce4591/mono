@@ -434,6 +434,116 @@ class CliTests(unittest.TestCase):
         self.assertEqual(calls, [(["SOLUSDT", "BTCUSDT", "ETHUSDT"], "1m", 2)])
         self.assertIn("crypto board synced: 3 symbols", stdout.getvalue())
 
+    def test_sync_crypto_futures_boards_creates_total_and_tradefi_rankings(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+
+            tickers = [
+                {
+                    "symbol": "BTCUSDT",
+                    "lastPrice": "80000",
+                    "priceChangePercent": "1",
+                    "volume": "10",
+                    "quoteVolume": "800000",
+                },
+                {
+                    "symbol": "COINUSDT",
+                    "lastPrice": "250",
+                    "priceChangePercent": "2",
+                    "volume": "1000",
+                    "quoteVolume": "250000",
+                },
+                {
+                    "symbol": "OLDUSDT",
+                    "lastPrice": "1",
+                    "priceChangePercent": "0",
+                    "volume": "999999",
+                    "quoteVolume": "999999",
+                },
+            ]
+            exchange_info = {
+                "BTCUSDT": {
+                    "symbol": "BTCUSDT",
+                    "contractType": "PERPETUAL",
+                    "status": "TRADING",
+                    "quoteAsset": "USDT",
+                    "marginAsset": "USDT",
+                    "underlyingSubType": ["PoW"],
+                },
+                "COINUSDT": {
+                    "symbol": "COINUSDT",
+                    "contractType": "PERPETUAL",
+                    "status": "TRADING",
+                    "quoteAsset": "USDT",
+                    "marginAsset": "USDT",
+                    "underlyingSubType": ["TradFi"],
+                },
+                "OLDUSDT": {
+                    "symbol": "OLDUSDT",
+                    "contractType": "PERPETUAL",
+                    "status": "BREAK",
+                    "quoteAsset": "USDT",
+                    "marginAsset": "USDT",
+                    "underlyingSubType": ["TradFi"],
+                },
+            }
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.fetch_binance_futures_24hr_tickers",
+                return_value=tickers,
+            ), patch(
+                "market.cli.fetch_binance_futures_exchange_info",
+                return_value=exchange_info,
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "sync-crypto-futures-boards",
+                        "--db-path",
+                        str(db_path),
+                        "--board-limit",
+                        "50",
+                        "--snapshot-ts-utc",
+                        "2026-05-03T02:00:00Z",
+                        "--trade-date-local",
+                        "2026-05-03",
+                    ]
+                )
+
+                with sqlite3.connect(db_path) as connection:
+                    total_rows = connection.execute(
+                        """
+                        SELECT ranking_snapshot.rank, instrument.symbol
+                        FROM ranking_snapshot
+                        JOIN instrument
+                            ON instrument.instrument_id = ranking_snapshot.instrument_id
+                        WHERE ranking_snapshot.board_name = ?
+                        ORDER BY ranking_snapshot.rank
+                        """,
+                        ("CRYPTO_FUTURES_TURNOVER_TOP50",),
+                    ).fetchall()
+                    tradefi_rows = connection.execute(
+                        """
+                        SELECT ranking_snapshot.rank, instrument.symbol
+                        FROM ranking_snapshot
+                        JOIN instrument
+                            ON instrument.instrument_id = ranking_snapshot.instrument_id
+                        WHERE ranking_snapshot.board_name = ?
+                        ORDER BY ranking_snapshot.rank
+                        """,
+                        ("CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50",),
+                    ).fetchall()
+                    markets = connection.execute(
+                        "SELECT DISTINCT market, instrument_type FROM instrument ORDER BY market"
+                    ).fetchall()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(total_rows, [(1, "BTCUSDT"), (2, "COINUSDT")])
+        self.assertEqual(tradefi_rows, [(1, "COINUSDT")])
+        self.assertIn(("CRYPTO_FUTURES", "crypto_futures"), markets)
+        self.assertIn("crypto futures boards synced: 3 tickers", stdout.getvalue())
+
     def test_apply_binance_ticker_event_updates_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

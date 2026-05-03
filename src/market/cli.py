@@ -17,14 +17,29 @@ from market.binance import (
     sync_binance_daily_bars,
     sync_binance_klines,
 )
+from market.binance_futures import (
+    binance_futures_symbol_to_instrument,
+    fetch_binance_futures_24hr_tickers,
+    fetch_binance_futures_exchange_info,
+    parse_binance_futures_24hr_ticker_snapshot,
+    select_futures_tradefi_symbols,
+    select_top_futures_usdt_symbols,
+)
 from market.collectors.binance import BinanceCollector
 from market.collectors.binance_ws import BinanceKlineWebSocketCollector
 from market.collectors.base import CollectorResult, run_collector_job
 from market.crypto_gaps import fill_binance_1m_gaps
 from market.db import connect, init_database
-from market.models import AlertRule
+from market.models import AlertRule, WatchlistEntry
 from market.realtime import apply_binance_ticker_event
-from market.repositories import AlertEventRepository, AlertRuleRepository, RankingRepository
+from market.repositories import (
+    AlertEventRepository,
+    AlertRuleRepository,
+    InstrumentRepository,
+    MarketSnapshotRepository,
+    RankingRepository,
+    WatchlistRepository,
+)
 from market.sample_data import seed_sample_data
 from market.settings import load_settings
 from market.watchlists import sync_watchlist_from_file
@@ -113,6 +128,16 @@ def build_parser() -> argparse.ArgumentParser:
     sync_crypto_board.add_argument("--trade-date-local", default=None)
     sync_crypto_board.add_argument("--skip-kline-sync", action="store_true")
     sync_crypto_board.add_argument("--dry-run", action="store_true")
+
+    sync_crypto_futures = subparsers.add_parser(
+        "sync-crypto-futures-boards",
+        help="Sync Binance USD-M futures turnover boards",
+    )
+    sync_crypto_futures.add_argument("--db-path", type=Path, default=None)
+    sync_crypto_futures.add_argument("--board-limit", type=int, default=50)
+    sync_crypto_futures.add_argument("--snapshot-ts-utc", default=None)
+    sync_crypto_futures.add_argument("--trade-date-local", default=None)
+    sync_crypto_futures.add_argument("--dry-run", action="store_true")
 
     aggregate_crypto = subparsers.add_parser(
         "aggregate-crypto-klines",
@@ -348,6 +373,40 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "crypto klines aggregated: "
             f"{len(normalized_symbols)} symbols, {result.items_synced} bars"
+        )
+        return 0
+
+    if args.command == "sync-crypto-futures-boards":
+        now = datetime.now(tz=UTC)
+        snapshot_ts_utc = args.snapshot_ts_utc or now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        trade_date_local = args.trade_date_local or now.date().isoformat()
+        if args.dry_run:
+            print(
+                "crypto futures board sync ready: "
+                f"limit={args.board_limit} snapshot={snapshot_ts_utc}"
+            )
+            return 0
+        tickers = fetch_binance_futures_24hr_tickers()
+        exchange_info = fetch_binance_futures_exchange_info()
+        with connect(db_path) as connection:
+            result = run_collector_job(
+                connection,
+                job_name="sync-crypto-futures-boards",
+                source_name="binance_futures",
+                checkpoint=f"usd_m:{snapshot_ts_utc}:{args.board_limit}",
+                started_at_utc=snapshot_ts_utc,
+                operation=lambda: _sync_crypto_futures_boards(
+                    connection,
+                    tickers=tickers,
+                    exchange_info=exchange_info,
+                    snapshot_ts_utc=snapshot_ts_utc,
+                    trade_date_local=trade_date_local,
+                    board_limit=args.board_limit,
+                ),
+            )
+        print(
+            "crypto futures boards synced: "
+            f"{result.items_synced} tickers, snapshot={snapshot_ts_utc}"
         )
         return 0
 
@@ -603,6 +662,89 @@ def _parse_utc_arg(value: str) -> datetime:
 
 def _format_utc_arg(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _sync_crypto_futures_boards(
+    connection: sqlite3.Connection,
+    *,
+    tickers: list[dict[str, object]],
+    exchange_info: dict[str, dict[str, object]],
+    snapshot_ts_utc: str,
+    trade_date_local: str,
+    board_limit: int,
+) -> CollectorResult:
+    total_symbols = select_top_futures_usdt_symbols(
+        tickers,
+        exchange_info,
+        limit=board_limit,
+    )
+    tradefi_symbols = select_futures_tradefi_symbols(
+        tickers,
+        exchange_info,
+        limit=board_limit,
+    )
+    symbols_to_store = sorted(set(total_symbols) | set(tradefi_symbols))
+    ticker_by_symbol = {str(item.get("symbol", "")).upper(): item for item in tickers}
+
+    instruments = InstrumentRepository(connection)
+    snapshots = MarketSnapshotRepository(connection)
+    instrument_ids_by_symbol: dict[str, int] = {}
+    for symbol in symbols_to_store:
+        info = exchange_info.get(symbol)
+        ticker = ticker_by_symbol.get(symbol)
+        if info is None or ticker is None:
+            continue
+        instrument = binance_futures_symbol_to_instrument(info)
+        instrument_id = instruments.upsert(instrument)
+        instrument_ids_by_symbol[symbol] = instrument_id
+        snapshots.upsert(
+            parse_binance_futures_24hr_ticker_snapshot(
+                instrument_id=instrument_id,
+                instrument=instrument,
+                ticker=ticker,
+                snapshot_ts_utc=snapshot_ts_utc,
+                trade_date_local=trade_date_local,
+            )
+        )
+
+    WatchlistRepository(connection).replace(
+        "CRYPTO_FUTURES_TRADFI",
+        [
+            WatchlistEntry(
+                instrument_id=instrument_ids_by_symbol[symbol],
+                sort_order=index,
+            )
+            for index, symbol in enumerate(tradefi_symbols, start=1)
+            if symbol in instrument_ids_by_symbol
+        ],
+    )
+    ranking = RankingRepository(connection)
+    total_count = ranking.refresh_turnover_board(
+        board_name="CRYPTO_FUTURES_TURNOVER_TOP50",
+        snapshot_ts_utc=snapshot_ts_utc,
+        trade_date_local=trade_date_local,
+        market="CRYPTO_FUTURES",
+        instrument_type="crypto_futures",
+        limit=board_limit,
+    )
+    tradefi_count = ranking.refresh_turnover_board(
+        board_name="CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50",
+        snapshot_ts_utc=snapshot_ts_utc,
+        trade_date_local=trade_date_local,
+        market="CRYPTO_FUTURES",
+        instrument_type="crypto_futures",
+        limit=board_limit,
+        watchlist_name="CRYPTO_FUTURES_TRADFI",
+    )
+    return CollectorResult(
+        source_name="binance_futures",
+        items_synced=len(tickers),
+        metadata={
+            "stored_symbols": symbols_to_store,
+            "total_board_rows": total_count,
+            "tradefi_board_rows": tradefi_count,
+        },
+    )
 
 
 def _crypto_symbols_for_aggregation(
