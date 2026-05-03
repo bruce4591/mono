@@ -487,6 +487,92 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["high"], 2.0)
         self.assertEqual(calls, [("ETHUSDT", "1m", 1000)])
 
+    def test_get_intraday_bars_payload_backfills_sixty_futures_interval_bars(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
+                calls.append((symbol, interval, limit))
+                rows = []
+                start_ms = _ms("2026-04-13T00:00:00Z")
+                for index in range(60):
+                    open_time = start_ms + index * 8 * 60 * 60 * 1000
+                    rows.append(
+                        [
+                            open_time,
+                            str(100 + index),
+                            str(101 + index),
+                            str(99 + index),
+                            str(100.5 + index),
+                            "10",
+                            open_time + 8 * 60 * 60 * 1000 - 1,
+                            "1000",
+                        ]
+                    )
+                return rows
+
+            with connect(db_path) as connection:
+                InstrumentRepository(connection).upsert(
+                    binance_futures_symbol_to_instrument({"symbol": "ETHUSDT"})
+                )
+                payload = get_intraday_bars_payload(
+                    connection,
+                    "CRYPTO_FUTURES",
+                    "ETHUSDT",
+                    "8h",
+                    limit=60,
+                    now_ts_utc="2026-05-03T00:00:00Z",
+                    gap_fetcher=fetcher,
+                    gap_min_request_interval_seconds=0,
+                )
+
+        self.assertEqual(payload["interval"], "8h")
+        self.assertEqual(len(payload["items"]), 60)
+        self.assertEqual(payload["items"][0]["source"], "binance_futures_gap_fill")
+        self.assertEqual(calls, [("ETHUSDT", "8h", 60)])
+
+    def test_get_daily_bars_payload_backfills_sixty_futures_daily_bars(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
+                calls.append((symbol, interval, limit))
+                rows = []
+                start_ms = _ms("2026-03-05T00:00:00Z")
+                for index in range(60):
+                    open_time = start_ms + index * 24 * 60 * 60 * 1000
+                    rows.append(
+                        [
+                            open_time,
+                            str(100 + index),
+                            str(101 + index),
+                            str(99 + index),
+                            str(100.5 + index),
+                            "10",
+                            open_time + 24 * 60 * 60 * 1000 - 1,
+                            "1000",
+                        ]
+                    )
+                return rows
+
+            with connect(db_path) as connection:
+                payload = get_daily_bars_payload(
+                    connection,
+                    "CRYPTO_FUTURES",
+                    "ETHUSDT",
+                    now_ts_utc="2026-05-03T00:00:00Z",
+                    futures_fetcher=fetcher,
+                )
+
+        self.assertEqual(payload["interval"], "1d")
+        self.assertEqual(len(payload["items"]), 60)
+        self.assertEqual(payload["items"][0]["source"], "binance_futures_gap_fill")
+        self.assertEqual(calls, [("ETHUSDT", "1d", 60)])
+
     def test_get_intraday_bars_payload_backfills_stale_latest_futures_window(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -828,6 +914,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"renderPeriodTabs", asset.body)
         self.assertIn(b"chartTimezone", asset.body)
         self.assertIn(b'["1m", "5m", "15m", "8h"]', asset.body)
+        self.assertIn(b'market === "CRYPTO" || market === "CRYPTO_FUTURES"', asset.body)
         self.assertIn(b"DEFAULT_VISIBLE_CANDLES", asset.body)
         self.assertIn(b"LOAD_MORE_CANDLES", asset.body)
         self.assertIn(b"getVisibleCandles", asset.body)

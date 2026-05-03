@@ -9,8 +9,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
-from market.models import Instrument, IntradayBar, MarketSnapshot
-from market.repositories import InstrumentRepository, IntradayBarRepository
+from market.models import DailyBar, Instrument, IntradayBar, MarketSnapshot
+from market.repositories import DailyBarRepository, InstrumentRepository, IntradayBarRepository
 
 BINANCE_FUTURES_API_BASE = "https://fapi.binance.com"
 FUTURES_TRADEFI_WATCHLIST = (
@@ -189,6 +189,52 @@ def sync_binance_futures_klines_range(
     return BinanceFuturesSyncResult(
         symbol=normalized_symbol,
         interval=interval,
+        bars=len(bars),
+        latest_close=latest.close if latest else None,
+    )
+
+
+def sync_binance_futures_daily_bars_range(
+    connection: sqlite3.Connection,
+    *,
+    symbol: str,
+    start_time_ms: int,
+    end_time_ms: int,
+    limit: int,
+    source: str = "binance_futures_gap_fill",
+    fetcher: FuturesRangeKlineFetcher = fetch_binance_futures_klines_range,
+) -> BinanceFuturesSyncResult:
+    normalized_symbol = symbol.upper()
+    instrument = binance_futures_symbol_to_instrument({"symbol": normalized_symbol})
+    instrument_id = InstrumentRepository(connection).upsert(instrument)
+    rows = fetcher(normalized_symbol, "1d", start_time_ms, end_time_ms, limit)
+    timezone = ZoneInfo(instrument.timezone)
+    bars = [
+        DailyBar(
+            instrument_id=instrument_id,
+            trade_date=datetime.fromtimestamp(int(row[0]) / 1000, tz=UTC)
+            .astimezone(timezone)
+            .date()
+            .isoformat(),
+            open=_optional_float(row[1]),
+            high=_optional_float(row[2]),
+            low=_optional_float(row[3]),
+            close=_optional_float(row[4]),
+            volume_raw=_optional_float(row[5]),
+            turnover_raw=_optional_float(row[7]),
+            quote_currency=instrument.quote_currency,
+            source=source,
+        )
+        for row in rows
+    ]
+    repository = DailyBarRepository(connection)
+    for bar in bars:
+        repository.upsert(bar)
+
+    latest = bars[-1] if bars else None
+    return BinanceFuturesSyncResult(
+        symbol=normalized_symbol,
+        interval="1d",
         bars=len(bars),
         latest_close=latest.close if latest else None,
     )

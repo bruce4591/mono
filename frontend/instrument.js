@@ -34,7 +34,7 @@ const LOAD_MORE_CANDLES = {
   "5m": 96,
   "15m": 96,
   "60m": 80,
-  "8h": 12,
+  "8h": 60,
   "1d": 60,
 };
 
@@ -295,7 +295,8 @@ async function loadLatestSnapshot() {
 
 async function loadInstrument() {
   title.textContent = `${market}:${symbol}`;
-  const intradayIntervals = market === "CRYPTO" ? ["1m", "5m", "15m", "8h"] : ["60m"];
+  const intradayIntervals =
+    market === "CRYPTO" || market === "CRYPTO_FUTURES" ? ["1m", "5m", "15m", "8h"] : ["60m"];
   const [instrumentResponse, dailyResponse, ...intradayResponses] = await Promise.all([
     fetch(`/api/instruments/${encodeURIComponent(market)}/${encodeURIComponent(symbol)}`),
     fetch(`/api/bars/daily?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}`),

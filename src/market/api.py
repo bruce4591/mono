@@ -16,7 +16,11 @@ from market.binance import (
     fetch_binance_klines_range,
     fetch_binance_symbol_trading_meta,
 )
-from market.binance_futures import fetch_binance_futures_klines_range
+from market.binance_futures import (
+    fetch_binance_futures_klines_range,
+    sync_binance_futures_daily_bars_range,
+    sync_binance_futures_klines_range,
+)
 from market.crypto_gaps import (
     BINANCE_KLINES_MAX_LIMIT,
     fill_binance_1m_gaps,
@@ -33,6 +37,7 @@ from market.repositories import (
 )
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
+FUTURES_MIN_HISTORY_BARS = 60
 
 
 @dataclass(frozen=True)
@@ -190,12 +195,34 @@ def get_daily_bars_payload(
     connection: sqlite3.Connection,
     market: str,
     symbol: str,
+    *,
+    now_ts_utc: str | None = None,
+    futures_fetcher: RangeKlineFetcher = fetch_binance_futures_klines_range,
 ) -> dict[str, object]:
-    instrument = InstrumentRepository(connection).get_by_market_symbol(market, symbol)
+    instrument_repository = InstrumentRepository(connection)
+    instrument = instrument_repository.get_by_market_symbol(market, symbol)
+    if market == "CRYPTO_FUTURES" and (
+        instrument is None or instrument.instrument_id is None
+    ):
+        _ensure_binance_futures_daily_window(
+            connection,
+            symbol=symbol,
+            now_ts_utc=now_ts_utc,
+            fetcher=futures_fetcher,
+        )
+        instrument = instrument_repository.get_by_market_symbol(market, symbol)
     if instrument is None or instrument.instrument_id is None:
         return {"market": market, "symbol": symbol, "interval": "1d", "items": []}
 
     bars = DailyBarRepository(connection).list_for_instrument(instrument.instrument_id)
+    if market == "CRYPTO_FUTURES" and len(bars) < FUTURES_MIN_HISTORY_BARS:
+        _ensure_binance_futures_daily_window(
+            connection,
+            symbol=symbol,
+            now_ts_utc=now_ts_utc,
+            fetcher=futures_fetcher,
+        )
+        bars = DailyBarRepository(connection).list_for_instrument(instrument.instrument_id)
     return {
         "market": market,
         "symbol": symbol,
@@ -243,6 +270,7 @@ def get_intraday_bars_payload(
                 before_ts_utc=before_ts_utc,
                 now_ts_utc=now_ts_utc,
                 fetcher=gap_fetcher,
+                requested_limit=_clamp_limit(limit),
                 min_request_interval_seconds=gap_min_request_interval_seconds,
             )
             backfilled_missing_instrument = True
@@ -283,6 +311,7 @@ def get_intraday_bars_payload(
             before_ts_utc=before_ts_utc,
             now_ts_utc=now_ts_utc,
             fetcher=gap_fetcher,
+            requested_limit=resolved_limit,
             min_request_interval_seconds=gap_min_request_interval_seconds,
         )
         bars = _list_intraday_window(
@@ -325,10 +354,22 @@ def _ensure_crypto_intraday_window(
     before_ts_utc: str | None,
     now_ts_utc: str | None,
     fetcher: RangeKlineFetcher | None,
+    requested_limit: int,
     min_request_interval_seconds: float,
 ) -> None:
     minutes = _interval_minutes(interval)
     if minutes is None:
+        return
+    if market == "CRYPTO_FUTURES" and interval != "1m":
+        _ensure_binance_futures_interval_window(
+            connection,
+            symbol=symbol,
+            interval=interval,
+            before_ts_utc=before_ts_utc,
+            now_ts_utc=now_ts_utc,
+            limit=max(requested_limit, FUTURES_MIN_HISTORY_BARS),
+            fetcher=fetcher or fetch_binance_futures_klines_range,
+        )
         return
     end = _parse_utc(before_ts_utc) if before_ts_utc else _resolve_now(now_ts_utc)
     if before_ts_utc is None and market == "CRYPTO_FUTURES":
@@ -347,6 +388,53 @@ def _ensure_crypto_intraday_window(
         end_ts_utc=_format_utc(end),
         fetcher=resolved_fetcher,
         min_request_interval_seconds=min_request_interval_seconds,
+    )
+
+
+def _ensure_binance_futures_interval_window(
+    connection: sqlite3.Connection,
+    *,
+    symbol: str,
+    interval: str,
+    before_ts_utc: str | None,
+    now_ts_utc: str | None,
+    limit: int,
+    fetcher: RangeKlineFetcher,
+) -> None:
+    minutes = _interval_minutes(interval)
+    if minutes is None:
+        return
+    end = _parse_utc(before_ts_utc) if before_ts_utc else _resolve_now(now_ts_utc)
+    if before_ts_utc is None:
+        end += timedelta(minutes=minutes)
+    start = end - timedelta(minutes=minutes * limit)
+    sync_binance_futures_klines_range(
+        connection,
+        symbol=symbol,
+        interval=interval,
+        start_time_ms=_to_ms(start),
+        end_time_ms=_to_ms(end) - 1,
+        limit=limit,
+        fetcher=fetcher,
+    )
+
+
+def _ensure_binance_futures_daily_window(
+    connection: sqlite3.Connection,
+    *,
+    symbol: str,
+    now_ts_utc: str | None,
+    fetcher: RangeKlineFetcher,
+) -> None:
+    end = _resolve_now(now_ts_utc) + timedelta(days=1)
+    start = end - timedelta(days=FUTURES_MIN_HISTORY_BARS)
+    sync_binance_futures_daily_bars_range(
+        connection,
+        symbol=symbol,
+        start_time_ms=_to_ms(start),
+        end_time_ms=_to_ms(end) - 1,
+        limit=FUTURES_MIN_HISTORY_BARS,
+        fetcher=fetcher,
     )
 
 
@@ -911,6 +999,10 @@ def _resolve_now(now_ts_utc: str | None) -> datetime:
 
 def _format_utc(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _to_ms(value: datetime) -> int:
+    return int(value.astimezone(UTC).timestamp() * 1000)
 
 
 def _optional_float(value: object) -> float | None:
