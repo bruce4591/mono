@@ -121,7 +121,8 @@ Sync Binance USD-M futures boards without K-line pulls:
 ```
 
 This command refreshes `CRYPTO_FUTURES_TURNOVER_TOP50` and
-`CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50`.
+`CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50`. It does not subscribe to WebSockets or
+aggregate local bars.
 
 Aggregate higher crypto K line intervals from local 1m bars without REST calls.
 The aggregator starts from the last existing target interval bar, then only
