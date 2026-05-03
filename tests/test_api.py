@@ -611,6 +611,16 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"ETF_FOCUS20", asset.body)
         self.assertIn(b'href="/status.html"', asset.body)
 
+    def test_get_static_asset_returns_crypto_futures_board_tabs(self):
+        asset = get_static_asset("/index.html")
+        script = get_static_asset("/app.js")
+
+        self.assertIn(b'data-board="CRYPTO_TURNOVER_TOP50"', asset.body)
+        self.assertIn(b'data-board="CRYPTO_FUTURES_TURNOVER_TOP50"', asset.body)
+        self.assertIn(b'data-board="CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50"', asset.body)
+        self.assertIn(b'CRYPTO_FUTURES_TURNOVER_TOP50: "Futures"', script.body)
+        self.assertIn(b'CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50: "TradeFi"', script.body)
+
     def test_get_static_asset_returns_instrument_detail_page(self):
         asset = get_static_asset("/instrument.html")
 

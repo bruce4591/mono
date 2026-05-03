@@ -1,6 +1,8 @@
-const boards = {
+const BOARD_LABELS = {
   ETF_FOCUS20: "ETF",
   CRYPTO_TURNOVER_TOP50: "Crypto",
+  CRYPTO_FUTURES_TURNOVER_TOP50: "Futures",
+  CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50: "TradeFi",
 };
 
 let activeBoard = "ETF_FOCUS20";
@@ -127,7 +129,7 @@ async function loadBoard(board, options = {}) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     renderBoard(await response.json());
   } catch (error) {
-    boardName.textContent = boards[board] || board;
+    boardName.textContent = BOARD_LABELS[board] || board;
     snapshotTime.textContent = "--";
     boardList.innerHTML = '<div class="error">读取榜单失败</div>';
   }
