@@ -180,6 +180,8 @@ def fetch_akshare_daily_frame(instrument: Instrument):
             symbol=AKSHARE_INDEX_SYMBOLS.get(instrument.symbol.upper(), instrument.symbol)
         )
     if instrument.instrument_type == "commodity":
+        if instrument.extra_meta.get("akshare_function") == "futures_global_hist_em":
+            return akshare.futures_global_hist_em(symbol=instrument.symbol.upper())
         return akshare.futures_foreign_hist(symbol=instrument.symbol.upper())
     if instrument.market == "A_SHARE":
         return akshare.stock_zh_a_hist(
@@ -210,8 +212,8 @@ def parse_akshare_daily_frame(
             open=_optional_float(_record_value(record, "open", "开盘")),
             high=_optional_float(_record_value(record, "high", "最高")),
             low=_optional_float(_record_value(record, "low", "最低")),
-            close=_optional_float(_record_value(record, "close", "收盘")),
-            volume_raw=_optional_float(_record_value(record, "volume", "成交量")),
+            close=_optional_float(_record_value(record, "close", "收盘", "最新价")),
+            volume_raw=_optional_float(_record_value(record, "volume", "成交量", "总量")),
             turnover_raw=_turnover_from_record(record),
             quote_currency=quote_currency,
             source=source,
@@ -339,8 +341,8 @@ def _turnover_from_record(record: dict[str, object]) -> float | None:
     amount = _optional_float(_record_value(record, "amount", "成交额"))
     if amount not in (None, 0):
         return amount
-    close = _optional_float(_record_value(record, "close", "收盘"))
-    volume = _optional_float(_record_value(record, "volume", "成交量"))
+    close = _optional_float(_record_value(record, "close", "收盘", "最新价"))
+    volume = _optional_float(_record_value(record, "volume", "成交量", "总量"))
     if close is None or volume is None:
         return None
     return close * volume

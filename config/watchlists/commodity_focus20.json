@@ -193,12 +193,15 @@
     },
     {
       "market": "CMDTY",
-      "exchange": "SINA",
+      "exchange": "EM",
       "instrument_type": "commodity",
       "quote_currency": "USD",
       "timezone": "UTC",
-      "symbol": "FCPO",
-      "display_name": "Bursa Malaysia Crude Palm Oil",
+      "symbol": "RB00Y",
+      "display_name": "NYMEX Gasoline",
+      "extra_meta": {
+        "akshare_function": "futures_global_hist_em"
+      },
       "sort_order": 20
     },
     {
@@ -263,12 +266,15 @@
     },
     {
       "market": "CMDTY",
-      "exchange": "SINA",
+      "exchange": "EM",
       "instrument_type": "commodity",
       "quote_currency": "USD",
       "timezone": "UTC",
-      "symbol": "TRB",
-      "display_name": "Rebar",
+      "symbol": "SB00Y",
+      "display_name": "ICE Sugar No.11",
+      "extra_meta": {
+        "akshare_function": "futures_global_hist_em"
+      },
       "sort_order": 27
     },
     {

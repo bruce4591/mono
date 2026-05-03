@@ -52,12 +52,26 @@ class AkshareNormalizerTests(unittest.TestCase):
                 calls.append(("futures_foreign_hist", kwargs))
                 return FakeFrame([])
 
+            def futures_global_hist_em(self, **kwargs):
+                calls.append(("futures_global_hist_em", kwargs))
+                return FakeFrame([])
+
         instruments = [
             Instrument("A_SHARE", "600519", "Kweichow Moutai", "SSE", "stock", "CNY", "Asia/Shanghai"),
             Instrument("HK", "00700", "Tencent", "HKEX", "stock", "HKD", "Asia/Hong_Kong"),
             Instrument("US", "AAPL", "Apple", "NASDAQ", "stock", "USD", "America/New_York"),
             Instrument("US", "SPX", "S&P 500 Index", "CBOE", "index", "USD", "America/New_York"),
             Instrument("CMDTY", "OIL", "Brent Oil", "SINA", "commodity", "USD", "UTC"),
+            Instrument(
+                "CMDTY",
+                "RB00Y",
+                "NYMEX Gasoline",
+                "EM",
+                "commodity",
+                "USD",
+                "UTC",
+                extra_meta={"akshare_function": "futures_global_hist_em"},
+            ),
         ]
 
         with patch("market.collectors.akshare._load_akshare", return_value=FakeAkshare()):
@@ -72,6 +86,7 @@ class AkshareNormalizerTests(unittest.TestCase):
                 ("stock_us_daily", {"symbol": "AAPL", "adjust": ""}),
                 ("index_us_stock_sina", {"symbol": ".INX"}),
                 ("futures_foreign_hist", {"symbol": "OIL"}),
+                ("futures_global_hist_em", {"symbol": "RB00Y"}),
             ],
         )
 
@@ -112,6 +127,31 @@ class AkshareNormalizerTests(unittest.TestCase):
         self.assertEqual(bars[1].turnover_raw, 159000.0)
         self.assertEqual(bars[1].quote_currency, "USD")
         self.assertEqual(bars[1].source, "akshare")
+
+    def test_parse_akshare_daily_frame_accepts_global_futures_columns(self):
+        bars = parse_akshare_daily_frame(
+            instrument_id=9,
+            frame=FakeFrame(
+                [
+                    {
+                        "日期": "2026-05-01",
+                        "开盘": "3.50",
+                        "最高": "3.70",
+                        "最低": "3.40",
+                        "最新价": "3.61",
+                        "总量": "47318",
+                    }
+                ]
+            ),
+            quote_currency="USD",
+            source="akshare",
+        )
+
+        self.assertEqual(len(bars), 1)
+        self.assertEqual(bars[0].trade_date, "2026-05-01")
+        self.assertEqual(bars[0].close, 3.61)
+        self.assertEqual(bars[0].volume_raw, 47318.0)
+        self.assertEqual(bars[0].turnover_raw, 3.61 * 47318)
 
     def test_akshare_collector_syncs_focus_watchlists_with_rate_limit(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
