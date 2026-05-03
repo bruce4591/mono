@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Market",
+    "slug": "market-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "android": {
+      "package": "com.local.marketmobile",
+      "permissions": ["POST_NOTIFICATIONS"]
+    },
+    "plugins": ["expo-notifications"]
+  }
+}
