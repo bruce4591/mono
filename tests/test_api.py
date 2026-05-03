@@ -85,6 +85,59 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["symbol"], "BTCUSDT")
         self.assertEqual(payload["items"][0]["volume_raw"], 42000.0)
 
+    def test_get_board_payload_returns_volume_change_from_previous_trade_date(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                btc = get_instrument_payload(connection, "CRYPTO", "BTCUSDT")
+                assert btc is not None
+                connection.execute(
+                    """
+                    INSERT INTO market_snapshot (
+                        instrument_id,
+                        snapshot_ts_utc,
+                        trade_date_local,
+                        last_price,
+                        change_pct,
+                        volume_raw,
+                        turnover_raw,
+                        quote_currency,
+                        source
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        btc["instrument_id"],
+                        "2026-04-23T20:00:00Z",
+                        "2026-04-23",
+                        60000.0,
+                        1.0,
+                        21000.0,
+                        1_260_000_000.0,
+                        "USDT",
+                        "test",
+                    ),
+                )
+                RankingRepository(connection).refresh_turnover_board(
+                    board_name="CRYPTO_TURNOVER_TOP50",
+                    snapshot_ts_utc="2026-04-24T20:05:00Z",
+                    trade_date_local="2026-04-24",
+                    market="CRYPTO",
+                    instrument_type="crypto",
+                    limit=50,
+                )
+                payload = get_board_payload(connection, "CRYPTO_TURNOVER_TOP50")
+
+        self.assertEqual(payload["items"][0]["symbol"], "BTCUSDT")
+        self.assertEqual(payload["items"][0]["volume_change_pct"], 100.0)
+
     def test_get_board_payload_returns_latest_price_and_rank_change(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -1077,10 +1130,14 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b'replace(/0+$/, "")', asset.body)
         self.assertIn(b"formatPriceDirection", asset.body)
         self.assertIn(b"price-direction", asset.body)
+        self.assertIn(b"price-change", asset.body)
+        self.assertIn(b"volume-change", asset.body)
+        self.assertIn(b"volume_change_pct", asset.body)
+        self.assertIn("量变化".encode("utf-8"), asset.body)
         self.assertIn(b"setInterval(() => loadBoard(activeBoard, { silent: true })", asset.body)
         self.assertIn("排名较上期".encode("utf-8"), asset.body)
         self.assertIn("上期".encode("utf-8"), asset.body)
-        self.assertIn(b"24h", asset.body)
+        self.assertIn("价格 ".encode("utf-8"), asset.body)
         self.assertNotIn("价 ${formatPrice".encode("utf-8"), asset.body)
         self.assertNotIn("24h额".encode("utf-8"), asset.body)
 

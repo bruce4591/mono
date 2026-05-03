@@ -74,6 +74,8 @@ def get_board_payload(
             previous_ranking.rank AS previous_rank,
             market_snapshot.last_price,
             market_snapshot.volume_raw,
+            market_snapshot.trade_date_local,
+            previous_volume_snapshot.volume_raw AS previous_volume_raw,
             instrument.market,
             instrument.symbol,
             instrument.display_name,
@@ -89,6 +91,15 @@ def get_board_payload(
                 SELECT max(latest_snapshot.snapshot_ts_utc)
                 FROM market_snapshot AS latest_snapshot
                 WHERE latest_snapshot.instrument_id = ranking_snapshot.instrument_id
+            )
+        LEFT JOIN market_snapshot AS previous_volume_snapshot
+            ON previous_volume_snapshot.instrument_id = ranking_snapshot.instrument_id
+            AND previous_volume_snapshot.trade_date_local = (
+                SELECT max(previous_snapshot.trade_date_local)
+                FROM market_snapshot AS previous_snapshot
+                WHERE previous_snapshot.instrument_id = ranking_snapshot.instrument_id
+                    AND previous_snapshot.trade_date_local < market_snapshot.trade_date_local
+                    AND previous_snapshot.volume_raw IS NOT NULL
             )
         LEFT JOIN ranking_snapshot AS previous_ranking
             ON previous_ranking.board_name = ranking_snapshot.board_name
@@ -122,6 +133,10 @@ def get_board_payload(
                 "price_tick_size": _price_tick_size(row["extra_meta"]),
                 "last_price": _optional_float(row["last_price"]),
                 "volume_raw": _optional_float(row["volume_raw"]),
+                "volume_change_pct": _percent_change(
+                    _optional_float(row["previous_volume_raw"]),
+                    _optional_float(row["volume_raw"]),
+                ),
                 "turnover_raw": float(row["turnover_raw"]),
                 "quote_currency": str(row["quote_currency"]),
                 "change_pct": _optional_float(row["change_pct"]),
@@ -1164,6 +1179,12 @@ def _optional_float(value: object) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _percent_change(previous: float | None, current: float | None) -> float | None:
+    if previous in (None, 0) or current is None:
+        return None
+    return ((current - previous) / previous) * 100
 
 
 def _price_tick_size(extra_meta: object) -> str | None:

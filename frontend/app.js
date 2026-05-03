@@ -41,6 +41,13 @@ function formatVolume(value) {
   return Number(value || 0).toFixed(2);
 }
 
+function formatPercentChange(value) {
+  if (value === null || value === undefined) return "--";
+  const numeric = Number(value);
+  const sign = numeric > 0 ? "+" : "";
+  return `${sign}${numeric.toFixed(2)}%`;
+}
+
 function pricePrecisionFromTickSize(tickSize) {
   if (tickSize === null || tickSize === undefined) return null;
   const normalized = String(tickSize).trim();
@@ -98,9 +105,17 @@ function renderBoard(payload) {
 
   boardList.innerHTML = payload.items
     .map((item) => {
-      const change = Number(item.change_pct || 0);
-      const changeClass = change < 0 ? "change is-down" : "change";
-      const sign = change > 0 ? "+" : "";
+      const priceChange = Number(item.change_pct || 0);
+      const volumeChange =
+        item.volume_change_pct === null || item.volume_change_pct === undefined
+          ? null
+          : Number(item.volume_change_pct);
+      const priceChangeClass =
+        priceChange < 0 ? "change price-change is-down" : "change price-change";
+      const volumeChangeClass =
+        volumeChange !== null && volumeChange < 0
+          ? "change volume-change is-down"
+          : "change volume-change";
       const priceDirection = formatPriceDirection(item);
       return `
         <a class="row" href="/instrument.html?market=${encodeURIComponent(item.market)}&symbol=${encodeURIComponent(item.symbol)}">
@@ -114,9 +129,10 @@ function renderBoard(payload) {
           </div>
           <div class="metrics">
             <p class="price">${formatPrice(item.last_price, item.price_tick_size)} ${priceDirection}</p>
+            <p class="${priceChangeClass}">价格 ${formatPercentChange(item.change_pct)}</p>
             <p class="turnover">${formatTurnover(item.turnover_raw, item.quote_currency)}</p>
             <p class="name">24h量 ${formatVolume(item.volume_raw)}</p>
-            <p class="${changeClass}">24h ${sign}${change.toFixed(2)}%</p>
+            <p class="${volumeChangeClass}">量变化 ${formatPercentChange(item.volume_change_pct)}</p>
           </div>
         </a>
       `;
