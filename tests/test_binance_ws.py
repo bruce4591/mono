@@ -169,6 +169,81 @@ class BinanceWebSocketTests(unittest.TestCase):
         self.assertNotIn("8h", bars_by_interval)
         self.assertEqual(ranking_count, 0)
 
+    def test_kline_collector_accepts_base_url_log_prefix_and_message_handler(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+            logs = []
+            message = {
+                "stream": "btcusdt@kline_1m",
+                "data": {
+                    "e": "kline",
+                    "E": 1_776_000_030_000,
+                    "s": "BTCUSDT",
+                    "k": {
+                        "t": 1_776_000_000_000,
+                        "T": 1_776_000_059_999,
+                        "s": "BTCUSDT",
+                        "i": "1m",
+                        "o": "64000.00",
+                        "c": "64100.00",
+                        "h": "64150.00",
+                        "l": "63990.00",
+                        "v": "2.5",
+                        "q": "160250.00",
+                        "x": False,
+                    },
+                },
+            }
+
+            class FakeWebSocketApp:
+                def __init__(self, url, on_message, on_error, on_close, on_open, on_ping, on_pong):
+                    self.on_message = on_message
+
+                def run_forever(self, **kwargs):
+                    self.on_message(self, json.dumps(message))
+
+            created_urls = []
+
+            def factory(url, on_message, on_error, on_close, on_open, on_ping, on_pong):
+                created_urls.append(url)
+                return FakeWebSocketApp(
+                    url,
+                    on_message,
+                    on_error,
+                    on_close,
+                    on_open,
+                    on_ping,
+                    on_pong,
+                )
+
+            def handler(connection, payload, *, aggregate=True):
+                calls.append((connection, payload, aggregate))
+
+            collector = BinanceKlineWebSocketCollector(
+                db_path=db_path,
+                symbols=["BTCUSDT"],
+                interval="1m",
+                ws_base_url="wss://fstream.binance.com",
+                log_prefix="binance futures ws",
+                message_handler=handler,
+                websocket_app_factory=factory,
+                logger=logs.append,
+            )
+
+            result = collector.run_once()
+
+        self.assertEqual(
+            created_urls,
+            ["wss://fstream.binance.com/stream?streams=btcusdt@kline_1m"],
+        )
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1], message)
+        self.assertFalse(calls[0][2])
+        self.assertEqual(result.items_synced, 1)
+        self.assertTrue(any(message.startswith("binance futures ws connecting:") for message in logs))
+
     def test_kline_collector_logs_websocket_lifecycle_callbacks(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

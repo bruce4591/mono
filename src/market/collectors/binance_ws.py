@@ -57,11 +57,17 @@ class BinanceKlineWebSocketCollector:
         ping_timeout_seconds: int | None = None,
         gap_fill_on_reconnect: bool = False,
         gap_filler=None,
+        ws_base_url: str = BINANCE_WS_BASE_URL,
+        log_prefix: str = "binance ws",
+        message_handler=None,
     ) -> None:
         self.db_path = Path(db_path)
         self.symbols = [symbol.upper() for symbol in symbols]
         self.interval = interval
         self.max_streams_per_connection = max_streams_per_connection
+        self.ws_base_url = ws_base_url
+        self.log_prefix = log_prefix
+        self.message_handler = message_handler
         self.websocket_app_factory = websocket_app_factory or _default_websocket_app_factory
         self.logger = logger or _default_logger
         self.sleep = sleep
@@ -77,6 +83,7 @@ class BinanceKlineWebSocketCollector:
         for url in build_combined_kline_stream_urls(
             self.symbols,
             interval=self.interval,
+            base_url=self.ws_base_url,
             max_streams_per_connection=self.max_streams_per_connection,
         ):
             app = self.websocket_app_factory(
@@ -88,7 +95,7 @@ class BinanceKlineWebSocketCollector:
                 self._on_ping,
                 self._on_pong,
             )
-            self._log(f"binance ws connecting: url={_redact_stream_url(url)}")
+            self._log(f"connecting: url={_redact_stream_url(url)}")
             app.run_forever(
                 ping_interval=self.ping_interval_seconds,
                 ping_timeout=self.ping_timeout_seconds,
@@ -117,14 +124,13 @@ class BinanceKlineWebSocketCollector:
                 raise
             except Exception as error:
                 self.last_error = str(error)
-                self._log(f"binance ws cycle error: {type(error).__name__}: {error}")
+                self._log(f"cycle error: {type(error).__name__}: {error}")
                 result = self._result()
             if max_reconnects is not None and reconnects >= max_reconnects:
                 return result
             reconnects += 1
             self._log(
-                "binance ws reconnect scheduled: "
-                f"delay={reconnect_delay_seconds}s reconnect={reconnects}"
+                f"reconnect scheduled: delay={reconnect_delay_seconds}s reconnect={reconnects}"
             )
             self.sleep(reconnect_delay_seconds)
 
@@ -135,42 +141,41 @@ class BinanceKlineWebSocketCollector:
             with connect(self.db_path) as connection:
                 if self.gap_fill_on_reconnect and bar_start_ts_utc is not None:
                     self._fill_gap_before_bar(connection, bar_start_ts_utc)
-                apply_binance_kline_event(connection, payload, aggregate=False)
+                handler = self.message_handler or apply_binance_kline_event
+                handler(connection, payload, aggregate=False)
                 self.items_synced += 1
             if bar_start_ts_utc is not None:
                 self._latest_bar_ts_utc = bar_start_ts_utc
         except sqlite3.OperationalError as error:
             if "locked" in str(error).lower():
                 self.last_error = str(error)
-                self._log(f"binance ws message skipped: database locked: {error}")
+                self._log(f"message skipped: database locked: {error}")
                 return
             raise
         except Exception as error:
             self.last_error = str(error)
-            self._log(f"binance ws message error: {type(error).__name__}: {error}")
+            self._log(f"message error: {type(error).__name__}: {error}")
             raise
 
     def _on_error(self, _app, error) -> None:
         self.last_error = str(error)
-        self._log(f"binance ws error: {error}")
+        self._log(f"error: {error}")
 
     def _on_close(self, _app, status_code, message) -> None:
         self._log(
-            "binance ws closed: "
-            f"status={status_code} message={message!r} messages={self.items_synced}"
+            f"closed: status={status_code} message={message!r} messages={self.items_synced}"
         )
 
     def _on_open(self, _app) -> None:
         self._log(
-            "binance ws opened: "
-            f"symbols={len(self.symbols)} interval={self.interval}"
+            f"opened: symbols={len(self.symbols)} interval={self.interval}"
         )
 
     def _on_ping(self, _app, message) -> None:
-        self._log(f"binance ws ping: bytes={len(message or b'')}")
+        self._log(f"ping: bytes={len(message or b'')}")
 
     def _on_pong(self, _app, message) -> None:
-        self._log(f"binance ws pong: bytes={len(message or b'')}")
+        self._log(f"pong: bytes={len(message or b'')}")
 
     def _result(self) -> CollectorResult:
         return CollectorResult(
@@ -185,7 +190,7 @@ class BinanceKlineWebSocketCollector:
         )
 
     def _log(self, message: str) -> None:
-        self.logger(message)
+        self.logger(f"{self.log_prefix} {message}")
 
     def _fill_gap_before_bar(
         self,
@@ -199,8 +204,7 @@ class BinanceKlineWebSocketCollector:
         if _utc_diff_seconds(self._latest_bar_ts_utc, current_bar_ts_utc) <= 60:
             return
         self._log(
-            "binance ws gap check: "
-            f"start={self._latest_bar_ts_utc} end={current_bar_ts_utc}"
+            f"gap check: start={self._latest_bar_ts_utc} end={current_bar_ts_utc}"
         )
         try:
             before_count = _count_1m_bars(
@@ -223,16 +227,16 @@ class BinanceKlineWebSocketCollector:
             )
             written = max(after_count - before_count, 0)
             self.items_synced += written
-            self._log(f"binance ws gap check done: bars_written={written}")
+            self._log(f"gap check done: bars_written={written}")
         except sqlite3.OperationalError as error:
             if "locked" in str(error).lower():
                 self.last_error = str(error)
-                self._log(f"binance ws gap check skipped: database locked: {error}")
+                self._log(f"gap check skipped: database locked: {error}")
                 return
             raise
         except Exception as error:
             self.last_error = str(error)
-            self._log(f"binance ws gap check error: {type(error).__name__}: {error}")
+            self._log(f"gap check error: {type(error).__name__}: {error}")
 
 
 def build_combined_kline_stream_urls(

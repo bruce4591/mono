@@ -7,6 +7,7 @@ from pathlib import Path
 from market.binance import binance_symbol_to_instrument
 from market.db import connect, init_database
 from market.models import MarketSnapshot
+from market import realtime
 from market.realtime import (
     apply_binance_kline_event,
     apply_binance_ticker_event,
@@ -213,6 +214,63 @@ class RealtimeTests(unittest.TestCase):
         self.assertEqual(snapshot["volume_raw"], 12345.0)
         self.assertEqual(snapshot["turnover_raw"], 987654321.0)
         self.assertEqual(snapshot["source"], "binance_ws_kline_price")
+
+    def test_apply_binance_futures_kline_event_writes_futures_bar_and_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                self.assertTrue(hasattr(realtime, "apply_binance_futures_kline_event"))
+                bar = realtime.apply_binance_futures_kline_event(
+                    connection,
+                    {
+                        "stream": "ethusdt@kline_1m",
+                        "data": {
+                            "e": "kline",
+                            "E": 1_776_000_030_000,
+                            "s": "ETHUSDT",
+                            "k": {
+                                "t": 1_776_000_000_000,
+                                "T": 1_776_000_059_999,
+                                "s": "ETHUSDT",
+                                "i": "1m",
+                                "o": "3200.00",
+                                "c": "3210.00",
+                                "h": "3215.00",
+                                "l": "3190.00",
+                                "v": "12.5",
+                                "q": "40125.00",
+                                "x": True,
+                            },
+                        },
+                    },
+                    aggregate=False,
+                )
+                row = connection.execute(
+                    """
+                    SELECT instrument.market,
+                        instrument.instrument_type,
+                        bar_intraday.close,
+                        bar_intraday.source AS bar_source,
+                        market_snapshot.last_price,
+                        market_snapshot.source AS snapshot_source
+                    FROM instrument
+                    JOIN bar_intraday
+                        ON bar_intraday.instrument_id = instrument.instrument_id
+                    JOIN market_snapshot
+                        ON market_snapshot.instrument_id = instrument.instrument_id
+                    WHERE instrument.symbol = 'ETHUSDT'
+                    """
+                ).fetchone()
+
+        self.assertEqual(bar.source, "binance_futures_ws_kline")
+        self.assertEqual(row["market"], "CRYPTO_FUTURES")
+        self.assertEqual(row["instrument_type"], "crypto_futures")
+        self.assertEqual(row["close"], 3210.0)
+        self.assertEqual(row["bar_source"], "binance_futures_ws_kline")
+        self.assertEqual(row["last_price"], 3210.0)
+        self.assertEqual(row["snapshot_source"], "binance_futures_ws_kline_price")
 
 
 if __name__ == "__main__":

@@ -268,6 +268,92 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
 
+    def test_run_binance_futures_kline_ws_is_registered(self):
+        exit_code = main(
+            [
+                "run-binance-futures-kline-ws",
+                "--db-path",
+                "./data/market.sqlite3",
+                "--symbol",
+                "BTCUSDT",
+                "--interval",
+                "1m",
+                "--dry-run",
+            ]
+        )
+
+        self.assertEqual(exit_code, 0)
+
+    def test_run_binance_futures_kline_ws_defaults_to_top_futures_symbols(self):
+        stdout = io.StringIO()
+        tickers = [
+            {"symbol": "ETHUSDT", "quoteVolume": "2000"},
+            {"symbol": "BTCUSDT", "quoteVolume": "1000"},
+        ]
+        exchange_info = {
+            "BTCUSDT": {
+                "symbol": "BTCUSDT",
+                "contractType": "PERPETUAL",
+                "status": "TRADING",
+                "quoteAsset": "USDT",
+            },
+            "ETHUSDT": {
+                "symbol": "ETHUSDT",
+                "contractType": "PERPETUAL",
+                "status": "TRADING",
+                "quoteAsset": "USDT",
+            },
+        }
+
+        with redirect_stdout(stdout), patch(
+            "market.cli.fetch_binance_futures_24hr_tickers",
+            return_value=tickers,
+        ), patch(
+            "market.cli.fetch_binance_futures_exchange_info",
+            return_value=exchange_info,
+        ):
+            exit_code = main(
+                [
+                    "run-binance-futures-kline-ws",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--top-usdt-limit",
+                    "2",
+                    "--interval",
+                    "1m",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("ETHUSDT,BTCUSDT interval=1m", stdout.getvalue())
+
+    def test_run_binance_futures_kline_ws_default_limit_is_sixty(self):
+        observed_limits = []
+
+        with redirect_stdout(io.StringIO()), patch(
+            "market.cli.fetch_binance_futures_24hr_tickers",
+            return_value=[],
+        ), patch(
+            "market.cli.fetch_binance_futures_exchange_info",
+            return_value={},
+        ), patch(
+            "market.cli.select_top_futures_usdt_symbols",
+            side_effect=lambda tickers, exchange_info, *, limit: observed_limits.append(limit)
+            or [],
+        ):
+            exit_code = main(
+                [
+                    "run-binance-futures-kline-ws",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(observed_limits, [60])
+
     def test_run_binance_kline_ws_can_use_top_usdt_symbols(self):
         stdout = io.StringIO()
 

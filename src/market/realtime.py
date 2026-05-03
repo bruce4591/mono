@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from market.aggregators import aggregate_crypto_from_1m
+from market.aggregators import aggregate_crypto_from_1m, aggregate_market_from_1m
 from market.binance import binance_symbol_to_instrument
+from market.binance_futures import binance_futures_symbol_to_instrument
 from market.models import IntradayBar, MarketSnapshot
 from market.repositories import (
     InstrumentRepository,
@@ -146,6 +147,48 @@ def apply_binance_kline_event(
     return bar
 
 
+def apply_binance_futures_kline_event(
+    connection: sqlite3.Connection,
+    payload: dict[str, Any],
+    *,
+    aggregate: bool = True,
+) -> IntradayBar:
+    data = payload.get("data", payload)
+    if not isinstance(data, dict):
+        raise ValueError("Binance kline payload must be an object")
+    kline = data.get("k")
+    if not isinstance(kline, dict):
+        raise ValueError("Binance kline payload must include kline object")
+
+    symbol = str(kline.get("s") or data["s"]).upper()
+    event_time_ms = int(data["E"])
+    instrument = binance_futures_symbol_to_instrument({"symbol": symbol})
+    instrument_id = InstrumentRepository(connection).upsert(instrument)
+    bar = replace(
+        parse_binance_kline_event(
+            payload,
+            instrument_id=instrument_id,
+            timezone_name=instrument.timezone,
+        ),
+        source="binance_futures_ws_kline",
+    )
+    IntradayBarRepository(connection).upsert(bar)
+    if aggregate and bar.interval == "1m":
+        aggregate_market_from_1m(connection, market="CRYPTO_FUTURES", symbols=[symbol])
+    _upsert_kline_price_snapshot(
+        connection,
+        instrument_id=instrument_id,
+        snapshot_ts_utc=_format_utc_ms(event_time_ms),
+        trade_date_local=bar.trade_date_local,
+        last_price=bar.close,
+        fallback_volume_raw=bar.volume_raw,
+        fallback_turnover_raw=bar.turnover_raw,
+        quote_currency=instrument.quote_currency,
+        source="binance_futures_ws_kline_price",
+    )
+    return bar
+
+
 def _upsert_kline_price_snapshot(
     connection: sqlite3.Connection,
     *,
@@ -156,6 +199,7 @@ def _upsert_kline_price_snapshot(
     fallback_volume_raw: float | None,
     fallback_turnover_raw: float | None,
     quote_currency: str,
+    source: str = "binance_ws_kline_price",
 ) -> None:
     existing = connection.execute(
         """
@@ -184,7 +228,7 @@ def _upsert_kline_price_snapshot(
                 else fallback_turnover_raw
             ),
             quote_currency=str(existing["quote_currency"]) if existing else quote_currency,
-            source="binance_ws_kline_price",
+            source=source,
         )
     )
 

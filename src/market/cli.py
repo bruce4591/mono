@@ -29,9 +29,10 @@ from market.collectors.binance import BinanceCollector
 from market.collectors.binance_ws import BinanceKlineWebSocketCollector
 from market.collectors.base import CollectorResult, run_collector_job
 from market.crypto_gaps import fill_binance_1m_gaps
+from market.crypto_gaps import fill_binance_futures_1m_gaps
 from market.db import connect, init_database
 from market.models import AlertRule, WatchlistEntry
-from market.realtime import apply_binance_ticker_event
+from market.realtime import apply_binance_futures_kline_event, apply_binance_ticker_event
 from market.repositories import (
     AlertEventRepository,
     AlertRuleRepository,
@@ -209,6 +210,23 @@ def build_parser() -> argparse.ArgumentParser:
     run_kline_ws.add_argument("--top-usdt-limit", type=int, default=0)
     run_kline_ws.add_argument("--gap-fill-on-reconnect", action="store_true")
     run_kline_ws.add_argument("--dry-run", action="store_true")
+
+    run_futures_kline_ws = subparsers.add_parser(
+        "run-binance-futures-kline-ws",
+        help="Run Binance USD-M futures combined WebSocket 1m kline collector",
+    )
+    run_futures_kline_ws.add_argument("--db-path", type=Path, default=None)
+    run_futures_kline_ws.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="Futures symbol to subscribe; can be provided multiple times",
+    )
+    run_futures_kline_ws.add_argument("--interval", default="1m")
+    run_futures_kline_ws.add_argument("--max-streams-per-connection", type=int, default=200)
+    run_futures_kline_ws.add_argument("--top-usdt-limit", type=int, default=60)
+    run_futures_kline_ws.add_argument("--gap-fill-on-reconnect", action="store_true")
+    run_futures_kline_ws.add_argument("--dry-run", action="store_true")
 
     add_alert_rule = subparsers.add_parser(
         "add-alert-rule", help="Create or update a threshold alert rule"
@@ -598,6 +616,51 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    if args.command == "run-binance-futures-kline-ws":
+        symbols = args.symbol or _top_futures_usdt_symbols(args.top_usdt_limit)
+        normalized_symbols = [symbol.upper() for symbol in symbols]
+        if args.dry_run:
+            symbol_text = ",".join(normalized_symbols) or "none"
+            print(
+                "binance futures kline ws ready: "
+                f"{symbol_text} interval={args.interval}"
+            )
+            return 0
+        if not normalized_symbols:
+            print("binance futures kline ws error: at least one --symbol is required")
+            return 1
+
+        def fill_futures_gaps(
+            connection: sqlite3.Connection,
+            symbols: list[str],
+            start_ts_utc: str,
+            end_ts_utc: str,
+        ):
+            return fill_binance_futures_1m_gaps(
+                connection,
+                symbols=symbols,
+                start_ts_utc=start_ts_utc,
+                end_ts_utc=end_ts_utc,
+            )
+
+        collector = BinanceKlineWebSocketCollector(
+            db_path=db_path,
+            symbols=normalized_symbols,
+            interval=args.interval,
+            max_streams_per_connection=args.max_streams_per_connection,
+            gap_fill_on_reconnect=args.gap_fill_on_reconnect,
+            gap_filler=fill_futures_gaps,
+            ws_base_url="wss://fstream.binance.com",
+            log_prefix="binance futures ws",
+            message_handler=apply_binance_futures_kline_event,
+        )
+        result = collector.run_forever()
+        print(
+            "binance futures kline ws stopped: "
+            f"{result.items_synced} messages, interval={args.interval}"
+        )
+        return 0
+
     if args.command == "add-alert-rule":
         with connect(db_path) as connection:
             AlertRuleRepository(connection).upsert(
@@ -662,6 +725,18 @@ def _parse_utc_arg(value: str) -> datetime:
 
 def _format_utc_arg(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _top_futures_usdt_symbols(limit: int) -> list[str]:
+    if limit <= 0:
+        return []
+    tickers = fetch_binance_futures_24hr_tickers()
+    exchange_info = fetch_binance_futures_exchange_info()
+    return select_top_futures_usdt_symbols(
+        tickers,
+        exchange_info,
+        limit=limit,
+    )
 
 
 def _sync_crypto_futures_boards(
