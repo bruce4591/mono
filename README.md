@@ -279,7 +279,8 @@ Note: the current chart page loads `klinecharts@9.8.12` from jsDelivr. If you ne
 - AKShare ETF/index MVP is in place:
   - `sync-akshare-focus` syncs `ETF_FOCUS20` and `INDEX_FOCUS20` through the
     existing collector contract;
-  - `deploy/scripts/market-sync-akshare-focus.sh` is the post-close cron entry;
+  - `deploy/scripts/market-sync-akshare-focus.sh` is used by the US-session
+    2-hour refresh cron plus the post-close fallback cron;
   - expand beyond the focus pools only after the small daily sync is stable.
 - Harden personal mobile access before leaving the API broadly reachable:
   - prefer IP restriction when the client network is stable;

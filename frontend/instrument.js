@@ -176,9 +176,7 @@ function renderSelectedPeriod(period) {
 }
 
 function getVisibleCandles(period) {
-  const count = DEFAULT_VISIBLE_CANDLES[period.label] || 96;
-  if (period.items.length <= count) return period.items;
-  return period.items.slice(0, count);
+  return period.items;
 }
 
 function renderRangeControls(period) {
@@ -319,7 +317,7 @@ async function loadInstrument() {
     fetch(
       `/api/instruments/${encodeURIComponent(market)}/${encodeURIComponent(symbol)}?include_funding=1`,
     ),
-    fetch(`/api/bars/daily?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}`),
+    fetchDailyBars(DEFAULT_VISIBLE_CANDLES["1d"] || 120),
     ...intradayIntervals.map((interval) =>
       fetchIntradayBars(interval, DEFAULT_VISIBLE_CANDLES[interval] || 96),
     ),

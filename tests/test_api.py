@@ -1096,6 +1096,10 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"renderFundingRate", asset.body)
         self.assertIn(b"formatFundingRate", asset.body)
         self.assertIn(b"fetchDailyBars", asset.body)
+        self.assertIn(
+            b"fetchDailyBars(DEFAULT_VISIBLE_CANDLES[\"1d\"] || 120)",
+            asset.body,
+        )
         self.assertIn(b"before_trade_date", asset.body)
         self.assertIn(b"setPriceVolumePrecision", asset.body)
         self.assertIn(b"fetchOlderBars", asset.body)

@@ -63,6 +63,8 @@ class DeployConfigTests(unittest.TestCase):
         self.assertIn("market-sync-akshare-focus.sh", docs)
         self.assertIn("ETF_FOCUS20", docs)
         self.assertIn("INDEX_FOCUS20", docs)
+        self.assertIn("30 13-21/2 * * 1-5", docs)
+        self.assertIn("30 6 * * 2-6", docs)
 
 
 if __name__ == "__main__":
