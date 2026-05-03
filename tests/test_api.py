@@ -22,8 +22,8 @@ from market.api import (
 from market.binance import binance_symbol_to_instrument
 from market.binance_futures import binance_futures_symbol_to_instrument
 from market.db import connect, init_database
-from market.repositories import InstrumentRepository, RankingRepository
-from market.models import AlertRule
+from market.repositories import InstrumentRepository, IntradayBarRepository, RankingRepository
+from market.models import AlertRule, IntradayBar
 from market.repositories import AlertEventRepository, AlertRuleRepository
 from market.models import AlertEvent
 from market.sample_data import seed_sample_data
@@ -486,6 +486,62 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["source"], "binance_futures_gap_fill")
         self.assertEqual(payload["items"][0]["high"], 2.0)
         self.assertEqual(calls, [("ETHUSDT", "1m", 1000)])
+
+    def test_get_intraday_bars_payload_backfills_stale_latest_futures_window(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
+                calls.append((symbol, interval, limit))
+                return [
+                    [
+                        _ms("2026-05-03T00:02:00Z"),
+                        "1",
+                        "3",
+                        "0.5",
+                        "2.5",
+                        "10",
+                        _ms("2026-05-03T00:02:59.999Z"),
+                        "25",
+                    ]
+                ]
+
+            with connect(db_path) as connection:
+                instrument_id = InstrumentRepository(connection).upsert(
+                    binance_futures_symbol_to_instrument({"symbol": "ETHUSDT"})
+                )
+                IntradayBarRepository(connection).upsert(
+                    IntradayBar(
+                        instrument_id=instrument_id,
+                        interval="1m",
+                        bar_start_ts_utc="2026-05-03T00:00:00Z",
+                        bar_end_ts_utc="2026-05-03T00:01:00Z",
+                        trade_date_local="2026-05-03",
+                        open=1,
+                        high=2,
+                        low=0.5,
+                        close=1.5,
+                        volume_raw=10,
+                        turnover_raw=15,
+                        is_closed_bar=True,
+                        source="existing",
+                    )
+                )
+                payload = get_intraday_bars_payload(
+                    connection,
+                    "CRYPTO_FUTURES",
+                    "ETHUSDT",
+                    "1m",
+                    now_ts_utc="2026-05-03T00:03:15Z",
+                    gap_fetcher=fetcher,
+                    gap_min_request_interval_seconds=0,
+                )
+
+        self.assertEqual(payload["items"][-1]["bar_start_ts_utc"], "2026-05-03T00:02:00Z")
+        self.assertEqual(payload["items"][-1]["high"], 3.0)
+        self.assertEqual(calls[-1], ("ETHUSDT", "1m", 2))
 
     def test_get_intraday_bars_payload_defaults_to_futures_fetcher_for_futures(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

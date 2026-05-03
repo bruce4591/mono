@@ -232,6 +232,7 @@ def get_intraday_bars_payload(
 ) -> dict[str, object]:
     instrument_repository = InstrumentRepository(connection)
     instrument = instrument_repository.get_by_market_symbol(market, symbol)
+    backfilled_missing_instrument = False
     if instrument is None or instrument.instrument_id is None:
         if market in {"CRYPTO", "CRYPTO_FUTURES"}:
             _ensure_crypto_intraday_window(
@@ -244,6 +245,7 @@ def get_intraday_bars_payload(
                 fetcher=gap_fetcher,
                 min_request_interval_seconds=gap_min_request_interval_seconds,
             )
+            backfilled_missing_instrument = True
             instrument = instrument_repository.get_by_market_symbol(market, symbol)
         if instrument is None or instrument.instrument_id is None:
             return {"market": market, "symbol": symbol, "interval": interval, "items": []}
@@ -256,7 +258,22 @@ def get_intraday_bars_payload(
         before_ts_utc=before_ts_utc,
         limit=resolved_limit,
     )
-    should_backfill = not bars or (before_ts_utc is not None and len(bars) < resolved_limit)
+    stale_latest_window = (
+        market == "CRYPTO_FUTURES"
+        and not backfilled_missing_instrument
+        and before_ts_utc is None
+        and bool(bars)
+        and _latest_intraday_window_is_stale(
+            bars[-1],
+            interval=interval,
+            now_ts_utc=now_ts_utc,
+        )
+    )
+    should_backfill = (
+        not bars
+        or stale_latest_window
+        or (before_ts_utc is not None and len(bars) < resolved_limit)
+    )
     if market in {"CRYPTO", "CRYPTO_FUTURES"} and should_backfill:
         _ensure_crypto_intraday_window(
             connection,
@@ -371,6 +388,21 @@ def _list_intraday_window(
         params,
     ).fetchall()
     return [_intraday_bar_from_row(row) for row in reversed(rows)]
+
+
+def _latest_intraday_window_is_stale(
+    bar: IntradayBar,
+    *,
+    interval: str,
+    now_ts_utc: str | None,
+) -> bool:
+    minutes = _interval_minutes(interval)
+    if minutes is None:
+        return False
+    now = _resolve_now(now_ts_utc).replace(second=0, microsecond=0)
+    bucket_minute = (now.hour * 60 + now.minute) // minutes * minutes
+    current_bucket = now.replace(hour=bucket_minute // 60, minute=bucket_minute % 60)
+    return _parse_utc(bar.bar_start_ts_utc) < current_bucket
 
 
 def _intraday_bar_from_row(row: sqlite3.Row) -> IntradayBar:
