@@ -4,8 +4,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from market.aggregators import aggregate_daily_from_intraday, aggregate_intraday_from_1m
+from market.aggregators import (
+    aggregate_daily_from_intraday,
+    aggregate_intraday_from_1m,
+    aggregate_market_from_1m,
+)
 from market.binance import binance_symbol_to_instrument
+from market.binance_futures import binance_futures_symbol_to_instrument
 from market.db import connect, init_database
 from market.models import IntradayBar
 from market.repositories import DailyBarRepository, InstrumentRepository, IntradayBarRepository
@@ -121,6 +126,54 @@ class AggregatorTests(unittest.TestCase):
         self.assertEqual(daily[0].volume_raw, 120.0)
         self.assertEqual(daily[0].turnover_raw, 12000.0)
         self.assertEqual(daily[0].source, "aggregate_1m")
+
+    def test_aggregate_market_from_1m_writes_futures_without_touching_spot(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                spot_id = _seed_btc_1m_bars(connection, minutes=5)
+                futures_id = InstrumentRepository(connection).upsert(
+                    binance_futures_symbol_to_instrument({"symbol": "BTCUSDT"})
+                )
+                repository = IntradayBarRepository(connection)
+                for index in range(5):
+                    repository.upsert(
+                        IntradayBar(
+                            instrument_id=futures_id,
+                            interval="1m",
+                            bar_start_ts_utc=f"2026-04-12T14:0{index}:00Z",
+                            bar_end_ts_utc=f"2026-04-12T14:0{index + 1}:00Z",
+                            trade_date_local="2026-04-12",
+                            open=200.0 + index,
+                            high=201.0 + index,
+                            low=199.0 + index,
+                            close=200.5 + index,
+                            volume_raw=1.0,
+                            turnover_raw=200.0,
+                            is_closed_bar=True,
+                            source="binance_futures_ws_kline",
+                        )
+                    )
+
+                result = aggregate_market_from_1m(
+                    connection,
+                    market="CRYPTO_FUTURES",
+                    symbols=["BTCUSDT"],
+                )
+                spot_5m = IntradayBarRepository(connection).list_for_instrument(
+                    spot_id,
+                    "5m",
+                )
+                futures_5m = IntradayBarRepository(connection).list_for_instrument(
+                    futures_id,
+                    "5m",
+                )
+
+        self.assertGreater(result.bars_written, 0)
+        self.assertEqual(spot_5m, [])
+        self.assertEqual(futures_5m[0].source, "aggregate_1m")
 
 
 def _seed_btc_1m_bars(connection, *, minutes: int) -> int:

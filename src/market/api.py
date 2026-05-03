@@ -16,7 +16,12 @@ from market.binance import (
     fetch_binance_klines_range,
     fetch_binance_symbol_trading_meta,
 )
-from market.crypto_gaps import BINANCE_KLINES_MAX_LIMIT, fill_binance_1m_gaps
+from market.binance_futures import fetch_binance_futures_klines_range
+from market.crypto_gaps import (
+    BINANCE_KLINES_MAX_LIMIT,
+    fill_binance_1m_gaps,
+    fill_binance_futures_1m_gaps,
+)
 from market.db import connect
 from market.models import Instrument, IntradayBar
 from market.repositories import (
@@ -222,7 +227,7 @@ def get_intraday_bars_payload(
     before_ts_utc: str | None = None,
     limit: int | None = None,
     now_ts_utc: str | None = None,
-    gap_fetcher: RangeKlineFetcher = fetch_binance_klines_range,
+    gap_fetcher: RangeKlineFetcher | None = None,
     gap_min_request_interval_seconds: float = 1.0,
 ) -> dict[str, object]:
     instrument = InstrumentRepository(connection).get_by_market_symbol(market, symbol)
@@ -238,9 +243,10 @@ def get_intraday_bars_payload(
         limit=resolved_limit,
     )
     should_backfill = not bars or (before_ts_utc is not None and len(bars) < resolved_limit)
-    if market == "CRYPTO" and should_backfill:
+    if market in {"CRYPTO", "CRYPTO_FUTURES"} and should_backfill:
         _ensure_crypto_intraday_window(
             connection,
+            market=market,
             symbol=symbol,
             interval=interval,
             before_ts_utc=before_ts_utc,
@@ -282,11 +288,12 @@ def get_intraday_bars_payload(
 def _ensure_crypto_intraday_window(
     connection: sqlite3.Connection,
     *,
+    market: str,
     symbol: str,
     interval: str,
     before_ts_utc: str | None,
     now_ts_utc: str | None,
-    fetcher: RangeKlineFetcher,
+    fetcher: RangeKlineFetcher | None,
     min_request_interval_seconds: float,
 ) -> None:
     minutes = _interval_minutes(interval)
@@ -294,12 +301,18 @@ def _ensure_crypto_intraday_window(
         return
     end = _parse_utc(before_ts_utc) if before_ts_utc else _resolve_now(now_ts_utc)
     start = end - timedelta(minutes=BINANCE_KLINES_MAX_LIMIT)
-    fill_binance_1m_gaps(
+    if market == "CRYPTO_FUTURES":
+        fill_func = fill_binance_futures_1m_gaps
+        resolved_fetcher = fetcher or fetch_binance_futures_klines_range
+    else:
+        fill_func = fill_binance_1m_gaps
+        resolved_fetcher = fetcher or fetch_binance_klines_range
+    fill_func(
         connection,
         symbols=[symbol],
         start_ts_utc=_format_utc(start),
         end_ts_utc=_format_utc(end),
-        fetcher=fetcher,
+        fetcher=resolved_fetcher,
         min_request_interval_seconds=min_request_interval_seconds,
     )
 

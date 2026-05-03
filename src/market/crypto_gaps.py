@@ -3,15 +3,23 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Callable
 
-from market.aggregators import aggregate_crypto_from_1m
+from market.aggregators import AggregationResult, aggregate_crypto_from_1m, aggregate_market_from_1m
 from market.binance import (
     RangeKlineFetcher,
     binance_symbol_to_instrument,
     fetch_binance_klines_range,
     sync_binance_klines_range,
 )
+from market.binance_futures import (
+    FuturesRangeKlineFetcher,
+    binance_futures_symbol_to_instrument,
+    fetch_binance_futures_klines_range,
+    sync_binance_futures_klines_range,
+)
 from market.collectors.base import RequestRateLimiter
+from market.models import Instrument
 from market.repositories import InstrumentRepository
 
 ONE_MINUTE_MS = 60_000
@@ -37,6 +45,63 @@ def fill_binance_1m_gaps(
     fetcher: RangeKlineFetcher = fetch_binance_klines_range,
     min_request_interval_seconds: float = BINANCE_GAP_FILL_MIN_REQUEST_INTERVAL_SECONDS,
 ) -> GapFillResult:
+    return _fill_binance_1m_gaps_for_market(
+        connection,
+        symbols=symbols,
+        start_ts_utc=start_ts_utc,
+        end_ts_utc=end_ts_utc,
+        now_ms=now_ms,
+        fetcher=fetcher,
+        min_request_interval_seconds=min_request_interval_seconds,
+        instrument_factory=binance_symbol_to_instrument,
+        range_sync=sync_binance_klines_range,
+        aggregate=aggregate_crypto_from_1m,
+    )
+
+
+def fill_binance_futures_1m_gaps(
+    connection: sqlite3.Connection,
+    *,
+    symbols: list[str],
+    start_ts_utc: str,
+    end_ts_utc: str,
+    now_ms: int | None = None,
+    fetcher: FuturesRangeKlineFetcher = fetch_binance_futures_klines_range,
+    min_request_interval_seconds: float = BINANCE_GAP_FILL_MIN_REQUEST_INTERVAL_SECONDS,
+) -> GapFillResult:
+    return _fill_binance_1m_gaps_for_market(
+        connection,
+        symbols=symbols,
+        start_ts_utc=start_ts_utc,
+        end_ts_utc=end_ts_utc,
+        now_ms=now_ms,
+        fetcher=fetcher,
+        min_request_interval_seconds=min_request_interval_seconds,
+        instrument_factory=lambda symbol: binance_futures_symbol_to_instrument(
+            {"symbol": symbol}
+        ),
+        range_sync=sync_binance_futures_klines_range,
+        aggregate=lambda conn, syms: aggregate_market_from_1m(
+            conn,
+            market="CRYPTO_FUTURES",
+            symbols=syms,
+        ),
+    )
+
+
+def _fill_binance_1m_gaps_for_market(
+    connection: sqlite3.Connection,
+    *,
+    symbols: list[str],
+    start_ts_utc: str,
+    end_ts_utc: str,
+    now_ms: int | None,
+    fetcher: Callable[[str, str, int, int, int], list[list[object]]],
+    min_request_interval_seconds: float,
+    instrument_factory: Callable[[str], Instrument],
+    range_sync: Callable[..., object],
+    aggregate: Callable[[sqlite3.Connection, list[str]], AggregationResult],
+) -> GapFillResult:
     normalized_symbols = [symbol.upper() for symbol in symbols]
     start = _floor_minute(_parse_utc(start_ts_utc))
     end = _floor_minute(_parse_utc(end_ts_utc))
@@ -53,12 +118,12 @@ def fill_binance_1m_gaps(
     bars_written = 0
     for symbol in normalized_symbols:
         instrument_id = InstrumentRepository(connection).upsert(
-            binance_symbol_to_instrument(symbol)
+            instrument_factory(symbol)
         )
         for gap in _missing_ranges(connection, instrument_id, start=start, end=end):
             for chunk in _chunk_gap(gap):
                 limiter.wait()
-                result = sync_binance_klines_range(
+                result = range_sync(
                     connection,
                     symbol=symbol,
                     interval="1m",
@@ -71,7 +136,7 @@ def fill_binance_1m_gaps(
                 gaps_filled += chunk.minutes
                 bars_written += result.bars
 
-    aggregate_result = aggregate_crypto_from_1m(connection, normalized_symbols)
+    aggregate_result = aggregate(connection, normalized_symbols)
     return GapFillResult(
         symbols_checked=len(normalized_symbols),
         gaps_filled=gaps_filled,

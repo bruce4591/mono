@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from market.api import (
     get_alert_events_payload,
@@ -18,6 +20,7 @@ from market.api import (
     get_watchlists_payload,
 )
 from market.binance import binance_symbol_to_instrument
+from market.binance_futures import binance_futures_symbol_to_instrument
 from market.db import connect, init_database
 from market.repositories import InstrumentRepository, RankingRepository
 from market.models import AlertRule
@@ -409,6 +412,85 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["source"], "binance_gap_fill")
         self.assertEqual(calls[0], ("BTCUSDT", "1m", 1_775_940_120_000, 1_776_000_119_999, 1000))
 
+    def test_get_intraday_bars_payload_backfills_futures_window_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
+                calls.append((symbol, interval, limit))
+                return [
+                    [
+                        _ms("2026-05-03T00:00:00Z"),
+                        "1",
+                        "2",
+                        "0.5",
+                        "1.5",
+                        "10",
+                        _ms("2026-05-03T00:00:59.999Z"),
+                        "15",
+                    ]
+                ]
+
+            with connect(db_path) as connection:
+                InstrumentRepository(connection).upsert(
+                    binance_futures_symbol_to_instrument({"symbol": "ETHUSDT"})
+                )
+                payload = get_intraday_bars_payload(
+                    connection,
+                    "CRYPTO_FUTURES",
+                    "ETHUSDT",
+                    "1m",
+                    now_ts_utc="2026-05-03T00:01:00Z",
+                    gap_fetcher=fetcher,
+                    gap_min_request_interval_seconds=0,
+                )
+
+        self.assertEqual(payload["market"], "CRYPTO_FUTURES")
+        self.assertEqual(payload["items"][0]["source"], "binance_futures_gap_fill")
+        self.assertEqual(calls[0][0], "ETHUSDT")
+
+    def test_get_intraday_bars_payload_defaults_to_futures_fetcher_for_futures(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def futures_fetcher(symbol, interval, start_time_ms, end_time_ms, limit):
+                calls.append((symbol, interval, limit))
+                return [
+                    [
+                        _ms("2026-05-03T00:00:00Z"),
+                        "1",
+                        "2",
+                        "0.5",
+                        "1.5",
+                        "10",
+                        _ms("2026-05-03T00:00:59.999Z"),
+                        "15",
+                    ]
+                ]
+
+            with connect(db_path) as connection, patch(
+                "market.api.fetch_binance_futures_klines_range",
+                futures_fetcher,
+            ):
+                InstrumentRepository(connection).upsert(
+                    binance_futures_symbol_to_instrument({"symbol": "ETHUSDT"})
+                )
+                payload = get_intraday_bars_payload(
+                    connection,
+                    "CRYPTO_FUTURES",
+                    "ETHUSDT",
+                    "1m",
+                    now_ts_utc="2026-05-03T00:01:00Z",
+                    gap_min_request_interval_seconds=0,
+                )
+
+        self.assertEqual(payload["items"][0]["source"], "binance_futures_gap_fill")
+        self.assertEqual(calls, [("ETHUSDT", "1m", 1000)])
+
     def test_get_watchlists_payload_returns_active_entries_with_instruments(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -725,6 +807,11 @@ class ApiTests(unittest.TestCase):
 
     def test_get_static_asset_rejects_unknown_paths(self):
         self.assertIsNone(get_static_asset("/missing.js"))
+
+
+def _ms(value: str) -> int:
+    normalized = value.replace("Z", "+00:00")
+    return int(datetime.fromisoformat(normalized).astimezone(UTC).timestamp() * 1000)
 
 
 if __name__ == "__main__":

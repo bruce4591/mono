@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from market.binance import binance_symbol_to_instrument
-from market.crypto_gaps import fill_binance_1m_gaps
+from market.binance_futures import binance_futures_symbol_to_instrument
+from market.crypto_gaps import fill_binance_1m_gaps, fill_binance_futures_1m_gaps
 from market.db import connect, init_database
 from market.models import IntradayBar
 from market.repositories import InstrumentRepository, IntradayBarRepository
@@ -230,6 +231,69 @@ class CryptoGapFillTests(unittest.TestCase):
             tuple(row),
             (2308.0, 2306.73, 2308.0, 36.1682, 83449.000684, 1, "binance_gap_fill"),
         )
+
+    def test_fill_binance_futures_1m_gaps_writes_futures_market_only(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            def fetcher(
+                symbol: str,
+                interval: str,
+                start_time_ms: int,
+                end_time_ms: int,
+                limit: int,
+            ) -> list[list[object]]:
+                calls.append((symbol, interval, start_time_ms, end_time_ms, limit))
+                return [
+                    [
+                        _ms("2026-05-03T00:01:00Z"),
+                        "10",
+                        "12",
+                        "9",
+                        "11",
+                        "2",
+                        _ms("2026-05-03T00:01:59.999Z"),
+                        "22",
+                    ]
+                ]
+
+            with connect(db_path) as connection:
+                futures_id = InstrumentRepository(connection).upsert(
+                    binance_futures_symbol_to_instrument({"symbol": "ETHUSDT"})
+                )
+                IntradayBarRepository(connection).upsert(
+                    _bar(
+                        futures_id,
+                        start="2026-05-03T00:00:00Z",
+                        end="2026-05-03T00:01:00Z",
+                        close=10.0,
+                    )
+                )
+
+                result = fill_binance_futures_1m_gaps(
+                    connection,
+                    symbols=["ETHUSDT"],
+                    start_ts_utc="2026-05-03T00:00:00Z",
+                    end_ts_utc="2026-05-03T00:02:00Z",
+                    fetcher=fetcher,
+                    now_ms=_ms("2026-05-03T00:03:00Z"),
+                )
+
+                row = connection.execute(
+                    """
+                    SELECT instrument.market, bar_intraday.source, bar_intraday.close
+                    FROM bar_intraday
+                    JOIN instrument ON instrument.instrument_id = bar_intraday.instrument_id
+                    WHERE instrument.symbol = 'ETHUSDT'
+                        AND bar_intraday.bar_start_ts_utc = '2026-05-03T00:01:00Z'
+                    """
+                ).fetchone()
+
+        self.assertEqual(calls[0][0], "ETHUSDT")
+        self.assertEqual(result.gaps_filled, 1)
+        self.assertEqual(tuple(row), ("CRYPTO_FUTURES", "binance_futures_gap_fill", 11.0))
 
 
 def _bar(

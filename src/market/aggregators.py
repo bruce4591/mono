@@ -67,6 +67,15 @@ def aggregate_crypto_from_1m(
     connection: sqlite3.Connection,
     symbols: list[str],
 ) -> AggregationResult:
+    return aggregate_market_from_1m(connection, market="CRYPTO", symbols=symbols)
+
+
+def aggregate_market_from_1m(
+    connection: sqlite3.Connection,
+    *,
+    market: str,
+    symbols: list[str],
+) -> AggregationResult:
     if not symbols:
         return AggregationResult(bars_written=0)
     placeholders = ",".join("?" for _symbol in symbols)
@@ -74,11 +83,11 @@ def aggregate_crypto_from_1m(
         f"""
         SELECT instrument_id
         FROM instrument
-        WHERE market = 'CRYPTO'
+        WHERE market = ?
             AND symbol IN ({placeholders})
         ORDER BY symbol
         """,
-        [symbol.upper() for symbol in symbols],
+        [market, *[symbol.upper() for symbol in symbols]],
     ).fetchall()
     instrument_ids = [int(row["instrument_id"]) for row in rows]
     intraday = aggregate_intraday_from_1m(
