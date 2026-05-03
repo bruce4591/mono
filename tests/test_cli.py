@@ -526,6 +526,130 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(created_timeouts, [7.5])
 
+    def test_sync_alpaca_focus_refreshes_us_and_etf_boards(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            calls = []
+
+            class FakeAlpacaCollector:
+                source_name = "alpaca"
+
+                def __init__(self, request_timeout_seconds=30.0):
+                    self.request_timeout_seconds = request_timeout_seconds
+
+                def sync_focus(
+                    self,
+                    connection,
+                    watchlist_names,
+                    days,
+                    snapshot_ts_utc,
+                    trade_date_local,
+                ):
+                    calls.append(
+                        (
+                            watchlist_names,
+                            days,
+                            snapshot_ts_utc,
+                            trade_date_local,
+                            self.request_timeout_seconds,
+                        )
+                    )
+                    rows = connection.execute(
+                        """
+                        SELECT instrument.instrument_id, instrument.symbol, instrument.quote_currency
+                        FROM watchlist
+                        JOIN instrument
+                            ON instrument.instrument_id = watchlist.instrument_id
+                        WHERE watchlist.watchlist_name IN ('US_STOCK_FOCUS20', 'ETF_FOCUS20')
+                            AND watchlist.is_active = 1
+                        ORDER BY instrument.symbol
+                        """
+                    ).fetchall()
+                    for index, row in enumerate(rows, start=1):
+                        connection.execute(
+                            """
+                            INSERT INTO market_snapshot (
+                                instrument_id,
+                                snapshot_ts_utc,
+                                trade_date_local,
+                                last_price,
+                                change_pct,
+                                volume_raw,
+                                turnover_raw,
+                                quote_currency,
+                                source
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                int(row["instrument_id"]),
+                                snapshot_ts_utc,
+                                "2026-05-01",
+                                100.0 + index,
+                                1.0,
+                                1000.0 + index,
+                                100000.0 + index,
+                                str(row["quote_currency"]),
+                                "alpaca",
+                            ),
+                        )
+                    return CollectorResult(
+                        source_name=self.source_name,
+                        items_synced=len(rows),
+                        metadata={"trade_date_local": "2026-05-01"},
+                    )
+
+            with redirect_stdout(io.StringIO()), patch(
+                "market.cli.AlpacaCollector",
+                FakeAlpacaCollector,
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "sync-alpaca-focus",
+                        "--db-path",
+                        str(db_path),
+                        "--watchlist-config",
+                        "config/watchlists/us_stock_focus20.json",
+                        "--watchlist-config",
+                        "config/watchlists/etf_focus20.json",
+                        "--snapshot-ts-utc",
+                        "2026-05-02T01:00:00Z",
+                        "--request-timeout-seconds",
+                        "8",
+                        "--board-limit",
+                        "30",
+                    ]
+                )
+
+            with sqlite3.connect(db_path) as connection:
+                us_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'US_STOCK_FOCUS20'"
+                ).fetchone()[0]
+                etf_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'ETF_FOCUS20'"
+                ).fetchone()[0]
+                hk_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'HK_STOCK_FOCUS20'"
+                ).fetchone()[0]
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            calls,
+            [
+                (
+                    ["US_STOCK_FOCUS20", "ETF_FOCUS20"],
+                    365,
+                    "2026-05-02T01:00:00Z",
+                    None,
+                    8.0,
+                )
+            ],
+        )
+        self.assertEqual(us_count, 30)
+        self.assertEqual(etf_count, 30)
+        self.assertEqual(hk_count, 0)
+
     def test_sync_crypto_board_is_registered(self):
         exit_code = main(
             [

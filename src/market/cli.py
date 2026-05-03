@@ -25,6 +25,8 @@ from market.binance_futures import (
     select_futures_tradefi_symbols,
     select_top_futures_usdt_symbols,
 )
+from market.collectors.alpaca import AlpacaCollector
+from market.collectors.alpaca import ALPACA_DEFAULT_REQUEST_TIMEOUT_SECONDS
 from market.collectors.akshare import AkshareCollector
 from market.collectors.akshare import AKSHARE_DEFAULT_REQUEST_TIMEOUT_SECONDS
 from market.collectors.binance import BinanceCollector
@@ -301,6 +303,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Watchlist config to import before syncing; can be provided multiple times",
     )
     sync_akshare_focus.add_argument("--dry-run", action="store_true")
+
+    sync_alpaca_focus = subparsers.add_parser(
+        "sync-alpaca-focus",
+        help="Sync Alpaca US/ETF focus watchlists and refresh their boards",
+    )
+    sync_alpaca_focus.add_argument("--db-path", type=Path, default=None)
+    sync_alpaca_focus.add_argument("--days", type=int, default=365)
+    sync_alpaca_focus.add_argument("--snapshot-ts-utc", default=None)
+    sync_alpaca_focus.add_argument("--trade-date-local", default=None)
+    sync_alpaca_focus.add_argument("--board-limit", type=int, default=30)
+    sync_alpaca_focus.add_argument(
+        "--request-timeout-seconds",
+        type=float,
+        default=ALPACA_DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        help="Maximum seconds to wait for one Alpaca HTTP request",
+    )
+    sync_alpaca_focus.add_argument(
+        "--watchlist-config",
+        action="append",
+        default=[],
+        type=Path,
+        help="Watchlist config to import before syncing; can be provided multiple times",
+    )
+    sync_alpaca_focus.add_argument("--dry-run", action="store_true")
 
     apply_ticker = subparsers.add_parser(
         "apply-binance-ticker-event",
@@ -777,6 +803,85 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(
             "akshare focus synced: "
+            f"{result.items_synced} daily bars, "
+            f"{ranking_summary}, "
+            f"snapshot={snapshot_ts_utc}"
+        )
+        return 0
+
+    if args.command == "sync-alpaca-focus":
+        now = datetime.now(tz=UTC)
+        snapshot_ts_utc = args.snapshot_ts_utc or now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        watchlist_configs = args.watchlist_config or [
+            REPO_ROOT / "config" / "watchlists" / "us_stock_focus20.json",
+            REPO_ROOT / "config" / "watchlists" / "etf_focus20.json",
+        ]
+        watchlist_names = _watchlist_names_from_configs(watchlist_configs)
+        board_specs = _akshare_focus_specs_for_watchlists(watchlist_names)
+        if args.dry_run:
+            print(
+                "alpaca focus sync ready: "
+                f"{','.join(watchlist_names)} days={args.days}"
+            )
+            return 0
+        with connect(db_path) as connection:
+            for config_path in watchlist_configs:
+                sync_watchlist_from_file(connection, config_path)
+            connection.commit()
+            ranking_counts: dict[str, int] = {}
+
+            def sync_and_rank():
+                result = AlpacaCollector(
+                    request_timeout_seconds=args.request_timeout_seconds,
+                ).sync_focus(
+                    connection,
+                    watchlist_names=watchlist_names,
+                    days=args.days,
+                    snapshot_ts_utc=snapshot_ts_utc,
+                    trade_date_local=args.trade_date_local,
+                )
+                ranking_trade_date = str(
+                    result.metadata.get("trade_date_local")
+                    or args.trade_date_local
+                    or now.date().isoformat()
+                )
+                ranking = RankingRepository(connection)
+                for spec in board_specs:
+                    board_name = str(spec["board_name"])
+                    board_trade_date = args.trade_date_local or _latest_watchlist_snapshot_trade_date(
+                        connection,
+                        watchlist_name=str(spec["watchlist_name"]),
+                        market=str(spec["market"]),
+                        instrument_type=str(spec["instrument_type"]),
+                    )
+                    if board_trade_date is None:
+                        board_trade_date = ranking_trade_date
+                    ranking_counts[board_name] = ranking.refresh_turnover_board(
+                        board_name=board_name,
+                        snapshot_ts_utc=snapshot_ts_utc,
+                        trade_date_local=board_trade_date,
+                        market=str(spec["market"]),
+                        instrument_type=str(spec["instrument_type"]),
+                        limit=args.board_limit,
+                        watchlist_name=str(spec["watchlist_name"]),
+                        source="alpaca",
+                    )
+                return result
+
+            result = run_collector_job(
+                connection,
+                job_name="sync-alpaca-focus",
+                source_name="alpaca",
+                checkpoint=f"{','.join(watchlist_names)}:1d:{args.days}",
+                started_at_utc=snapshot_ts_utc,
+                operation=sync_and_rank,
+            )
+        ranking_summary = ", ".join(
+            f"{spec['board_name']}={ranking_counts.get(str(spec['board_name']), 0)}"
+            for spec in board_specs
+        )
+        print(
+            "alpaca focus synced: "
             f"{result.items_synced} daily bars, "
             f"{ranking_summary}, "
             f"snapshot={snapshot_ts_utc}"

@@ -60,9 +60,13 @@ class DeployConfigTests(unittest.TestCase):
         )
 
         self.assertIn("sync-akshare-focus", script)
+        self.assertIn("sync-alpaca-focus", script)
+        self.assertIn(".market.env", script)
         self.assertIn("--board-limit 30", script)
         self.assertIn("--request-timeout-seconds 30", script)
         self.assertIn("--watchlist-config", script)
+        self.assertIn("us_stock_focus20.json", script)
+        self.assertIn("etf_focus20.json", script)
         self.assertIn("market-sync-akshare-focus.sh", docs)
         self.assertIn("A_SHARE_FOCUS20", docs)
         self.assertIn("HK_STOCK_FOCUS20", docs)
