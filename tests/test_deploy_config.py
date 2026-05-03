@@ -21,6 +21,7 @@ class DeployConfigTests(unittest.TestCase):
         scripts = [
             REPO_ROOT / "deploy" / "scripts" / "market-run-binance-kline-ws.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-sync-crypto.sh",
+            REPO_ROOT / "deploy" / "scripts" / "market-sync-crypto-futures.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-aggregate-crypto.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-fill-crypto-gaps.sh",
         ]

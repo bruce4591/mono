@@ -112,6 +112,17 @@ the scheduled board job stays lightweight:
   --skip-kline-sync
 ```
 
+Sync Binance USD-M futures boards without K-line pulls:
+
+```bash
+.venv/bin/market sync-crypto-futures-boards \
+  --db-path ./data/market.sqlite3 \
+  --board-limit 50
+```
+
+This command refreshes `CRYPTO_FUTURES_TURNOVER_TOP50` and
+`CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50`.
+
 Aggregate higher crypto K line intervals from local 1m bars without REST calls.
 The aggregator starts from the last existing target interval bar, then only
 uses later 1m bars to upsert 5m/15m/8h/1d windows:

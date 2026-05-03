@@ -58,6 +58,18 @@ chmod +x /home/ubuntu/bin/market-sync-crypto.sh
 (crontab -l 2>/dev/null | grep -v market-sync-crypto.sh; echo "*/15 * * * * /home/ubuntu/bin/market-sync-crypto.sh >> /home/ubuntu/github/mono/logs/crypto-sync.log 2>&1") | crontab -
 ```
 
+## Sync Crypto Futures Boards Every 15 Minutes
+
+This job refreshes Binance USD-M futures 24h snapshots and ranking boards only.
+It does not pull K lines, subscribe to WebSockets, or aggregate local bars.
+
+```bash
+mkdir -p /home/ubuntu/bin
+cp deploy/scripts/market-sync-crypto-futures.sh /home/ubuntu/bin/market-sync-crypto-futures.sh
+chmod +x /home/ubuntu/bin/market-sync-crypto-futures.sh
+(crontab -l 2>/dev/null | grep -v market-sync-crypto-futures.sh; echo "*/15 * * * * /home/ubuntu/bin/market-sync-crypto-futures.sh >> /home/ubuntu/github/mono/logs/crypto-futures-sync.log 2>&1") | crontab -
+```
+
 ## Aggregate Crypto K Lines Every 5 Minutes
 
 This job only reads local WebSocket 1m bars and incrementally upserts higher
