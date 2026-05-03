@@ -23,6 +23,7 @@ from market.binance_futures import (
     sync_binance_futures_daily_bars_range,
     sync_binance_futures_klines_range,
 )
+from market.collectors.alpaca import AlpacaCollector
 from market.crypto_gaps import (
     BINANCE_KLINES_MAX_LIMIT,
     fill_binance_1m_gaps,
@@ -40,6 +41,10 @@ from market.repositories import (
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 FUTURES_MIN_HISTORY_BARS = 60
+ALPACA_PRICE_REFRESH_BOARDS = {
+    "US_STOCK_FOCUS20": ["US_STOCK_FOCUS20"],
+    "ETF_FOCUS20": ["ETF_FOCUS20"],
+}
 
 
 @dataclass(frozen=True)
@@ -147,6 +152,25 @@ def get_board_payload(
             for previous_rank in [_optional_int(row["previous_rank"])]
         ],
     }
+
+
+def refresh_board_prices_on_open(
+    connection: sqlite3.Connection,
+    board_name: str,
+    *,
+    snapshot_ts_utc: str | None = None,
+) -> None:
+    watchlist_names = ALPACA_PRICE_REFRESH_BOARDS.get(board_name)
+    if watchlist_names is None:
+        return
+    try:
+        AlpacaCollector().refresh_latest_prices(
+            connection,
+            watchlist_names=watchlist_names,
+            snapshot_ts_utc=snapshot_ts_utc or _now_utc(),
+        )
+    except Exception:
+        return
 
 
 def get_instrument_payload(
@@ -893,6 +917,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
             if parsed.path.startswith("/api/boards/"):
                 board_name = unquote(parsed.path.removeprefix("/api/boards/"))
                 with connect(db_path) as connection:
+                    refresh_board_prices_on_open(connection, board_name)
                     payload = get_board_payload(connection, board_name)
                 self._write_json(payload)
                 return
@@ -1206,6 +1231,10 @@ def _optional_int(value: object) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+def _now_utc() -> str:
+    return datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _database_is_writable(connection: sqlite3.Connection) -> bool:

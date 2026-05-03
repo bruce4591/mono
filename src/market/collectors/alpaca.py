@@ -17,6 +17,13 @@ ALPACA_DATA_BASE_URL = "https://data.alpaca.markets/v2"
 ALPACA_DEFAULT_REQUEST_TIMEOUT_SECONDS = 30.0
 
 AlpacaBarsFetcher = Callable[[list[str], str, str, float], dict[str, list[dict[str, object]]]]
+AlpacaLatestTradesFetcher = Callable[[list[str], float], dict[str, dict[str, object]]]
+
+
+class AlpacaLatestTrade:
+    def __init__(self, *, price: float | None, trade_date_local: str | None) -> None:
+        self.price = price
+        self.trade_date_local = trade_date_local
 
 
 class AlpacaCollector:
@@ -29,6 +36,7 @@ class AlpacaCollector:
         api_secret_key: str | None = None,
         data_base_url: str = ALPACA_DATA_BASE_URL,
         bars_fetcher: AlpacaBarsFetcher | None = None,
+        latest_trades_fetcher: AlpacaLatestTradesFetcher | None = None,
         request_timeout_seconds: float = ALPACA_DEFAULT_REQUEST_TIMEOUT_SECONDS,
         now_utc: Callable[[], datetime] | None = None,
     ) -> None:
@@ -36,6 +44,7 @@ class AlpacaCollector:
         self.api_secret_key = api_secret_key or os.environ.get("ALPACA_API_SECRET_KEY")
         self.data_base_url = data_base_url.rstrip("/")
         self.bars_fetcher = bars_fetcher or self._fetch_daily_bars
+        self.latest_trades_fetcher = latest_trades_fetcher or self._fetch_latest_trades
         self.request_timeout_seconds = request_timeout_seconds
         self.now_utc = now_utc or (lambda: datetime.now(tz=UTC))
 
@@ -172,6 +181,63 @@ class AlpacaCollector:
             },
         )
 
+    def refresh_latest_prices(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        watchlist_names: list[str],
+        snapshot_ts_utc: str | None = None,
+    ) -> CollectorResult:
+        instruments = _focus_instruments(connection, watchlist_names)
+        symbols = [instrument.symbol for instrument in instruments if instrument.instrument_id is not None]
+        if not symbols:
+            return CollectorResult(
+                source_name=self.source_name,
+                items_synced=0,
+                metadata={"watchlists": watchlist_names},
+            )
+        trades_by_symbol = self.latest_trades_fetcher(symbols, self.request_timeout_seconds)
+        snapshots = MarketSnapshotRepository(connection)
+        resolved_snapshot_ts = snapshot_ts_utc or _now_utc()
+        items_synced = 0
+        failed_symbols: list[str] = []
+        for instrument in instruments:
+            if instrument.instrument_id is None:
+                continue
+            payload = trades_by_symbol.get(instrument.symbol)
+            if payload is None:
+                failed_symbols.append(f"{instrument.market}:{instrument.symbol}")
+                continue
+            trade = parse_alpaca_latest_trade(payload)
+            if trade.price is None or trade.trade_date_local is None:
+                failed_symbols.append(f"{instrument.market}:{instrument.symbol}")
+                continue
+            existing = _latest_market_snapshot(connection, instrument.instrument_id)
+            snapshots.upsert(
+                MarketSnapshot(
+                    instrument_id=instrument.instrument_id,
+                    snapshot_ts_utc=resolved_snapshot_ts,
+                    trade_date_local=trade.trade_date_local,
+                    last_price=trade.price,
+                    change_pct=_optional_float(existing["change_pct"]) if existing else None,
+                    volume_raw=_optional_float(existing["volume_raw"]) if existing else None,
+                    turnover_raw=_optional_float(existing["turnover_raw"]) if existing else None,
+                    quote_currency=str(existing["quote_currency"]) if existing else instrument.quote_currency,
+                    source="alpaca_latest_trade",
+                )
+            )
+            items_synced += 1
+        connection.commit()
+        return CollectorResult(
+            source_name=self.source_name,
+            items_synced=items_synced,
+            metadata={
+                "watchlists": watchlist_names,
+                "failed_symbols": failed_symbols,
+                "request_timeout_seconds": self.request_timeout_seconds,
+            },
+        )
+
     def _fetch_daily_bars(
         self,
         symbols: list[str],
@@ -209,6 +275,28 @@ class AlpacaCollector:
             if not page_token:
                 return bars
 
+    def _fetch_latest_trades(
+        self,
+        symbols: list[str],
+        timeout: float,
+    ) -> dict[str, dict[str, object]]:
+        if not self.api_key_id or not self.api_secret_key:
+            raise RuntimeError("ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY are required")
+        params = {
+            "symbols": ",".join(symbols),
+            "feed": "iex",
+        }
+        request = Request(
+            f"{self.data_base_url}/stocks/trades/latest?{urlencode(params)}",
+            headers={
+                "APCA-API-KEY-ID": self.api_key_id,
+                "APCA-API-SECRET-KEY": self.api_secret_key,
+            },
+        )
+        with urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return payload.get("trades", {})
+
 
 def parse_alpaca_daily_bar(
     *,
@@ -230,6 +318,14 @@ def parse_alpaca_daily_bar(
         turnover_raw=close * volume if close is not None and volume is not None else None,
         quote_currency=quote_currency,
         source=source,
+    )
+
+
+def parse_alpaca_latest_trade(payload: dict[str, object]) -> AlpacaLatestTrade:
+    timestamp = payload.get("t")
+    return AlpacaLatestTrade(
+        price=_optional_float(payload.get("p")),
+        trade_date_local=str(timestamp)[:10] if timestamp is not None else None,
     )
 
 
@@ -324,6 +420,19 @@ def _instrument_by_market_symbol(
     if row is None:
         return None
     return _instrument_by_id(connection, int(row["instrument_id"]))
+
+
+def _latest_market_snapshot(connection: sqlite3.Connection, instrument_id: int):
+    return connection.execute(
+        """
+        SELECT change_pct, volume_raw, turnover_raw, quote_currency
+        FROM market_snapshot
+        WHERE instrument_id = ?
+        ORDER BY snapshot_ts_utc DESC
+        LIMIT 1
+        """,
+        (instrument_id,),
+    ).fetchone()
 
 
 def _optional_float(value) -> float | None:

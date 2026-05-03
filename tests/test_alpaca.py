@@ -6,9 +6,14 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 
-from market.collectors.alpaca import AlpacaCollector, parse_alpaca_daily_bar
+from market.collectors.alpaca import (
+    AlpacaCollector,
+    parse_alpaca_daily_bar,
+    parse_alpaca_latest_trade,
+)
 from market.db import connect, init_database
-from market.repositories import DailyBarRepository
+from market.models import MarketSnapshot
+from market.repositories import DailyBarRepository, InstrumentRepository, MarketSnapshotRepository
 from market.watchlists import sync_watchlist_from_file
 
 
@@ -38,6 +43,17 @@ class AlpacaTests(unittest.TestCase):
         self.assertEqual(bar.turnover_raw, 280.14 * 80105508)
         self.assertEqual(bar.quote_currency, "USD")
         self.assertEqual(bar.source, "alpaca")
+
+    def test_parse_alpaca_latest_trade_extracts_price_and_trade_date(self):
+        trade = parse_alpaca_latest_trade(
+            {
+                "p": 280.11,
+                "t": "2026-05-01T19:59:59.864022233Z",
+            }
+        )
+
+        self.assertEqual(trade.price, 280.11)
+        self.assertEqual(trade.trade_date_local, "2026-05-01")
 
     def test_alpaca_collector_syncs_focus_watchlist_bars_and_snapshots(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -206,6 +222,84 @@ class AlpacaTests(unittest.TestCase):
                 )
 
         self.assertEqual(calls[0][1], "2026-05-03T12:10:00Z")
+
+    def test_alpaca_collector_refreshes_latest_prices_without_changing_turnover(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            config_path = Path(tmp_dir) / "us.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "watchlist_name": "US_STOCK_FOCUS20",
+                        "entries": [
+                            {
+                                "market": "US",
+                                "symbol": "AAPL",
+                                "display_name": "Apple",
+                                "exchange": "NASDAQ",
+                                "instrument_type": "stock",
+                                "quote_currency": "USD",
+                                "timezone": "America/New_York",
+                                "sort_order": 1,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            init_database(db_path)
+
+            def fetcher(symbols, timeout):
+                self.assertEqual(symbols, ["AAPL"])
+                return {
+                    "AAPL": {
+                        "p": 281.25,
+                        "t": "2026-05-01T19:59:59.864022233Z",
+                    }
+                }
+
+            with connect(db_path) as connection:
+                sync_watchlist_from_file(connection, config_path)
+                instrument = InstrumentRepository(connection).get_by_market_symbol("US", "AAPL")
+                assert instrument is not None
+                MarketSnapshotRepository(connection).upsert(
+                    MarketSnapshot(
+                        instrument_id=instrument.instrument_id,
+                        snapshot_ts_utc="2026-05-01T20:00:00Z",
+                        trade_date_local="2026-05-01",
+                        last_price=280.14,
+                        change_pct=1.2,
+                        volume_raw=80105508.0,
+                        turnover_raw=22440396411.12,
+                        quote_currency="USD",
+                        source="alpaca",
+                    )
+                )
+                result = AlpacaCollector(
+                    api_key_id="paper-key",
+                    api_secret_key="paper-secret",
+                    latest_trades_fetcher=fetcher,
+                ).refresh_latest_prices(
+                    connection,
+                    watchlist_names=["US_STOCK_FOCUS20"],
+                    snapshot_ts_utc="2026-05-03T12:40:00Z",
+                )
+                row = connection.execute(
+                    """
+                    SELECT last_price, change_pct, volume_raw, turnover_raw, source, snapshot_ts_utc
+                    FROM market_snapshot
+                    WHERE instrument_id = ? AND trade_date_local = '2026-05-01'
+                    """,
+                    (instrument.instrument_id,),
+                ).fetchone()
+
+        self.assertEqual(result.items_synced, 1)
+        self.assertEqual(row["last_price"], 281.25)
+        self.assertEqual(row["change_pct"], 1.2)
+        self.assertEqual(row["volume_raw"], 80105508.0)
+        self.assertEqual(row["turnover_raw"], 22440396411.12)
+        self.assertEqual(row["source"], "alpaca_latest_trade")
+        self.assertEqual(row["snapshot_ts_utc"], "2026-05-03T12:40:00Z")
 
 
 if __name__ == "__main__":

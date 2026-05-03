@@ -18,6 +18,7 @@ from market.api import (
     get_board_payload,
     get_static_asset,
     get_watchlists_payload,
+    refresh_board_prices_on_open,
 )
 from market.binance import binance_symbol_to_instrument
 from market.binance_futures import binance_futures_symbol_to_instrument
@@ -84,6 +85,59 @@ class ApiTests(unittest.TestCase):
 
         self.assertEqual(payload["items"][0]["symbol"], "BTCUSDT")
         self.assertEqual(payload["items"][0]["volume_raw"], 42000.0)
+
+    def test_refresh_board_prices_on_open_updates_us_etf_price_only(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            class FakeAlpacaCollector:
+                def refresh_latest_prices(self, connection, *, watchlist_names, snapshot_ts_utc=None):
+                    calls.append((watchlist_names, snapshot_ts_utc))
+                    spy = get_instrument_payload(connection, "US", "SPY")
+                    assert spy is not None
+                    connection.execute(
+                        """
+                        UPDATE market_snapshot
+                        SET last_price = 512.34,
+                            snapshot_ts_utc = ?,
+                            source = 'alpaca_latest_trade'
+                        WHERE instrument_id = ?
+                        """,
+                        (snapshot_ts_utc, spy["instrument_id"]),
+                    )
+
+            with connect(db_path) as connection, patch(
+                "market.api.AlpacaCollector",
+                return_value=FakeAlpacaCollector(),
+            ):
+                sync_watchlist_from_file(connection, Path("config/watchlists/etf_focus20.json"))
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                RankingRepository(connection).refresh_turnover_board(
+                    board_name="ETF_FOCUS20",
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                    market="US",
+                    instrument_type="etf",
+                    limit=20,
+                    watchlist_name="ETF_FOCUS20",
+                )
+                refresh_board_prices_on_open(
+                    connection,
+                    "ETF_FOCUS20",
+                    snapshot_ts_utc="2026-05-03T12:40:00Z",
+                )
+                payload = get_board_payload(connection, "ETF_FOCUS20")
+
+        self.assertEqual(payload["items"][0]["symbol"], "SPY")
+        self.assertEqual(calls, [(["ETF_FOCUS20"], "2026-05-03T12:40:00Z")])
+        self.assertEqual(payload["items"][0]["last_price"], 512.34)
+        self.assertEqual(payload["items"][0]["turnover_raw"], 36734400000.0)
 
     def test_get_board_payload_returns_volume_change_from_previous_trade_date(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
