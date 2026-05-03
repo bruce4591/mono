@@ -83,6 +83,39 @@ class RankingRepositoryTests(unittest.TestCase):
 
         self.assertEqual([entry.instrument_id for entry in stored], [qqq_id, spy_id])
 
+    def test_refresh_turnover_board_excludes_crypto_stablecoin_pairs_from_ranking(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instruments = InstrumentRepository(connection)
+                btc_id = instruments.upsert(_instrument("CRYPTO", "BTCUSDT", "crypto"))
+                ordi_id = instruments.upsert(_instrument("CRYPTO", "ORDIUSDT", "crypto"))
+                usdc_id = instruments.upsert(_instrument("CRYPTO", "USDCUSDT", "crypto"))
+                usd1_id = instruments.upsert(_instrument("CRYPTO", "USD1USDT", "crypto"))
+                snapshots = MarketSnapshotRepository(connection)
+                snapshots.upsert(_snapshot(btc_id, 100_000.0, "USDT"))
+                snapshots.upsert(_snapshot(ordi_id, 90_000.0, "USDT"))
+                snapshots.upsert(_snapshot(usdc_id, 900_000.0, "USDT"))
+                snapshots.upsert(_snapshot(usd1_id, 800_000.0, "USDT"))
+
+                repository = RankingRepository(connection)
+                created = repository.refresh_turnover_board(
+                    board_name="CRYPTO_TURNOVER_TOP50",
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                    market="CRYPTO",
+                    instrument_type="crypto",
+                    limit=50,
+                )
+                stored = repository.list_board(
+                    "CRYPTO_TURNOVER_TOP50", "2026-04-24T20:00:00Z"
+                )
+
+        self.assertEqual(created, 2)
+        self.assertEqual([entry.instrument_id for entry in stored], [btc_id, ordi_id])
+
 
 def _instrument(market: str, symbol: str, instrument_type: str) -> Instrument:
     return Instrument(
@@ -116,4 +149,3 @@ def _snapshot(
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -510,6 +510,10 @@ class RankingRepository:
                     AND instrument.instrument_type = ?
                     AND instrument.is_active = 1
                     AND market_snapshot.turnover_raw IS NOT NULL
+                    AND (
+                        instrument.market != 'CRYPTO'
+                        OR instrument.symbol NOT IN ('USDCUSDT', 'USD1USDT')
+                    )
                 ORDER BY market_snapshot.turnover_raw DESC, instrument.symbol
                 LIMIT ?
                 """,
@@ -535,6 +539,10 @@ class RankingRepository:
                 AND instrument.instrument_type = ?
                 AND instrument.is_active = 1
                 AND market_snapshot.turnover_raw IS NOT NULL
+                AND (
+                    instrument.market != 'CRYPTO'
+                    OR instrument.symbol NOT IN ('USDCUSDT', 'USD1USDT')
+                )
             ORDER BY market_snapshot.turnover_raw DESC, instrument.symbol
             LIMIT ?
             """,
