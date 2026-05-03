@@ -297,9 +297,16 @@ def get_intraday_bars_payload(
             now_ts_utc=now_ts_utc,
         )
     )
+    short_futures_history = (
+        market == "CRYPTO_FUTURES"
+        and before_ts_utc is None
+        and interval != "1m"
+        and len(bars) < min(resolved_limit, FUTURES_MIN_HISTORY_BARS)
+    )
     should_backfill = (
         not bars
         or stale_latest_window
+        or short_futures_history
         or (before_ts_utc is not None and len(bars) < resolved_limit)
     )
     if market in {"CRYPTO", "CRYPTO_FUTURES"} and should_backfill:
@@ -426,7 +433,8 @@ def _ensure_binance_futures_daily_window(
     now_ts_utc: str | None,
     fetcher: RangeKlineFetcher,
 ) -> None:
-    end = _resolve_now(now_ts_utc) + timedelta(days=1)
+    current_day = _resolve_now(now_ts_utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    end = current_day + timedelta(days=1)
     start = end - timedelta(days=FUTURES_MIN_HISTORY_BARS)
     sync_binance_futures_daily_bars_range(
         connection,

@@ -514,8 +514,25 @@ class ApiTests(unittest.TestCase):
                 return rows
 
             with connect(db_path) as connection:
-                InstrumentRepository(connection).upsert(
+                instrument_id = InstrumentRepository(connection).upsert(
                     binance_futures_symbol_to_instrument({"symbol": "ETHUSDT"})
+                )
+                IntradayBarRepository(connection).upsert(
+                    IntradayBar(
+                        instrument_id=instrument_id,
+                        interval="8h",
+                        bar_start_ts_utc="2026-05-03T00:00:00Z",
+                        bar_end_ts_utc="2026-05-03T08:00:00Z",
+                        trade_date_local="2026-05-03",
+                        open=1,
+                        high=2,
+                        low=0.5,
+                        close=1.5,
+                        volume_raw=10,
+                        turnover_raw=15,
+                        is_closed_bar=True,
+                        source="aggregate_1m",
+                    )
                 )
                 payload = get_intraday_bars_payload(
                     connection,
