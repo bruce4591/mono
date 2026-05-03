@@ -41,6 +41,7 @@ class DeployConfigTests(unittest.TestCase):
             REPO_ROOT / "deploy" / "scripts" / "market-run-binance-kline-ws.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-run-binance-futures-kline-ws.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-sync-crypto.sh",
+            REPO_ROOT / "deploy" / "scripts" / "market-sync-akshare-focus.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-sync-crypto-futures.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-aggregate-crypto.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-aggregate-crypto-futures.sh",
@@ -49,6 +50,19 @@ class DeployConfigTests(unittest.TestCase):
 
         for script in scripts:
             self.assertTrue(os.access(script, os.X_OK), f"{script} is not executable")
+
+    def test_akshare_focus_sync_script_and_docs_are_present(self):
+        script = (
+            REPO_ROOT / "deploy" / "scripts" / "market-sync-akshare-focus.sh"
+        ).read_text(encoding="utf-8")
+        docs = (REPO_ROOT / "docs" / "deploy_tencent_lighthouse.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("sync-akshare-focus", script)
+        self.assertIn("market-sync-akshare-focus.sh", docs)
+        self.assertIn("ETF_FOCUS20", docs)
+        self.assertIn("INDEX_FOCUS20", docs)
 
 
 if __name__ == "__main__":

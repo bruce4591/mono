@@ -276,12 +276,11 @@ Note: the current chart page loads `klinecharts@9.8.12` from jsDelivr. If you ne
 
 ## Next Implementation Slice
 
-- Add the AKShare market data MVP for ETF and index focus pools:
-  - confirm the `akshare` dependency before adding it;
-  - implement fixture-backed normalizer tests first;
-  - add `sync-akshare-focus` behind the existing collector contract;
-  - refresh `ETF_FOCUS20` and `INDEX_FOCUS20` boards from daily snapshots;
-  - add a daily post-close cron script after the local sync is stable.
+- AKShare ETF/index MVP is in place:
+  - `sync-akshare-focus` syncs `ETF_FOCUS20` and `INDEX_FOCUS20` through the
+    existing collector contract;
+  - `deploy/scripts/market-sync-akshare-focus.sh` is the post-close cron entry;
+  - expand beyond the focus pools only after the small daily sync is stable.
 - Harden personal mobile access before leaving the API broadly reachable:
   - prefer IP restriction when the client network is stable;
   - otherwise add a simple shared token or Nginx basic auth;

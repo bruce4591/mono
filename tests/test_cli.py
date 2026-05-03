@@ -232,6 +232,112 @@ class CliTests(unittest.TestCase):
         self.assertEqual(calls, [(["BTCUSDT", "ETHUSDT", "SOLUSDT"], 365)])
         self.assertIn("crypto daily synced: 3 symbols, 1095 daily bars", stdout.getvalue())
 
+    def test_sync_akshare_focus_refreshes_etf_and_index_boards(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+            calls = []
+
+            class FakeAkshareCollector:
+                source_name = "akshare"
+
+                def sync_focus(
+                    self,
+                    connection,
+                    watchlist_names,
+                    days,
+                    snapshot_ts_utc,
+                    trade_date_local,
+                ):
+                    calls.append((watchlist_names, days, snapshot_ts_utc, trade_date_local))
+                    rows = connection.execute(
+                        """
+                        SELECT instrument.instrument_id, instrument.symbol, instrument.quote_currency
+                        FROM watchlist
+                        JOIN instrument
+                            ON instrument.instrument_id = watchlist.instrument_id
+                        WHERE watchlist.watchlist_name IN ('ETF_FOCUS20', 'INDEX_FOCUS20')
+                            AND watchlist.is_active = 1
+                        ORDER BY instrument.symbol
+                        """
+                    ).fetchall()
+                    for index, row in enumerate(rows, start=1):
+                        connection.execute(
+                            """
+                            INSERT INTO market_snapshot (
+                                instrument_id,
+                                snapshot_ts_utc,
+                                trade_date_local,
+                                last_price,
+                                change_pct,
+                                volume_raw,
+                                turnover_raw,
+                                quote_currency,
+                                source
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                int(row["instrument_id"]),
+                                snapshot_ts_utc,
+                                trade_date_local,
+                                100.0 + index,
+                                1.0,
+                                1000.0 + index,
+                                100000.0 + index,
+                                str(row["quote_currency"]),
+                                "akshare",
+                            ),
+                        )
+                    return CollectorResult(
+                        source_name=self.source_name,
+                        items_synced=len(rows),
+                        metadata={"watchlists": watchlist_names},
+                    )
+
+            with redirect_stdout(stdout), patch(
+                "market.cli.AkshareCollector",
+                return_value=FakeAkshareCollector(),
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "sync-akshare-focus",
+                        "--db-path",
+                        str(db_path),
+                        "--days",
+                        "2",
+                        "--snapshot-ts-utc",
+                        "2026-04-24T21:00:00Z",
+                        "--trade-date-local",
+                        "2026-04-24",
+                    ]
+                )
+
+            with sqlite3.connect(db_path) as connection:
+                etf_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'ETF_FOCUS20'"
+                ).fetchone()[0]
+                index_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'INDEX_FOCUS20'"
+                ).fetchone()[0]
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            calls,
+            [
+                (
+                    ["ETF_FOCUS20", "INDEX_FOCUS20"],
+                    2,
+                    "2026-04-24T21:00:00Z",
+                    "2026-04-24",
+                )
+            ],
+        )
+        self.assertGreater(etf_count, 0)
+        self.assertGreater(index_count, 0)
+        self.assertIn("akshare focus synced:", stdout.getvalue())
+
     def test_sync_crypto_board_is_registered(self):
         exit_code = main(
             [

@@ -25,6 +25,7 @@ from market.binance_futures import (
     select_futures_tradefi_symbols,
     select_top_futures_usdt_symbols,
 )
+from market.collectors.akshare import AkshareCollector
 from market.collectors.binance import BinanceCollector
 from market.collectors.binance_ws import BinanceKlineWebSocketCollector
 from market.collectors.base import CollectorResult, run_collector_job
@@ -44,6 +45,14 @@ from market.repositories import (
 from market.sample_data import seed_sample_data
 from market.settings import load_settings
 from market.watchlists import sync_watchlist_from_file
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+AKSHARE_FOCUS_WATCHLISTS = ["ETF_FOCUS20", "INDEX_FOCUS20"]
+AKSHARE_FOCUS_CONFIGS = [
+    REPO_ROOT / "config" / "watchlists" / "etf_focus20.json",
+    REPO_ROOT / "config" / "watchlists" / "index_focus20.json",
+]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -200,6 +209,24 @@ def build_parser() -> argparse.ArgumentParser:
     sync_crypto_daily.add_argument("--top-usdt-limit", type=int, default=50)
     sync_crypto_daily.add_argument("--snapshot-ts-utc", default=None)
     sync_crypto_daily.add_argument("--dry-run", action="store_true")
+
+    sync_akshare_focus = subparsers.add_parser(
+        "sync-akshare-focus",
+        help="Sync AKShare ETF and index focus watchlists and refresh their boards",
+    )
+    sync_akshare_focus.add_argument("--db-path", type=Path, default=None)
+    sync_akshare_focus.add_argument("--days", type=int, default=365)
+    sync_akshare_focus.add_argument("--snapshot-ts-utc", default=None)
+    sync_akshare_focus.add_argument("--trade-date-local", default=None)
+    sync_akshare_focus.add_argument("--board-limit", type=int, default=20)
+    sync_akshare_focus.add_argument(
+        "--watchlist-config",
+        action="append",
+        default=[],
+        type=Path,
+        help="Watchlist config to import before syncing; can be provided multiple times",
+    )
+    sync_akshare_focus.add_argument("--dry-run", action="store_true")
 
     apply_ticker = subparsers.add_parser(
         "apply-binance-ticker-event",
@@ -603,6 +630,72 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "crypto daily synced: "
             f"{len(normalized_symbols)} symbols, {result.items_synced} daily bars, "
+            f"snapshot={snapshot_ts_utc}"
+        )
+        return 0
+
+    if args.command == "sync-akshare-focus":
+        now = datetime.now(tz=UTC)
+        snapshot_ts_utc = args.snapshot_ts_utc or now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        watchlist_configs = args.watchlist_config or AKSHARE_FOCUS_CONFIGS
+        if args.dry_run:
+            print(
+                "akshare focus sync ready: "
+                f"{','.join(AKSHARE_FOCUS_WATCHLISTS)} days={args.days}"
+            )
+            return 0
+        with connect(db_path) as connection:
+            for config_path in watchlist_configs:
+                sync_watchlist_from_file(connection, config_path)
+            ranking_counts: dict[str, int] = {}
+
+            def sync_and_rank():
+                result = AkshareCollector().sync_focus(
+                    connection,
+                    watchlist_names=AKSHARE_FOCUS_WATCHLISTS,
+                    days=args.days,
+                    snapshot_ts_utc=snapshot_ts_utc,
+                    trade_date_local=args.trade_date_local,
+                )
+                ranking_trade_date = str(
+                    result.metadata.get("trade_date_local")
+                    or args.trade_date_local
+                    or now.date().isoformat()
+                )
+                ranking = RankingRepository(connection)
+                ranking_counts["ETF_FOCUS20"] = ranking.refresh_turnover_board(
+                    board_name="ETF_FOCUS20",
+                    snapshot_ts_utc=snapshot_ts_utc,
+                    trade_date_local=ranking_trade_date,
+                    market="US",
+                    instrument_type="etf",
+                    limit=args.board_limit,
+                    watchlist_name="ETF_FOCUS20",
+                )
+                ranking_counts["INDEX_FOCUS20"] = ranking.refresh_turnover_board(
+                    board_name="INDEX_FOCUS20",
+                    snapshot_ts_utc=snapshot_ts_utc,
+                    trade_date_local=ranking_trade_date,
+                    market="US",
+                    instrument_type="index",
+                    limit=args.board_limit,
+                    watchlist_name="INDEX_FOCUS20",
+                )
+                return result
+
+            result = run_collector_job(
+                connection,
+                job_name="sync-akshare-focus",
+                source_name="akshare",
+                checkpoint=f"{','.join(AKSHARE_FOCUS_WATCHLISTS)}:1d:{args.days}",
+                started_at_utc=snapshot_ts_utc,
+                operation=sync_and_rank,
+            )
+        print(
+            "akshare focus synced: "
+            f"{result.items_synced} daily bars, "
+            f"ETF_FOCUS20={ranking_counts.get('ETF_FOCUS20', 0)}, "
+            f"INDEX_FOCUS20={ranking_counts.get('INDEX_FOCUS20', 0)}, "
             f"snapshot={snapshot_ts_utc}"
         )
         return 0
