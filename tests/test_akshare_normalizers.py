@@ -4,13 +4,16 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from market.collectors.akshare import (
     AKSHARE_DEFAULT_MIN_REQUEST_INTERVAL_SECONDS,
     AkshareCollector,
+    fetch_akshare_daily_frame,
     parse_akshare_daily_frame,
 )
 from market.db import connect, init_database
+from market.models import Instrument
 from market.watchlists import sync_watchlist_from_file
 
 
@@ -25,6 +28,53 @@ class FakeFrame:
 
 
 class AkshareNormalizerTests(unittest.TestCase):
+    def test_fetch_akshare_daily_frame_routes_by_market_and_type(self):
+        calls = []
+
+        class FakeAkshare:
+            def stock_zh_a_hist(self, **kwargs):
+                calls.append(("stock_zh_a_hist", kwargs))
+                return FakeFrame([])
+
+            def stock_hk_hist(self, **kwargs):
+                calls.append(("stock_hk_hist", kwargs))
+                return FakeFrame([])
+
+            def stock_us_daily(self, **kwargs):
+                calls.append(("stock_us_daily", kwargs))
+                return FakeFrame([])
+
+            def index_us_stock_sina(self, **kwargs):
+                calls.append(("index_us_stock_sina", kwargs))
+                return FakeFrame([])
+
+            def futures_foreign_hist(self, **kwargs):
+                calls.append(("futures_foreign_hist", kwargs))
+                return FakeFrame([])
+
+        instruments = [
+            Instrument("A_SHARE", "600519", "Kweichow Moutai", "SSE", "stock", "CNY", "Asia/Shanghai"),
+            Instrument("HK", "00700", "Tencent", "HKEX", "stock", "HKD", "Asia/Hong_Kong"),
+            Instrument("US", "AAPL", "Apple", "NASDAQ", "stock", "USD", "America/New_York"),
+            Instrument("US", "SPX", "S&P 500 Index", "CBOE", "index", "USD", "America/New_York"),
+            Instrument("CMDTY", "OIL", "Brent Oil", "SINA", "commodity", "USD", "UTC"),
+        ]
+
+        with patch("market.collectors.akshare._load_akshare", return_value=FakeAkshare()):
+            for instrument in instruments:
+                fetch_akshare_daily_frame(instrument)
+
+        self.assertEqual(
+            calls,
+            [
+                ("stock_zh_a_hist", {"symbol": "600519", "period": "daily", "adjust": ""}),
+                ("stock_hk_hist", {"symbol": "00700", "period": "daily", "adjust": ""}),
+                ("stock_us_daily", {"symbol": "AAPL", "adjust": ""}),
+                ("index_us_stock_sina", {"symbol": ".INX"}),
+                ("futures_foreign_hist", {"symbol": "OIL"}),
+            ],
+        )
+
     def test_parse_akshare_daily_frame_normalizes_daily_rows(self):
         bars = parse_akshare_daily_frame(
             instrument_id=7,

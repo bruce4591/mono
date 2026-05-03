@@ -48,10 +48,54 @@ from market.watchlists import sync_watchlist_from_file
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-AKSHARE_FOCUS_WATCHLISTS = ["ETF_FOCUS20", "INDEX_FOCUS20"]
+AKSHARE_FOCUS_BOARD_SPECS = [
+    {
+        "watchlist_name": "A_SHARE_FOCUS20",
+        "board_name": "A_SHARE_FOCUS20",
+        "market": "A_SHARE",
+        "instrument_type": "stock",
+    },
+    {
+        "watchlist_name": "HK_STOCK_FOCUS20",
+        "board_name": "HK_STOCK_FOCUS20",
+        "market": "HK",
+        "instrument_type": "stock",
+    },
+    {
+        "watchlist_name": "US_STOCK_FOCUS20",
+        "board_name": "US_STOCK_FOCUS20",
+        "market": "US",
+        "instrument_type": "stock",
+    },
+    {
+        "watchlist_name": "ETF_FOCUS20",
+        "board_name": "ETF_FOCUS20",
+        "market": "US",
+        "instrument_type": "etf",
+    },
+    {
+        "watchlist_name": "INDEX_FOCUS20",
+        "board_name": "INDEX_FOCUS20",
+        "market": "US",
+        "instrument_type": "index",
+    },
+    {
+        "watchlist_name": "COMMODITY_FOCUS20",
+        "board_name": "COMMODITY_FOCUS20",
+        "market": "CMDTY",
+        "instrument_type": "commodity",
+    },
+]
+AKSHARE_FOCUS_WATCHLISTS = [
+    str(spec["watchlist_name"]) for spec in AKSHARE_FOCUS_BOARD_SPECS
+]
 AKSHARE_FOCUS_CONFIGS = [
+    REPO_ROOT / "config" / "watchlists" / "a_share_focus20.json",
+    REPO_ROOT / "config" / "watchlists" / "hk_stock_focus20.json",
+    REPO_ROOT / "config" / "watchlists" / "us_stock_focus20.json",
     REPO_ROOT / "config" / "watchlists" / "etf_focus20.json",
     REPO_ROOT / "config" / "watchlists" / "index_focus20.json",
+    REPO_ROOT / "config" / "watchlists" / "commodity_focus20.json",
 ]
 
 
@@ -212,7 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync_akshare_focus = subparsers.add_parser(
         "sync-akshare-focus",
-        help="Sync AKShare ETF and index focus watchlists and refresh their boards",
+        help="Sync AKShare TradFi focus watchlists and refresh their boards",
     )
     sync_akshare_focus.add_argument("--db-path", type=Path, default=None)
     sync_akshare_focus.add_argument("--days", type=int, default=365)
@@ -663,24 +707,25 @@ def main(argv: list[str] | None = None) -> int:
                     or now.date().isoformat()
                 )
                 ranking = RankingRepository(connection)
-                ranking_counts["ETF_FOCUS20"] = ranking.refresh_turnover_board(
-                    board_name="ETF_FOCUS20",
-                    snapshot_ts_utc=snapshot_ts_utc,
-                    trade_date_local=ranking_trade_date,
-                    market="US",
-                    instrument_type="etf",
-                    limit=args.board_limit,
-                    watchlist_name="ETF_FOCUS20",
-                )
-                ranking_counts["INDEX_FOCUS20"] = ranking.refresh_turnover_board(
-                    board_name="INDEX_FOCUS20",
-                    snapshot_ts_utc=snapshot_ts_utc,
-                    trade_date_local=ranking_trade_date,
-                    market="US",
-                    instrument_type="index",
-                    limit=args.board_limit,
-                    watchlist_name="INDEX_FOCUS20",
-                )
+                for spec in AKSHARE_FOCUS_BOARD_SPECS:
+                    board_name = str(spec["board_name"])
+                    board_trade_date = args.trade_date_local or _latest_watchlist_snapshot_trade_date(
+                        connection,
+                        watchlist_name=str(spec["watchlist_name"]),
+                        market=str(spec["market"]),
+                        instrument_type=str(spec["instrument_type"]),
+                    )
+                    if board_trade_date is None:
+                        board_trade_date = ranking_trade_date
+                    ranking_counts[board_name] = ranking.refresh_turnover_board(
+                        board_name=board_name,
+                        snapshot_ts_utc=snapshot_ts_utc,
+                        trade_date_local=board_trade_date,
+                        market=str(spec["market"]),
+                        instrument_type=str(spec["instrument_type"]),
+                        limit=args.board_limit,
+                        watchlist_name=str(spec["watchlist_name"]),
+                    )
                 return result
 
             result = run_collector_job(
@@ -694,8 +739,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "akshare focus synced: "
             f"{result.items_synced} daily bars, "
-            f"ETF_FOCUS20={ranking_counts.get('ETF_FOCUS20', 0)}, "
-            f"INDEX_FOCUS20={ranking_counts.get('INDEX_FOCUS20', 0)}, "
+            f"{', '.join(f'{board}={ranking_counts.get(board, 0)}' for board in AKSHARE_FOCUS_WATCHLISTS)}, "
             f"snapshot={snapshot_ts_utc}"
         )
         return 0
@@ -964,6 +1008,35 @@ def _sync_crypto_futures_boards(
             "tradefi_board_rows": tradefi_count,
         },
     )
+
+
+def _latest_watchlist_snapshot_trade_date(
+    connection: sqlite3.Connection,
+    *,
+    watchlist_name: str,
+    market: str,
+    instrument_type: str,
+) -> str | None:
+    row = connection.execute(
+        """
+        SELECT max(market_snapshot.trade_date_local) AS trade_date_local
+        FROM market_snapshot
+        JOIN instrument
+            ON instrument.instrument_id = market_snapshot.instrument_id
+        JOIN watchlist
+            ON watchlist.instrument_id = market_snapshot.instrument_id
+            AND watchlist.watchlist_name = ?
+            AND watchlist.is_active = 1
+        WHERE instrument.market = ?
+            AND instrument.instrument_type = ?
+            AND instrument.is_active = 1
+            AND market_snapshot.turnover_raw IS NOT NULL
+        """,
+        (watchlist_name, market, instrument_type),
+    ).fetchone()
+    if row is None or row["trade_date_local"] is None:
+        return None
+    return str(row["trade_date_local"])
 
 
 def _crypto_symbols_for_aggregation(

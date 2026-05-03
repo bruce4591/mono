@@ -172,6 +172,20 @@ def fetch_akshare_daily_frame(instrument: Instrument):
         return akshare.index_us_stock_sina(
             symbol=AKSHARE_INDEX_SYMBOLS.get(instrument.symbol.upper(), instrument.symbol)
         )
+    if instrument.instrument_type == "commodity":
+        return akshare.futures_foreign_hist(symbol=instrument.symbol.upper())
+    if instrument.market == "A_SHARE":
+        return akshare.stock_zh_a_hist(
+            symbol=instrument.symbol.upper(),
+            period="daily",
+            adjust="",
+        )
+    if instrument.market == "HK":
+        return akshare.stock_hk_hist(
+            symbol=instrument.symbol.upper(),
+            period="daily",
+            adjust="",
+        )
     return akshare.stock_us_daily(symbol=instrument.symbol.upper(), adjust="")
 
 

@@ -1,0 +1,105 @@
+{
+  "watchlist_name": "COMMODITY_FOCUS20",
+  "entries": [
+    {
+      "market": "CMDTY",
+      "symbol": "OIL",
+      "display_name": "Brent Crude Oil",
+      "exchange": "SINA",
+      "instrument_type": "commodity",
+      "quote_currency": "USD",
+      "timezone": "UTC",
+      "sort_order": 1
+    },
+    {
+      "market": "CMDTY",
+      "symbol": "CL",
+      "display_name": "WTI Crude Oil",
+      "exchange": "SINA",
+      "instrument_type": "commodity",
+      "quote_currency": "USD",
+      "timezone": "UTC",
+      "sort_order": 2
+    },
+    {
+      "market": "CMDTY",
+      "symbol": "GC",
+      "display_name": "COMEX Gold",
+      "exchange": "SINA",
+      "instrument_type": "commodity",
+      "quote_currency": "USD",
+      "timezone": "UTC",
+      "sort_order": 3
+    },
+    {
+      "market": "CMDTY",
+      "symbol": "XAU",
+      "display_name": "Spot Gold",
+      "exchange": "SINA",
+      "instrument_type": "commodity",
+      "quote_currency": "USD",
+      "timezone": "UTC",
+      "sort_order": 4
+    },
+    {
+      "market": "CMDTY",
+      "symbol": "XAG",
+      "display_name": "Spot Silver",
+      "exchange": "SINA",
+      "instrument_type": "commodity",
+      "quote_currency": "USD",
+      "timezone": "UTC",
+      "sort_order": 5
+    },
+    {
+      "market": "CMDTY",
+      "symbol": "HG",
+      "display_name": "COMEX Copper",
+      "exchange": "SINA",
+      "instrument_type": "commodity",
+      "quote_currency": "USD",
+      "timezone": "UTC",
+      "sort_order": 6
+    },
+    {
+      "market": "CMDTY",
+      "symbol": "CAD",
+      "display_name": "LME Copper",
+      "exchange": "SINA",
+      "instrument_type": "commodity",
+      "quote_currency": "USD",
+      "timezone": "UTC",
+      "sort_order": 7
+    },
+    {
+      "market": "CMDTY",
+      "symbol": "ZSD",
+      "display_name": "LME Zinc",
+      "exchange": "SINA",
+      "instrument_type": "commodity",
+      "quote_currency": "USD",
+      "timezone": "UTC",
+      "sort_order": 8
+    },
+    {
+      "market": "CMDTY",
+      "symbol": "S",
+      "display_name": "CBOT Soybeans",
+      "exchange": "SINA",
+      "instrument_type": "commodity",
+      "quote_currency": "USD",
+      "timezone": "UTC",
+      "sort_order": 9
+    },
+    {
+      "market": "CMDTY",
+      "symbol": "W",
+      "display_name": "CBOT Wheat",
+      "exchange": "SINA",
+      "instrument_type": "commodity",
+      "quote_currency": "USD",
+      "timezone": "UTC",
+      "sort_order": 10
+    }
+  ]
+}

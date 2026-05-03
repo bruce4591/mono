@@ -1,0 +1,105 @@
+{
+  "watchlist_name": "US_STOCK_FOCUS20",
+  "entries": [
+    {
+      "market": "US",
+      "symbol": "AAPL",
+      "display_name": "Apple",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 1
+    },
+    {
+      "market": "US",
+      "symbol": "MSFT",
+      "display_name": "Microsoft",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 2
+    },
+    {
+      "market": "US",
+      "symbol": "NVDA",
+      "display_name": "NVIDIA",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 3
+    },
+    {
+      "market": "US",
+      "symbol": "AMZN",
+      "display_name": "Amazon",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 4
+    },
+    {
+      "market": "US",
+      "symbol": "GOOGL",
+      "display_name": "Alphabet Class A",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 5
+    },
+    {
+      "market": "US",
+      "symbol": "META",
+      "display_name": "Meta Platforms",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 6
+    },
+    {
+      "market": "US",
+      "symbol": "TSLA",
+      "display_name": "Tesla",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 7
+    },
+    {
+      "market": "US",
+      "symbol": "AVGO",
+      "display_name": "Broadcom",
+      "exchange": "NASDAQ",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 8
+    },
+    {
+      "market": "US",
+      "symbol": "JPM",
+      "display_name": "JPMorgan Chase",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 9
+    },
+    {
+      "market": "US",
+      "symbol": "ORCL",
+      "display_name": "Oracle",
+      "exchange": "NYSE",
+      "instrument_type": "stock",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
+      "sort_order": 10
+    }
+  ]
+}

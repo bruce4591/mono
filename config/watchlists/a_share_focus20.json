@@ -1,0 +1,105 @@
+{
+  "watchlist_name": "A_SHARE_FOCUS20",
+  "entries": [
+    {
+      "market": "A_SHARE",
+      "symbol": "600519",
+      "display_name": "Kweichow Moutai",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "sort_order": 1
+    },
+    {
+      "market": "A_SHARE",
+      "symbol": "601318",
+      "display_name": "Ping An Insurance",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "sort_order": 2
+    },
+    {
+      "market": "A_SHARE",
+      "symbol": "600036",
+      "display_name": "China Merchants Bank",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "sort_order": 3
+    },
+    {
+      "market": "A_SHARE",
+      "symbol": "000001",
+      "display_name": "Ping An Bank",
+      "exchange": "SZSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "sort_order": 4
+    },
+    {
+      "market": "A_SHARE",
+      "symbol": "000858",
+      "display_name": "Wuliangye Yibin",
+      "exchange": "SZSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "sort_order": 5
+    },
+    {
+      "market": "A_SHARE",
+      "symbol": "002594",
+      "display_name": "BYD",
+      "exchange": "SZSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "sort_order": 6
+    },
+    {
+      "market": "A_SHARE",
+      "symbol": "300750",
+      "display_name": "CATL",
+      "exchange": "SZSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "sort_order": 7
+    },
+    {
+      "market": "A_SHARE",
+      "symbol": "600900",
+      "display_name": "China Yangtze Power",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "sort_order": 8
+    },
+    {
+      "market": "A_SHARE",
+      "symbol": "601899",
+      "display_name": "Zijin Mining",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "sort_order": 9
+    },
+    {
+      "market": "A_SHARE",
+      "symbol": "600030",
+      "display_name": "CITIC Securities",
+      "exchange": "SSE",
+      "instrument_type": "stock",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
+      "sort_order": 10
+    }
+  ]
+}

@@ -256,7 +256,14 @@ class CliTests(unittest.TestCase):
                         FROM watchlist
                         JOIN instrument
                             ON instrument.instrument_id = watchlist.instrument_id
-                        WHERE watchlist.watchlist_name IN ('ETF_FOCUS20', 'INDEX_FOCUS20')
+                        WHERE watchlist.watchlist_name IN (
+                            'A_SHARE_FOCUS20',
+                            'HK_STOCK_FOCUS20',
+                            'US_STOCK_FOCUS20',
+                            'ETF_FOCUS20',
+                            'INDEX_FOCUS20',
+                            'COMMODITY_FOCUS20'
+                        )
                             AND watchlist.is_active = 1
                         ORDER BY instrument.symbol
                         """
@@ -321,22 +328,141 @@ class CliTests(unittest.TestCase):
                 index_count = connection.execute(
                     "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'INDEX_FOCUS20'"
                 ).fetchone()[0]
+                a_share_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'A_SHARE_FOCUS20'"
+                ).fetchone()[0]
+                hk_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'HK_STOCK_FOCUS20'"
+                ).fetchone()[0]
+                us_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'US_STOCK_FOCUS20'"
+                ).fetchone()[0]
+                commodity_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'COMMODITY_FOCUS20'"
+                ).fetchone()[0]
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(
             calls,
             [
                 (
-                    ["ETF_FOCUS20", "INDEX_FOCUS20"],
+                    [
+                        "A_SHARE_FOCUS20",
+                        "HK_STOCK_FOCUS20",
+                        "US_STOCK_FOCUS20",
+                        "ETF_FOCUS20",
+                        "INDEX_FOCUS20",
+                        "COMMODITY_FOCUS20",
+                    ],
                     2,
                     "2026-04-24T21:00:00Z",
                     "2026-04-24",
                 )
             ],
         )
+        self.assertGreater(a_share_count, 0)
+        self.assertGreater(hk_count, 0)
+        self.assertGreater(us_count, 0)
         self.assertGreater(etf_count, 0)
         self.assertGreater(index_count, 0)
+        self.assertGreater(commodity_count, 0)
         self.assertIn("akshare focus synced:", stdout.getvalue())
+        self.assertIn("A_SHARE_FOCUS20=", stdout.getvalue())
+        self.assertIn("COMMODITY_FOCUS20=", stdout.getvalue())
+
+    def test_sync_akshare_focus_ranks_each_board_by_its_latest_trade_date(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+
+            class FakeAkshareCollector:
+                source_name = "akshare"
+
+                def sync_focus(
+                    self,
+                    connection,
+                    watchlist_names,
+                    days,
+                    snapshot_ts_utc,
+                    trade_date_local,
+                ):
+                    rows = connection.execute(
+                        """
+                        SELECT instrument.instrument_id, instrument.market, instrument.quote_currency
+                        FROM watchlist
+                        JOIN instrument
+                            ON instrument.instrument_id = watchlist.instrument_id
+                        WHERE watchlist.watchlist_name IN ('A_SHARE_FOCUS20', 'US_STOCK_FOCUS20')
+                            AND watchlist.is_active = 1
+                        ORDER BY instrument.market
+                        """
+                    ).fetchall()
+                    for row in rows:
+                        resolved_trade_date = (
+                            "2026-04-30" if row["market"] == "A_SHARE" else "2026-05-01"
+                        )
+                        connection.execute(
+                            """
+                            INSERT INTO market_snapshot (
+                                instrument_id,
+                                snapshot_ts_utc,
+                                trade_date_local,
+                                last_price,
+                                change_pct,
+                                volume_raw,
+                                turnover_raw,
+                                quote_currency,
+                                source
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                int(row["instrument_id"]),
+                                snapshot_ts_utc,
+                                resolved_trade_date,
+                                100.0,
+                                1.0,
+                                1000.0,
+                                100000.0,
+                                str(row["quote_currency"]),
+                                "akshare",
+                            ),
+                        )
+                    return CollectorResult(
+                        source_name=self.source_name,
+                        items_synced=len(rows),
+                        metadata={"trade_date_local": "2026-05-01"},
+                    )
+
+            with redirect_stdout(io.StringIO()), patch(
+                "market.cli.AkshareCollector",
+                return_value=FakeAkshareCollector(),
+            ):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "sync-akshare-focus",
+                        "--db-path",
+                        str(db_path),
+                        "--watchlist-config",
+                        "config/watchlists/a_share_focus20.json",
+                        "--watchlist-config",
+                        "config/watchlists/us_stock_focus20.json",
+                        "--snapshot-ts-utc",
+                        "2026-05-01T21:00:00Z",
+                    ]
+                )
+
+            with sqlite3.connect(db_path) as connection:
+                a_share_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'A_SHARE_FOCUS20'"
+                ).fetchone()[0]
+                us_count = connection.execute(
+                    "SELECT count(*) FROM ranking_snapshot WHERE board_name = 'US_STOCK_FOCUS20'"
+                ).fetchone()[0]
+
+        self.assertEqual(exit_code, 0)
+        self.assertGreater(a_share_count, 0)
+        self.assertGreater(us_count, 0)
 
     def test_sync_crypto_board_is_registered(self):
         exit_code = main(

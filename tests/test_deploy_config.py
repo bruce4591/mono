@@ -61,8 +61,12 @@ class DeployConfigTests(unittest.TestCase):
 
         self.assertIn("sync-akshare-focus", script)
         self.assertIn("market-sync-akshare-focus.sh", docs)
+        self.assertIn("A_SHARE_FOCUS20", docs)
+        self.assertIn("HK_STOCK_FOCUS20", docs)
+        self.assertIn("US_STOCK_FOCUS20", docs)
         self.assertIn("ETF_FOCUS20", docs)
         self.assertIn("INDEX_FOCUS20", docs)
+        self.assertIn("COMMODITY_FOCUS20", docs)
         self.assertIn("30 13-21/2 * * 1-5", docs)
         self.assertIn("30 6 * * 2-6", docs)
 

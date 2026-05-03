@@ -1,0 +1,105 @@
+{
+  "watchlist_name": "HK_STOCK_FOCUS20",
+  "entries": [
+    {
+      "market": "HK",
+      "symbol": "00700",
+      "display_name": "Tencent Holdings",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "sort_order": 1
+    },
+    {
+      "market": "HK",
+      "symbol": "09988",
+      "display_name": "Alibaba Group",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "sort_order": 2
+    },
+    {
+      "market": "HK",
+      "symbol": "03690",
+      "display_name": "Meituan",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "sort_order": 3
+    },
+    {
+      "market": "HK",
+      "symbol": "00941",
+      "display_name": "China Mobile",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "sort_order": 4
+    },
+    {
+      "market": "HK",
+      "symbol": "01299",
+      "display_name": "AIA Group",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "sort_order": 5
+    },
+    {
+      "market": "HK",
+      "symbol": "00005",
+      "display_name": "HSBC Holdings",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "sort_order": 6
+    },
+    {
+      "market": "HK",
+      "symbol": "01810",
+      "display_name": "Xiaomi",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "sort_order": 7
+    },
+    {
+      "market": "HK",
+      "symbol": "02318",
+      "display_name": "Ping An Insurance",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "sort_order": 8
+    },
+    {
+      "market": "HK",
+      "symbol": "03988",
+      "display_name": "Bank of China",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "sort_order": 9
+    },
+    {
+      "market": "HK",
+      "symbol": "09618",
+      "display_name": "JD.com",
+      "exchange": "HKEX",
+      "instrument_type": "stock",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
+      "sort_order": 10
+    }
+  ]
+}
