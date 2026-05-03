@@ -19,4 +19,5 @@ fi
 .venv/bin/market run-binance-kline-ws \
   --db-path "$DB_PATH" \
   "${args[@]}" \
-  --interval 1m
+  --interval 1m \
+  --gap-fill-on-reconnect

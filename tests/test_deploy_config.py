@@ -17,6 +17,13 @@ class DeployConfigTests(unittest.TestCase):
         self.assertIn("Environment=MARKET_WS_TOP_USDT_LIMIT=60", service)
         self.assertNotIn("Environment=MARKET_WS_SYMBOLS=BTCUSDT ETHUSDT", service)
 
+    def test_binance_ws_script_fills_gaps_only_after_reconnect(self):
+        script = (
+            REPO_ROOT / "deploy" / "scripts" / "market-run-binance-kline-ws.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("--gap-fill-on-reconnect", script)
+
     def test_deploy_scripts_used_by_systemd_are_executable(self):
         scripts = [
             REPO_ROOT / "deploy" / "scripts" / "market-run-binance-kline-ws.sh",
