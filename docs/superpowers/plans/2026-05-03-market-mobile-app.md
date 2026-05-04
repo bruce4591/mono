@@ -85,7 +85,7 @@ Use this split:
 - Create: `apps/market-mobile/App.tsx`
 - Create: `apps/market-mobile/src/config.ts`
 
-- [ ] **Step 1: Create the Expo app package**
+- [x] **Step 1: Create the Expo app package**
 
 Create `apps/market-mobile/package.json`:
 
@@ -114,7 +114,7 @@ Create `apps/market-mobile/package.json`:
 }
 ```
 
-- [ ] **Step 2: Create Android app config**
+- [x] **Step 2: Create Android app config**
 
 Create `apps/market-mobile/app.json`:
 
@@ -135,7 +135,7 @@ Create `apps/market-mobile/app.json`:
 }
 ```
 
-- [ ] **Step 3: Add base URL config**
+- [x] **Step 3: Add base URL config**
 
 Create `apps/market-mobile/src/config.ts`:
 
@@ -147,7 +147,7 @@ export const FOREGROUND_POLL_MS = 15000;
 
 Before building the APK, set both constants to the public HTTPS origin served by `tencent-market`; the app must not be built with a private LAN or localhost URL.
 
-- [ ] **Step 4: Add WebView shell**
+- [x] **Step 4: Add WebView shell**
 
 Create `apps/market-mobile/App.tsx`:
 
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
 });
 ```
 
-- [ ] **Step 5: Verify local app start**
+- [x] **Step 5: Verify local app start**
 
 Run:
 
@@ -208,7 +208,7 @@ npx expo start
 
 Expected: Expo starts without TypeScript or dependency errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/market-mobile
@@ -226,7 +226,7 @@ git commit -m "Add market mobile app shell"
 - Modify: `src/market/api.py`
 - Modify: `tests/test_api.py`
 
-- [ ] **Step 1: Add mobile notification helper**
+- [x] **Step 1: Add mobile notification helper**
 
 Create `apps/market-mobile/src/notifications.ts`:
 
@@ -283,7 +283,7 @@ export async function showLocalAlert(title: string, body: string): Promise<void>
 }
 ```
 
-- [ ] **Step 2: Call push registration on app start**
+- [x] **Step 2: Call push registration on app start**
 
 Modify `apps/market-mobile/App.tsx` to import and call registration:
 
@@ -299,7 +299,7 @@ useEffect(() => {
 }, []);
 ```
 
-- [ ] **Step 3: Add device table**
+- [x] **Step 3: Add device table**
 
 Modify `src/market/schema.sql`:
 
@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS push_device (
 );
 ```
 
-- [ ] **Step 4: Add API endpoint test**
+- [x] **Step 4: Add API endpoint test**
 
 Add to `tests/test_api.py`:
 
@@ -341,7 +341,7 @@ def test_register_mobile_device_upserts_push_token(self):
     self.assertEqual(rows[0]["enabled"], 1)
 ```
 
-- [ ] **Step 5: Run test to verify it fails before API implementation**
+- [x] **Step 5: Run test to verify it fails before API implementation**
 
 Run:
 
@@ -351,11 +351,11 @@ Run:
 
 Expected: FAIL because `/api/mobile/devices` does not exist.
 
-- [ ] **Step 6: Implement endpoint**
+- [x] **Step 6: Implement endpoint**
 
 Add a FastAPI handler in `src/market/api.py` that validates `platform`, `push_token`, and optional `device_label`, then upserts into `push_device`.
 
-- [ ] **Step 7: Run test to verify it passes**
+- [x] **Step 7: Run test to verify it passes**
 
 Run:
 
@@ -365,7 +365,7 @@ Run:
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/market-mobile/src/notifications.ts apps/market-mobile/App.tsx src/market/schema.sql src/market/api.py tests/test_api.py
@@ -380,7 +380,7 @@ git commit -m "Register mobile push devices"
 - Create: `apps/market-mobile/src/oneplusGuidance.ts`
 - Modify: `README.md`
 
-- [ ] **Step 1: Create OnePlus checklist copy**
+- [x] **Step 1: Create OnePlus checklist copy**
 
 Create `apps/market-mobile/src/oneplusGuidance.ts`:
 
@@ -394,7 +394,7 @@ export const ONEPLUS_13T_BACKGROUND_CHECKLIST = [
 ];
 ```
 
-- [ ] **Step 2: Document device setup**
+- [x] **Step 2: Document device setup**
 
 Add to `README.md`:
 
@@ -414,7 +414,7 @@ locked-screen, or killed-app alerts must be evaluated on `tencent-market` and
 delivered by push notification because Android may suspend app timers.
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/market-mobile/src/oneplusGuidance.ts README.md
@@ -432,7 +432,7 @@ git commit -m "Document OnePlus alert permissions"
 - Modify: `tests/test_alerts.py`
 - Modify: `tests/test_api.py`
 
-- [ ] **Step 1: Add alert storage tables**
+- [x] **Step 1: Add alert storage tables**
 
 Modify `src/market/schema.sql`:
 
@@ -469,7 +469,7 @@ Use `condition_type` values:
 - `change_pct_above`
 - `change_pct_below`
 
-- [ ] **Step 2: Add rule evaluation tests**
+- [x] **Step 2: Add rule evaluation tests**
 
 Add tests to `tests/test_alerts.py` that assert:
 
@@ -478,7 +478,7 @@ Add tests to `tests/test_alerts.py` that assert:
 - A rule inside cooldown does not fire twice.
 - Disabled rules do not fire.
 
-- [ ] **Step 3: Implement evaluator**
+- [x] **Step 3: Implement evaluator**
 
 Add functions in `src/market/alerts.py`:
 
@@ -489,7 +489,7 @@ def evaluate_mobile_alert_rules(connection: sqlite3.Connection, now_utc: str) ->
 
 The evaluator must read latest `market_snapshot` rows, compare enabled rules, and return pending push messages while inserting `mobile_alert_event` rows for fired rules.
 
-- [ ] **Step 4: Add API tests for rule creation**
+- [x] **Step 4: Add API tests for rule creation**
 
 Add tests to `tests/test_api.py` for:
 
@@ -497,7 +497,7 @@ Add tests to `tests/test_api.py` for:
 - `GET /api/mobile/alert-rules?push_token=...`
 - disabling a rule
 
-- [ ] **Step 5: Implement alert rule endpoints**
+- [x] **Step 5: Implement alert rule endpoints**
 
 Add endpoints in `src/market/api.py`:
 
@@ -505,7 +505,7 @@ Add endpoints in `src/market/api.py`:
 - `GET /api/mobile/alert-rules`
 - `PATCH /api/mobile/alert-rules/{rule_id}`
 
-- [ ] **Step 6: Run alert/API tests**
+- [x] **Step 6: Run alert/API tests**
 
 Run:
 
@@ -515,7 +515,7 @@ Run:
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/market/schema.sql src/market/alerts.py src/market/api.py tests/test_alerts.py tests/test_api.py
@@ -531,7 +531,7 @@ git commit -m "Add mobile alert rules"
 - Modify: `src/market/cli.py`
 - Create: `tests/test_push.py`
 
-- [ ] **Step 1: Add push client tests**
+- [x] **Step 1: Add push client tests**
 
 Create `tests/test_push.py` with tests for:
 
@@ -539,7 +539,7 @@ Create `tests/test_push.py` with tests for:
 - Invalid or disabled tokens are skipped.
 - HTTP errors return a failed delivery result instead of crashing the worker.
 
-- [ ] **Step 2: Implement Expo Push client**
+- [x] **Step 2: Implement Expo Push client**
 
 Create `src/market/push.py`:
 
@@ -558,7 +558,7 @@ def build_expo_push_payload(token: str, title: str, body: str) -> dict[str, obje
 
 Add a sender function that posts JSON to Expo and returns structured success/failure data.
 
-- [ ] **Step 3: Add CLI worker command**
+- [x] **Step 3: Add CLI worker command**
 
 Modify `src/market/cli.py` to add:
 
@@ -573,7 +573,7 @@ The command must:
 3. Send push messages.
 4. Write delivery result into `mobile_alert_event.delivery_status`.
 
-- [ ] **Step 4: Run push tests**
+- [x] **Step 4: Run push tests**
 
 Run:
 
@@ -583,7 +583,7 @@ Run:
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/market/push.py src/market/cli.py tests/test_push.py
@@ -598,7 +598,7 @@ git commit -m "Send mobile alert push notifications"
 - Create: `apps/market-mobile/src/foregroundAlerts.ts`
 - Modify: `apps/market-mobile/App.tsx`
 
-- [ ] **Step 1: Add foreground polling module**
+- [x] **Step 1: Add foreground polling module**
 
 Create `apps/market-mobile/src/foregroundAlerts.ts`:
 
@@ -654,7 +654,7 @@ export function startForegroundAlerts(getRules: () => AlertRule[]): () => void {
 }
 ```
 
-- [ ] **Step 2: Start foreground polling from the app**
+- [x] **Step 2: Start foreground polling from the app**
 
 Modify `apps/market-mobile/App.tsx` to start foreground alerts after notification registration. The initial rule source can be an empty list until the native rule UI is added:
 
@@ -665,7 +665,7 @@ useEffect(() => {
 }, []);
 ```
 
-- [ ] **Step 3: Run TypeScript check**
+- [x] **Step 3: Run TypeScript check**
 
 Run:
 
@@ -676,7 +676,7 @@ npx tsc --noEmit
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add apps/market-mobile/src/foregroundAlerts.ts apps/market-mobile/App.tsx
@@ -691,7 +691,7 @@ git commit -m "Add foreground mobile alerts"
 - Modify: `README.md`
 - Modify or create deployment script under existing deployment conventions.
 
-- [ ] **Step 1: Add server worker command docs**
+- [x] **Step 1: Add server worker command docs**
 
 Add to `README.md`:
 
@@ -712,7 +712,7 @@ only needs to evaluate latest snapshots and send push messages. Keep cooldowns
 in the database to avoid repeated notifications.
 ```
 
-- [ ] **Step 2: Deploy to Tencent**
+- [x] **Step 2: Deploy to Tencent**
 
 Run:
 
@@ -723,13 +723,13 @@ ssh tencent-market 'cd /home/ubuntu/github/mono && git pull --ff-only && .venv/b
 
 Expected: server fast-forwards and tests pass.
 
-- [ ] **Step 3: Install cron or systemd timer**
+- [x] **Step 3: Install cron or systemd timer**
 
 On `tencent-market`, install a minute-level cron for `market evaluate-mobile-alerts`.
 
 Expected: `logs/mobile-alerts.log` shows rule evaluation without crashes.
 
-- [ ] **Step 4: Commit deployment docs**
+- [x] **Step 4: Commit deployment docs**
 
 ```bash
 git add README.md
@@ -744,7 +744,7 @@ git commit -m "Document mobile alert worker deployment"
 - Create: `apps/market-mobile/eas.json`
 - Modify: `README.md`
 
-- [ ] **Step 1: Add EAS preview build profile**
+- [x] **Step 1: Add EAS preview build profile**
 
 Create `apps/market-mobile/eas.json`:
 
@@ -763,7 +763,7 @@ Create `apps/market-mobile/eas.json`:
 }
 ```
 
-- [ ] **Step 2: Build APK**
+- [x] **Step 2: Build APK**
 
 Run:
 
@@ -780,6 +780,8 @@ Transfer the APK to the phone and install it manually. Then enable the OnePlus c
 
 - [ ] **Step 4: Smoke test**
 
+Status: latest APK was built successfully; final install and device smoke test require the physical OnePlus 13T.
+
 Expected:
 
 - App opens the market web UI.
@@ -788,7 +790,7 @@ Expected:
 - Device token appears in the server `push_device` table.
 - A test alert produces a notification while the screen is locked.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/market-mobile/eas.json README.md
