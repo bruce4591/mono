@@ -864,34 +864,47 @@ def register_mobile_device(
 ) -> dict[str, object]:
     platform = _required_string(payload, "platform")
     push_token = _required_string(payload, "push_token")
+    getui_cid = _optional_payload_string(payload, "getui_cid")
     device_label = _optional_payload_string(payload, "device_label")
     now = now_ts_utc or _now_utc()
 
     if platform not in {"android", "ios"}:
         raise ValueError("platform must be android or ios")
+    if getui_cid:
+        connection.execute(
+            """
+            UPDATE push_device
+            SET getui_cid = NULL, updated_at_utc = ?
+            WHERE getui_cid = ?
+                AND push_token != ?
+            """,
+            (now, getui_cid, push_token),
+        )
 
     connection.execute(
         """
         INSERT INTO push_device (
             push_token,
+            getui_cid,
             platform,
             device_label,
             enabled,
             created_at_utc,
             updated_at_utc
         )
-        VALUES (?, ?, ?, 1, ?, ?)
+        VALUES (?, ?, ?, ?, 1, ?, ?)
         ON CONFLICT(push_token) DO UPDATE SET
+            getui_cid = COALESCE(excluded.getui_cid, push_device.getui_cid),
             platform = excluded.platform,
             device_label = excluded.device_label,
             enabled = 1,
             updated_at_utc = excluded.updated_at_utc
         """,
-        (push_token, platform, device_label, now, now),
+        (push_token, getui_cid, platform, device_label, now, now),
     )
     row = connection.execute(
         """
-        SELECT push_device_id, platform, push_token, device_label, enabled
+        SELECT push_device_id, platform, push_token, getui_cid, device_label, enabled
         FROM push_device
         WHERE push_token = ?
         """,
@@ -903,6 +916,7 @@ def register_mobile_device(
         "push_device_id": int(row["push_device_id"]),
         "platform": str(row["platform"]),
         "push_token": str(row["push_token"]),
+        "getui_cid": _optional_str(row["getui_cid"]),
         "device_label": _optional_str(row["device_label"]),
         "enabled": bool(row["enabled"]),
     }
@@ -1520,7 +1534,7 @@ def _push_device_row_for_token(
 ) -> sqlite3.Row | None:
     return connection.execute(
         """
-        SELECT push_device_id, push_token, platform, device_label, enabled
+        SELECT push_device_id, push_token, getui_cid, platform, device_label, enabled
         FROM push_device
         WHERE push_token = ?
         """,

@@ -6,6 +6,7 @@ import type { WebViewNavigation } from "react-native-webview";
 
 import { WEB_BASE_URL } from "./src/config";
 import { startForegroundAlerts } from "./src/foregroundAlerts";
+import { initializeGetuiPush, waitForGetuiClientId } from "./src/getui";
 import { registerDeviceForPush } from "./src/notifications";
 
 function notificationUrlFromData(data: Record<string, unknown>): string {
@@ -33,7 +34,20 @@ export default function App() {
   } | null>(null);
 
   useEffect(() => {
-    registerDeviceForPush().catch(() => undefined);
+    let cancelled = false;
+    async function registerPushChannels() {
+      const pushToken = await registerDeviceForPush();
+      await initializeGetuiPush();
+      const getuiCid = await waitForGetuiClientId();
+      if (!cancelled && pushToken && getuiCid) {
+        await registerDeviceForPush(getuiCid);
+      }
+    }
+
+    registerPushChannels().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => startForegroundAlerts(() => []), []);

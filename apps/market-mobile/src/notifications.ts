@@ -12,7 +12,7 @@ Notifications.setNotificationHandler({
   })
 });
 
-export async function registerDeviceForPush(): Promise<string | null> {
+export async function registerDeviceForPush(getuiCid?: string | null): Promise<string | null> {
   const current = await Notifications.getPermissionsAsync();
   const permission =
     current.status === "granted" ? current : await Notifications.requestPermissionsAsync();
@@ -37,6 +37,7 @@ export async function registerDeviceForPush(): Promise<string | null> {
     body: JSON.stringify({
       platform: Platform.OS,
       push_token: token.data,
+      getui_cid: getuiCid || undefined,
       device_label: "OnePlus 13T"
     })
   });

@@ -4,14 +4,20 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from market.db import connect, init_database
 from market.models import Instrument, MarketSnapshot
 from market.push import (
+    GetuiCredentials,
     PushDeliveryResult,
     build_expo_push_payload,
+    build_getui_auth_payload,
+    build_getui_push_payload,
     deliver_mobile_alert_pushes,
+    send_auto_push_message,
     send_expo_push_payload,
+    send_getui_push_message,
 )
 from market.repositories import InstrumentRepository, MarketSnapshotRepository
 
@@ -120,6 +126,96 @@ class PushTests(unittest.TestCase):
         self.assertEqual(result.delivery_status, "failed")
         self.assertIn("network down", result.error or "")
 
+    def test_build_getui_auth_payload_hashes_secret(self):
+        payload = build_getui_auth_payload(
+            GetuiCredentials(
+                app_id="app-id",
+                app_key="app-key",
+                master_secret="master-secret",
+            ),
+            timestamp_ms=1700000000000,
+        )
+
+        self.assertEqual(payload["appkey"], "app-key")
+        self.assertEqual(payload["timestamp"], "1700000000000")
+        self.assertEqual(
+            payload["sign"],
+            "f8d30b77d13959f8d4f3dd425ef37e04fdffd6a9d0797ab44c083773ba770e40",
+        )
+
+    def test_build_getui_push_payload_targets_cid(self):
+        payload = build_getui_push_payload(
+            "getui-cid-1",
+            "BTCUSDT 价格突破",
+            "BTCUSDT last_price 69000 > 68000",
+            request_id="market0000000001",
+            click_url="http://150.109.22.77:8000/instrument.html?market=CRYPTO&symbol=BTCUSDT",
+        )
+
+        self.assertEqual(payload["request_id"], "market0000000001")
+        self.assertEqual(payload["audience"]["cid"], ["getui-cid-1"])
+        self.assertEqual(payload["push_message"]["notification"]["title"], "BTCUSDT 价格突破")
+        self.assertEqual(payload["push_message"]["notification"]["click_type"], "url")
+
+    def test_send_auto_push_message_prefers_getui_when_configured(self):
+        calls = []
+
+        with patch.dict(
+            "os.environ",
+            {
+                "GETUI_APP_ID": "app-id",
+                "GETUI_APP_KEY": "app-key",
+                "GETUI_MASTER_SECRET": "master-secret",
+            },
+        ):
+            result = send_auto_push_message(
+                {
+                    "mobile_alert_event_id": 7,
+                    "push_token": "ExponentPushToken[test-token]",
+                    "getui_cid": "getui-cid-1",
+                    "title": "test",
+                    "body": "body",
+                    "data": {"url": "/status.html"},
+                },
+                getui_sender=lambda message: calls.append(message) or PushDeliveryResult(
+                    delivery_status="sent",
+                    response_id="getui-task-1",
+                ),
+                expo_sender=lambda message: PushDeliveryResult(delivery_status="failed"),
+            )
+
+        self.assertEqual(result.delivery_status, "sent")
+        self.assertEqual(result.response_id, "getui-task-1")
+        self.assertEqual(calls[0]["getui_cid"], "getui-cid-1")
+
+    def test_send_getui_push_message_returns_failed_on_api_error(self):
+        responses = [
+            _FakeResponse({"code": 0, "data": {"token": "auth-token"}}),
+            _FakeResponse({"code": 1001, "msg": "cid offline"}),
+        ]
+
+        def opener(request, timeout):
+            return responses.pop(0)
+
+        result = send_getui_push_message(
+            {
+                "mobile_alert_event_id": 1,
+                "getui_cid": "getui-cid-1",
+                "title": "test",
+                "body": "body",
+            },
+            credentials=GetuiCredentials(
+                app_id="app-id",
+                app_key="app-key",
+                master_secret="master-secret",
+            ),
+            opener=opener,
+            timestamp_ms=lambda: 1700000000000,
+        )
+
+        self.assertEqual(result.delivery_status, "failed")
+        self.assertIn("cid offline", result.error or "")
+
 
 def _insert_mobile_push_fixture(
     connection: sqlite3.Connection,
@@ -155,16 +251,18 @@ def _insert_mobile_push_fixture(
         """
         INSERT INTO push_device (
             push_token,
+            getui_cid,
             platform,
             device_label,
             enabled,
             created_at_utc,
             updated_at_utc
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             push_token,
+            "getui-cid-1",
             "android",
             "OnePlus 13T",
             int(push_enabled),
@@ -203,6 +301,22 @@ def _insert_mobile_push_fixture(
         ),
     )
     return int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+
+class _FakeResponse:
+    def __init__(self, payload: dict[str, object]):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return None
+
+    def read(self) -> bytes:
+        import json
+
+        return json.dumps(self.payload).encode("utf-8")
 
 
 if __name__ == "__main__":

@@ -127,7 +127,8 @@ def evaluate_mobile_alert_rules(
             mobile_alert_rule.condition_type,
             mobile_alert_rule.threshold,
             mobile_alert_rule.cooldown_seconds,
-            push_device.push_token
+            push_device.push_token,
+            push_device.getui_cid
         FROM mobile_alert_rule
         JOIN push_device
             ON push_device.push_device_id = mobile_alert_rule.push_device_id
@@ -187,6 +188,9 @@ def evaluate_mobile_alert_rules(
                 "mobile_alert_rule_id": rule_id,
                 "push_device_id": int(row["push_device_id"]),
                 "push_token": str(row["push_token"]),
+                "getui_cid": (
+                    str(row["getui_cid"]) if row["getui_cid"] is not None else None
+                ),
                 "title": f"{row['symbol']} {title_suffix}",
                 "body": message,
                 "sound": "default",

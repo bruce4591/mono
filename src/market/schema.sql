@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS alert_event (
 CREATE TABLE IF NOT EXISTS push_device (
     push_device_id INTEGER PRIMARY KEY AUTOINCREMENT,
     push_token TEXT NOT NULL UNIQUE,
+    getui_cid TEXT,
     platform TEXT NOT NULL,
     device_label TEXT,
     enabled INTEGER NOT NULL DEFAULT 1,
@@ -178,6 +179,10 @@ CREATE INDEX IF NOT EXISTS idx_bar_intraday_lookup
 
 CREATE INDEX IF NOT EXISTS idx_market_snapshot_turnover
     ON market_snapshot (trade_date_local, turnover_raw DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_push_device_getui_cid
+    ON push_device (getui_cid)
+    WHERE getui_cid IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_alert_event_triggered
     ON alert_event (triggered_at_utc DESC);

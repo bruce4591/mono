@@ -30,3 +30,20 @@ def init_database(db_path: Path | str) -> None:
     with connect(path) as connection:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        _ensure_push_device_columns(connection)
+
+
+def _ensure_push_device_columns(connection: sqlite3.Connection) -> None:
+    columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(push_device)").fetchall()
+    }
+    if "getui_cid" not in columns:
+        connection.execute("ALTER TABLE push_device ADD COLUMN getui_cid TEXT")
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_push_device_getui_cid
+        ON push_device (getui_cid)
+        WHERE getui_cid IS NOT NULL
+        """
+    )

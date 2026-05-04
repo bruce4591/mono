@@ -11,6 +11,7 @@ logs/
 *.sqlite3-wal
 *.egg-info/
 *-firebase-adminsdk-*.json
+GETUI_ANDROID_SDK_*.zip
 build/
 dist/
 .DS_Store

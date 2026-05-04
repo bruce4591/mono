@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "686383895451",
+    "project_id": "mono-stock-ai",
+    "storage_bucket": "mono-stock-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:686383895451:android:dd3cec9c9289062dac873e",
+        "android_client_info": {
+          "package_name": "com.local.marketmobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCHdAhroDayjKDNOfC-Qq6FcY5wHV24z2Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

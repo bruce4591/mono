@@ -303,6 +303,16 @@ Crypto/futures prices are already updated by WebSocket snapshots, so the worker
 only needs to evaluate latest snapshots and send push messages. Cooldowns are
 stored in SQLite to avoid repeated notifications.
 
+The worker supports Getui as a server-side delivery channel when the device has
+registered a Getui CID and these variables exist in `.market.env`:
+
+```env
+GETUI_APP_ID=...
+GETUI_APP_KEY=...
+GETUI_MASTER_SECRET=...
+MARKET_PUBLIC_BASE_URL=http://150.109.22.77:8000
+```
+
 Build the self-use APK from the Expo app directory:
 
 ```bash

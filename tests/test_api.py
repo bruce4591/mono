@@ -46,6 +46,7 @@ class ApiTests(unittest.TestCase):
                 {
                     "platform": "android",
                     "push_token": "ExponentPushToken[test-token]",
+                    "getui_cid": "getui-cid-1",
                     "device_label": "OnePlus 13T",
                 },
             )
@@ -53,12 +54,13 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(response_status, 200, response_body)
             with connect(db_path) as connection:
                 rows = connection.execute(
-                    "SELECT platform, push_token, device_label, enabled FROM push_device"
+                    "SELECT platform, push_token, getui_cid, device_label, enabled FROM push_device"
                 ).fetchall()
 
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["platform"], "android")
         self.assertEqual(rows[0]["push_token"], "ExponentPushToken[test-token]")
+        self.assertEqual(rows[0]["getui_cid"], "getui-cid-1")
         self.assertEqual(rows[0]["device_label"], "OnePlus 13T")
         self.assertEqual(rows[0]["enabled"], 1)
 
