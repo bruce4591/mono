@@ -171,6 +171,40 @@ CREATE TABLE IF NOT EXISTS mobile_alert_event (
     FOREIGN KEY (mobile_alert_rule_id) REFERENCES mobile_alert_rule(mobile_alert_rule_id)
 );
 
+CREATE TABLE IF NOT EXISTS mobile_alert_delivery (
+    mobile_alert_delivery_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mobile_alert_event_id INTEGER NOT NULL,
+    push_device_id INTEGER NOT NULL,
+    channel TEXT NOT NULL,
+    status TEXT NOT NULL,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    provider_message_id TEXT,
+    last_error TEXT,
+    created_at_utc TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL,
+    FOREIGN KEY (mobile_alert_event_id) REFERENCES mobile_alert_event(mobile_alert_event_id),
+    FOREIGN KEY (push_device_id) REFERENCES push_device(push_device_id),
+    UNIQUE (mobile_alert_event_id, push_device_id, channel)
+);
+
+CREATE TABLE IF NOT EXISTS device_checkpoint (
+    push_device_id INTEGER PRIMARY KEY,
+    last_seen_mobile_alert_event_id INTEGER NOT NULL DEFAULT 0,
+    last_ack_mobile_alert_event_id INTEGER NOT NULL DEFAULT 0,
+    updated_at_utc TEXT NOT NULL,
+    FOREIGN KEY (push_device_id) REFERENCES push_device(push_device_id)
+);
+
+CREATE TABLE IF NOT EXISTS device_session (
+    session_id TEXT PRIMARY KEY,
+    push_device_id INTEGER NOT NULL,
+    transport TEXT NOT NULL,
+    connected_at_utc TEXT NOT NULL,
+    last_seen_at_utc TEXT NOT NULL,
+    disconnected_at_utc TEXT,
+    FOREIGN KEY (push_device_id) REFERENCES push_device(push_device_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_bar_daily_trade_date
     ON bar_daily (trade_date);
 
@@ -183,3 +217,9 @@ CREATE INDEX IF NOT EXISTS idx_market_snapshot_turnover
 
 CREATE INDEX IF NOT EXISTS idx_alert_event_triggered
     ON alert_event (triggered_at_utc DESC);
+
+CREATE INDEX IF NOT EXISTS idx_mobile_alert_delivery_status
+    ON mobile_alert_delivery (status, updated_at_utc);
+
+CREATE INDEX IF NOT EXISTS idx_device_session_push_device
+    ON device_session (push_device_id, disconnected_at_utc, last_seen_at_utc);

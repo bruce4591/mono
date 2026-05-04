@@ -34,6 +34,23 @@ class AlertTests(unittest.TestCase):
         self.assertIn("mobile_alert_rule", tables)
         self.assertIn("mobile_alert_event", tables)
 
+    def test_mobile_delivery_tables_are_created_by_schema(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    ).fetchall()
+                }
+
+        self.assertIn("mobile_alert_delivery", tables)
+        self.assertIn("device_checkpoint", tables)
+        self.assertIn("device_session", tables)
+
     def test_alert_rule_repository_upserts_by_name(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
