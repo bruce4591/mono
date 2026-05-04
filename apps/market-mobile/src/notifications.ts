@@ -76,9 +76,13 @@ export async function registerDeviceForPush({
   }
 }
 
-export async function showLocalAlert(title: string, body: string): Promise<void> {
+export async function showLocalAlert(
+  title: string,
+  body: string,
+  data?: Record<string, unknown>
+): Promise<void> {
   await Notifications.scheduleNotificationAsync({
-    content: { title, body, sound: true },
+    content: { title, body, data, sound: true },
     trigger: null
   });
 }

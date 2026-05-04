@@ -1010,6 +1010,41 @@ def list_mobile_alert_rules(
     return {"rules": [_mobile_alert_rule_payload(row) for row in rows]}
 
 
+def get_mobile_alert_events_payload(
+    connection: sqlite3.Connection,
+    *,
+    push_token: str,
+    after_id: int = 0,
+    limit: int = 100,
+) -> dict[str, object]:
+    push_device = _push_device_row_for_token(connection, push_token)
+    if push_device is None:
+        return {"events": []}
+    rows = connection.execute(
+        """
+        SELECT
+            mobile_alert_event.mobile_alert_event_id,
+            mobile_alert_event.triggered_at_utc,
+            mobile_alert_event.observed_value,
+            mobile_alert_event.message,
+            mobile_alert_event.delivery_status,
+            mobile_alert_rule.market,
+            mobile_alert_rule.symbol,
+            mobile_alert_rule.condition_type,
+            mobile_alert_rule.threshold
+        FROM mobile_alert_event
+        JOIN mobile_alert_rule
+            ON mobile_alert_rule.mobile_alert_rule_id = mobile_alert_event.mobile_alert_rule_id
+        WHERE mobile_alert_rule.push_device_id = ?
+            AND mobile_alert_event.mobile_alert_event_id > ?
+        ORDER BY mobile_alert_event.mobile_alert_event_id
+        LIMIT ?
+        """,
+        (int(push_device["push_device_id"]), after_id, limit),
+    ).fetchall()
+    return {"events": [_mobile_alert_event_payload(row) for row in rows]}
+
+
 def patch_mobile_alert_rule(
     connection: sqlite3.Connection,
     rule_id: int,
@@ -1157,6 +1192,26 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                     return
                 with connect(db_path) as connection:
                     payload = list_mobile_alert_rules(connection, push_token=push_token)
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/mobile/alert-events":
+                query = parse_qs(parsed.query)
+                push_token = _first_query(query, "push_token")
+                if push_token is None:
+                    self._write_json({"error": "push_token required"}, HTTPStatus.BAD_REQUEST)
+                    return
+                after_id_value = _first_query(query, "after_id")
+                limit_value = _first_query(query, "limit")
+                after_id = int(after_id_value) if after_id_value is not None else 0
+                limit = int(limit_value) if limit_value is not None else 100
+                with connect(db_path) as connection:
+                    payload = get_mobile_alert_events_payload(
+                        connection,
+                        push_token=push_token,
+                        after_id=after_id,
+                        limit=limit,
+                    )
                 self._write_json(payload)
                 return
 
@@ -1559,6 +1614,32 @@ def _mobile_alert_rule_payload(row: sqlite3.Row) -> dict[str, object]:
         "created_at_utc": str(row["created_at_utc"]),
         "updated_at_utc": str(row["updated_at_utc"]),
     }
+
+
+def _mobile_alert_event_payload(row: sqlite3.Row) -> dict[str, object]:
+    title_suffix = _mobile_alert_title_suffix(str(row["condition_type"]))
+    return {
+        "mobile_alert_event_id": int(row["mobile_alert_event_id"]),
+        "market": str(row["market"]),
+        "symbol": str(row["symbol"]),
+        "title": f"{row['symbol']} {title_suffix}",
+        "body": str(row["message"]),
+        "triggered_at_utc": str(row["triggered_at_utc"]),
+        "observed_value": float(row["observed_value"]),
+        "threshold": float(row["threshold"]),
+        "delivery_status": str(row["delivery_status"]),
+        "data": {
+            "market": str(row["market"]),
+            "symbol": str(row["symbol"]),
+            "url": f"/instrument.html?market={row['market']}&symbol={row['symbol']}",
+        },
+    }
+
+
+def _mobile_alert_title_suffix(condition_type: str) -> str:
+    if condition_type.startswith("change_pct_"):
+        return "涨跌幅提醒"
+    return "价格提醒"
 
 
 def _database_is_writable(connection: sqlite3.Connection) -> bool:

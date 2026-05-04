@@ -1,9 +1,10 @@
 import * as Notifications from "expo-notifications";
 import React, { useEffect, useRef, useState } from "react";
-import { BackHandler, StatusBar, StyleSheet, Text, View } from "react-native";
+import { AppState, BackHandler, StatusBar, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 import type { WebViewNavigation } from "react-native-webview";
 
+import { displayNewAlertEvents, fetchMobileAlertEvents } from "./src/alertEvents";
 import { WEB_BASE_URL } from "./src/config";
 import { startForegroundAlerts } from "./src/foregroundAlerts";
 import { initializeGetuiPush, waitForGetuiClientId } from "./src/getui";
@@ -25,6 +26,9 @@ function notificationUrlFromData(data: Record<string, unknown>): string {
 
 export default function App() {
   const webViewRef = useRef<WebView>(null);
+  const devicePushTokenRef = useRef<string | null>(null);
+  const latestSeenAlertEventIdRef = useRef(0);
+  const seenAlertEventIdsRef = useRef(new Set<number>());
   const [sourceUri, setSourceUri] = useState(WEB_BASE_URL);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loadError, setLoadError] = useState<{
@@ -43,6 +47,8 @@ export default function App() {
       ]);
       if (!cancelled) {
         await registerDeviceForPush({ pushToken, getuiCid });
+        devicePushTokenRef.current = pushToken || (getuiCid ? `getui:${getuiCid}` : null);
+        await pullMissedAlertEvents();
       }
     }
 
@@ -50,6 +56,31 @@ export default function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  async function pullMissedAlertEvents() {
+    const pushToken = devicePushTokenRef.current;
+    if (!pushToken) {
+      return;
+    }
+    const events = await fetchMobileAlertEvents({
+      pushToken,
+      afterId: latestSeenAlertEventIdRef.current
+    });
+    const maxEventId = await displayNewAlertEvents({
+      events,
+      seenEventIds: seenAlertEventIdsRef.current
+    });
+    latestSeenAlertEventIdRef.current = Math.max(latestSeenAlertEventIdRef.current, maxEventId);
+  }
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        pullMissedAlertEvents().catch(() => undefined);
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
   useEffect(() => startForegroundAlerts(() => []), []);

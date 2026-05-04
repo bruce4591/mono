@@ -205,6 +205,134 @@ class ApiTests(unittest.TestCase):
             payload = json.loads(response_body)
             self.assertEqual(payload["enabled"], False)
 
+    def test_get_mobile_alert_events_after_id_filters_by_device(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[other-token]",
+                    "device_label": "Other",
+                },
+            )
+            _, create_body = _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/alert-rules",
+                {
+                    "push_token": "ExponentPushToken[test-token]",
+                    "market": "CRYPTO",
+                    "symbol": "BTCUSDT",
+                    "condition_type": "price_above",
+                    "threshold": 68000.0,
+                },
+            )
+            target_rule_id = json.loads(create_body)["mobile_alert_rule_id"]
+            _, other_body = _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/alert-rules",
+                {
+                    "push_token": "ExponentPushToken[other-token]",
+                    "market": "CRYPTO",
+                    "symbol": "ETHUSDT",
+                    "condition_type": "price_above",
+                    "threshold": 3000.0,
+                },
+            )
+            other_rule_id = json.loads(other_body)["mobile_alert_rule_id"]
+            with connect(db_path) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_event (
+                        mobile_alert_rule_id,
+                        triggered_at_utc,
+                        observed_value,
+                        message,
+                        delivery_status
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        target_rule_id,
+                        "2026-05-05T00:00:00Z",
+                        69000.0,
+                        "BTCUSDT last_price 69000 > 68000",
+                        "sent",
+                    ),
+                )
+                first_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_event (
+                        mobile_alert_rule_id,
+                        triggered_at_utc,
+                        observed_value,
+                        message,
+                        delivery_status
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        target_rule_id,
+                        "2026-05-05T00:01:00Z",
+                        70000.0,
+                        "BTCUSDT last_price 70000 > 68000",
+                        "sent",
+                    ),
+                )
+                expected_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_event (
+                        mobile_alert_rule_id,
+                        triggered_at_utc,
+                        observed_value,
+                        message,
+                        delivery_status
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        other_rule_id,
+                        "2026-05-05T00:02:00Z",
+                        3100.0,
+                        "ETHUSDT last_price 3100 > 3000",
+                        "sent",
+                    ),
+                )
+            response_status, response_body = _request_api(
+                db_path,
+                "GET",
+                (
+                    "/api/mobile/alert-events?"
+                    "push_token=ExponentPushToken%5Btest-token%5D"
+                    f"&after_id={first_id}"
+                ),
+                {},
+            )
+
+        self.assertEqual(response_status, 200, response_body)
+        payload = json.loads(response_body)
+        self.assertEqual(len(payload["events"]), 1)
+        self.assertEqual(payload["events"][0]["mobile_alert_event_id"], expected_id)
+        self.assertEqual(payload["events"][0]["title"], "BTCUSDT 价格提醒")
+        self.assertEqual(payload["events"][0]["data"]["url"], "/instrument.html?market=CRYPTO&symbol=BTCUSDT")
+
     def test_get_board_payload_returns_ranked_instruments(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
