@@ -29,7 +29,14 @@ class MarketGetuiModule(
 
   @ReactMethod
   fun getClientId(promise: Promise) {
-    promise.resolve(MarketGetuiStore.getClientId(reactContext.applicationContext))
+    val context = reactContext.applicationContext
+    val sdkClientId = PushManager.getInstance().getClientid(context)
+    if (!sdkClientId.isNullOrBlank()) {
+      MarketGetuiStore.saveClientId(context, sdkClientId)
+      promise.resolve(sdkClientId)
+      return
+    }
+    promise.resolve(MarketGetuiStore.getClientId(context))
   }
 
   @ReactMethod
