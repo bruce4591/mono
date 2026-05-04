@@ -189,7 +189,8 @@ class PushTests(unittest.TestCase):
         self.assertEqual(android_notification["title"], "BTCUSDT 价格突破")
         self.assertEqual(android_notification["body"], "BTCUSDT last_price 69000 > 68000")
         self.assertEqual(android_notification["channel_level"], 4)
-        self.assertEqual(android_notification["click_type"], "url")
+        self.assertEqual(android_notification["click_type"], "startapp")
+        self.assertIsInstance(android_notification["notify_id"], int)
         self.assertEqual(payload["settings"]["strategy"]["default"], 1)
 
     def test_send_auto_push_message_prefers_getui_when_configured(self):

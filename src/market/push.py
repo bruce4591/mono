@@ -142,6 +142,15 @@ def build_getui_push_payload(
         notification["url"] = click_url
     else:
         notification["click_type"] = "none"
+    offline_notification = {
+        "title": title,
+        "body": body,
+        "channel_id": notification["channel_id"],
+        "channel_name": notification["channel_name"],
+        "channel_level": notification["channel_level"],
+        "click_type": "startapp",
+        "notify_id": _getui_notify_id(request_id),
+    }
     return {
         "request_id": request_id,
         "settings": {
@@ -153,7 +162,7 @@ def build_getui_push_payload(
         "push_channel": {
             "android": {
                 "ups": {
-                    "notification": notification,
+                    "notification": offline_notification,
                 },
             },
         },
@@ -314,6 +323,10 @@ def _getui_click_url(message: PushMessage) -> str | None:
     if not base_url or not url.startswith("/"):
         return None
     return f"{base_url}{url}"
+
+
+def _getui_notify_id(request_id: str) -> int:
+    return int(sha256(request_id.encode("utf-8")).hexdigest()[:8], 16) & 0x7FFFFFFF
 
 
 def _is_expo_push_token(token: str) -> bool:
