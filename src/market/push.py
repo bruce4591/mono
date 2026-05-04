@@ -144,9 +144,19 @@ def build_getui_push_payload(
         notification["click_type"] = "none"
     return {
         "request_id": request_id,
-        "settings": {"ttl": 3600000},
+        "settings": {
+            "ttl": 7200000,
+            "strategy": {"default": 1},
+        },
         "audience": {"cid": [cid]},
         "push_message": {"notification": notification},
+        "push_channel": {
+            "android": {
+                "ups": {
+                    "notification": notification,
+                },
+            },
+        },
     }
 
 

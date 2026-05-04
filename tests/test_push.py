@@ -185,6 +185,12 @@ class PushTests(unittest.TestCase):
         self.assertEqual(payload["audience"]["cid"], ["getui-cid-1"])
         self.assertEqual(payload["push_message"]["notification"]["title"], "BTCUSDT 价格突破")
         self.assertEqual(payload["push_message"]["notification"]["click_type"], "url")
+        android_notification = payload["push_channel"]["android"]["ups"]["notification"]
+        self.assertEqual(android_notification["title"], "BTCUSDT 价格突破")
+        self.assertEqual(android_notification["body"], "BTCUSDT last_price 69000 > 68000")
+        self.assertEqual(android_notification["channel_level"], 4)
+        self.assertEqual(android_notification["click_type"], "url")
+        self.assertEqual(payload["settings"]["strategy"]["default"], 1)
 
     def test_send_auto_push_message_prefers_getui_when_configured(self):
         calls = []
