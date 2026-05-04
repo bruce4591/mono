@@ -109,11 +109,21 @@ class PushTests(unittest.TestCase):
                 status = connection.execute(
                     "SELECT delivery_status FROM mobile_alert_event"
                 ).fetchone()["delivery_status"]
+                delivery = connection.execute(
+                    """
+                    SELECT channel, status, attempt_count, provider_message_id
+                    FROM mobile_alert_delivery
+                    """
+                ).fetchone()
 
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["getui_cid"], "getui-cid-1")
         self.assertEqual(deliveries[0].delivery_status, "sent")
         self.assertEqual(status, "sent")
+        self.assertEqual(delivery["channel"], "getui")
+        self.assertEqual(delivery["status"], "sent")
+        self.assertEqual(delivery["attempt_count"], 1)
+        self.assertEqual(delivery["provider_message_id"], "getui-task-1")
 
     def test_deliver_mobile_alert_pushes_skips_disabled_devices(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

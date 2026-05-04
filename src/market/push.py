@@ -11,6 +11,10 @@ from typing import Callable
 from urllib.parse import quote
 
 from market.alerts import evaluate_mobile_alert_rules
+from market.mobile_delivery import (
+    enqueue_mobile_alert_delivery,
+    mark_mobile_alert_delivery,
+)
 
 
 EXPO_PUSH_ENDPOINT = "https://exp.host/--/api/v2/push/send"
@@ -270,6 +274,14 @@ def deliver_mobile_alert_pushes(
         token = str(message["push_token"])
         getui_cid = message.get("getui_cid")
         has_getui_cid = isinstance(getui_cid, str) and bool(getui_cid.strip())
+        channel = "getui" if has_getui_cid else "expo"
+        delivery_id = enqueue_mobile_alert_delivery(
+            connection,
+            event_id=int(message["mobile_alert_event_id"]),
+            push_device_id=int(message["push_device_id"]),
+            channel=channel,
+            now_utc=now_utc,
+        )
         if not has_getui_cid and not _is_expo_push_token(token):
             result = PushDeliveryResult(
                 delivery_status="skipped_invalid_token",
@@ -277,6 +289,14 @@ def deliver_mobile_alert_pushes(
             )
         else:
             result = sender(message)
+        mark_mobile_alert_delivery(
+            connection,
+            delivery_id=delivery_id,
+            status=result.delivery_status,
+            provider_message_id=result.response_id,
+            error=result.error,
+            now_utc=now_utc,
+        )
         _update_mobile_alert_event_status(
             connection,
             event_id=int(message["mobile_alert_event_id"]),
