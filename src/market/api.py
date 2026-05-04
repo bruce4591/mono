@@ -863,13 +863,17 @@ def register_mobile_device(
     now_ts_utc: str | None = None,
 ) -> dict[str, object]:
     platform = _required_string(payload, "platform")
-    push_token = _required_string(payload, "push_token")
     getui_cid = _optional_payload_string(payload, "getui_cid")
+    push_token = _optional_payload_string(payload, "push_token")
     device_label = _optional_payload_string(payload, "device_label")
     now = now_ts_utc or _now_utc()
 
     if platform not in {"android", "ios"}:
         raise ValueError("platform must be android or ios")
+    if not push_token and not getui_cid:
+        raise ValueError("push_token or getui_cid is required")
+    if not push_token:
+        push_token = f"getui:{getui_cid}"
     if getui_cid:
         connection.execute(
             """

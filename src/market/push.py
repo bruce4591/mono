@@ -249,7 +249,9 @@ def deliver_mobile_alert_pushes(
     results: list[PushDeliveryResult] = []
     for message in messages:
         token = str(message["push_token"])
-        if not _is_expo_push_token(token):
+        getui_cid = message.get("getui_cid")
+        has_getui_cid = isinstance(getui_cid, str) and bool(getui_cid.strip())
+        if not has_getui_cid and not _is_expo_push_token(token):
             result = PushDeliveryResult(
                 delivery_status="skipped_invalid_token",
                 error="invalid Expo push token",

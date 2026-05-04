@@ -70,7 +70,11 @@ class PushTests(unittest.TestCase):
             calls = []
 
             with connect(db_path) as connection:
-                _insert_mobile_push_fixture(connection, push_token="invalid-token")
+                _insert_mobile_push_fixture(
+                    connection,
+                    push_token="invalid-token",
+                    getui_cid=None,
+                )
                 deliveries = deliver_mobile_alert_pushes(
                     connection,
                     now_utc="2026-05-04T03:00:00Z",
@@ -85,6 +89,31 @@ class PushTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertEqual(deliveries[0].delivery_status, "skipped_invalid_token")
         self.assertEqual(status, "skipped_invalid_token")
+
+    def test_deliver_mobile_alert_pushes_sends_getui_only_device(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            with connect(db_path) as connection:
+                _insert_mobile_push_fixture(connection, push_token="getui:getui-cid-1")
+                deliveries = deliver_mobile_alert_pushes(
+                    connection,
+                    now_utc="2026-05-04T03:00:00Z",
+                    sender=lambda message: calls.append(message) or PushDeliveryResult(
+                        delivery_status="sent",
+                        response_id="getui-task-1",
+                    ),
+                )
+                status = connection.execute(
+                    "SELECT delivery_status FROM mobile_alert_event"
+                ).fetchone()["delivery_status"]
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["getui_cid"], "getui-cid-1")
+        self.assertEqual(deliveries[0].delivery_status, "sent")
+        self.assertEqual(status, "sent")
 
     def test_deliver_mobile_alert_pushes_skips_disabled_devices(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -221,6 +250,7 @@ def _insert_mobile_push_fixture(
     connection: sqlite3.Connection,
     *,
     push_token: str,
+    getui_cid: str | None = "getui-cid-1",
     push_enabled: bool = True,
 ) -> int:
     instrument_id = InstrumentRepository(connection).upsert(
@@ -262,7 +292,7 @@ def _insert_mobile_push_fixture(
         """,
         (
             push_token,
-            "getui-cid-1",
+            getui_cid,
             "android",
             "OnePlus 13T",
             int(push_enabled),

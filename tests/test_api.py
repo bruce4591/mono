@@ -64,6 +64,33 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(rows[0]["device_label"], "OnePlus 13T")
         self.assertEqual(rows[0]["enabled"], 1)
 
+    def test_register_mobile_device_accepts_getui_only_device(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            response_status, response_body = _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "getui_cid": "getui-cid-1",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+
+            self.assertEqual(response_status, 200, response_body)
+            with connect(db_path) as connection:
+                row = connection.execute(
+                    "SELECT platform, push_token, getui_cid, device_label, enabled FROM push_device"
+                ).fetchone()
+
+        self.assertEqual(row["platform"], "android")
+        self.assertEqual(row["push_token"], "getui:getui-cid-1")
+        self.assertEqual(row["getui_cid"], "getui-cid-1")
+        self.assertEqual(row["device_label"], "OnePlus 13T")
+        self.assertEqual(row["enabled"], 1)
+
     def test_create_mobile_alert_rule_for_registered_device(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

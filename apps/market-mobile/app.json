@@ -2,7 +2,7 @@
   "expo": {
     "name": "Market",
     "slug": "market-mobile",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "android": {
@@ -12,7 +12,7 @@
       "permissions": [
         "POST_NOTIFICATIONS"
       ],
-      "versionCode": 3
+      "versionCode": 4
     },
     "plugins": [
       "expo-notifications",
