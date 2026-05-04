@@ -856,6 +856,177 @@ def get_alert_events_payload(
     }
 
 
+def register_mobile_device(
+    connection: sqlite3.Connection,
+    payload: dict[str, object],
+    *,
+    now_ts_utc: str | None = None,
+) -> dict[str, object]:
+    platform = _required_string(payload, "platform")
+    push_token = _required_string(payload, "push_token")
+    device_label = _optional_payload_string(payload, "device_label")
+    now = now_ts_utc or _now_utc()
+
+    if platform not in {"android", "ios"}:
+        raise ValueError("platform must be android or ios")
+
+    connection.execute(
+        """
+        INSERT INTO push_device (
+            push_token,
+            platform,
+            device_label,
+            enabled,
+            created_at_utc,
+            updated_at_utc
+        )
+        VALUES (?, ?, ?, 1, ?, ?)
+        ON CONFLICT(push_token) DO UPDATE SET
+            platform = excluded.platform,
+            device_label = excluded.device_label,
+            enabled = 1,
+            updated_at_utc = excluded.updated_at_utc
+        """,
+        (push_token, platform, device_label, now, now),
+    )
+    row = connection.execute(
+        """
+        SELECT push_device_id, platform, push_token, device_label, enabled
+        FROM push_device
+        WHERE push_token = ?
+        """,
+        (push_token,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("push device registration failed")
+    return {
+        "push_device_id": int(row["push_device_id"]),
+        "platform": str(row["platform"]),
+        "push_token": str(row["push_token"]),
+        "device_label": _optional_str(row["device_label"]),
+        "enabled": bool(row["enabled"]),
+    }
+
+
+def create_mobile_alert_rule(
+    connection: sqlite3.Connection,
+    payload: dict[str, object],
+    *,
+    now_ts_utc: str | None = None,
+) -> dict[str, object]:
+    push_token = _required_string(payload, "push_token")
+    market = _required_string(payload, "market")
+    symbol = _required_string(payload, "symbol")
+    condition_type = _required_string(payload, "condition_type")
+    threshold = _required_float(payload, "threshold")
+    cooldown_seconds = _optional_payload_int(payload, "cooldown_seconds") or 900
+    if condition_type not in {
+        "price_above",
+        "price_below",
+        "change_pct_above",
+        "change_pct_below",
+    }:
+        raise ValueError("invalid condition_type")
+    if cooldown_seconds < 0:
+        raise ValueError("cooldown_seconds must be non-negative")
+
+    push_device = _push_device_row_for_token(connection, push_token)
+    if push_device is None:
+        raise ValueError("push_token is not registered")
+    now = now_ts_utc or _now_utc()
+    connection.execute(
+        """
+        INSERT INTO mobile_alert_rule (
+            push_device_id,
+            symbol,
+            market,
+            condition_type,
+            threshold,
+            cooldown_seconds,
+            enabled,
+            created_at_utc,
+            updated_at_utc
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+        """,
+        (
+            int(push_device["push_device_id"]),
+            symbol,
+            market,
+            condition_type,
+            threshold,
+            cooldown_seconds,
+            now,
+            now,
+        ),
+    )
+    row = connection.execute(
+        """
+        SELECT *
+        FROM mobile_alert_rule
+        WHERE mobile_alert_rule_id = last_insert_rowid()
+        """
+    ).fetchone()
+    if row is None:
+        raise ValueError("mobile alert rule creation failed")
+    return _mobile_alert_rule_payload(row)
+
+
+def list_mobile_alert_rules(
+    connection: sqlite3.Connection,
+    *,
+    push_token: str,
+) -> dict[str, object]:
+    push_device = _push_device_row_for_token(connection, push_token)
+    if push_device is None:
+        return {"rules": []}
+    rows = connection.execute(
+        """
+        SELECT *
+        FROM mobile_alert_rule
+        WHERE push_device_id = ?
+        ORDER BY created_at_utc DESC, mobile_alert_rule_id DESC
+        """,
+        (int(push_device["push_device_id"]),),
+    ).fetchall()
+    return {"rules": [_mobile_alert_rule_payload(row) for row in rows]}
+
+
+def patch_mobile_alert_rule(
+    connection: sqlite3.Connection,
+    rule_id: int,
+    payload: dict[str, object],
+    *,
+    now_ts_utc: str | None = None,
+) -> dict[str, object]:
+    if "enabled" not in payload:
+        raise ValueError("enabled required")
+    enabled = payload["enabled"]
+    if not isinstance(enabled, bool):
+        raise ValueError("enabled must be boolean")
+    now = now_ts_utc or _now_utc()
+    connection.execute(
+        """
+        UPDATE mobile_alert_rule
+        SET enabled = ?,
+            updated_at_utc = ?
+        WHERE mobile_alert_rule_id = ?
+        """,
+        (int(enabled), now, rule_id),
+    )
+    row = connection.execute(
+        """
+        SELECT *
+        FROM mobile_alert_rule
+        WHERE mobile_alert_rule_id = ?
+        """,
+        (rule_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("mobile alert rule not found")
+    return _mobile_alert_rule_payload(row)
+
+
 def get_static_asset(path: str) -> StaticAsset | None:
     asset_path = _asset_path(path)
     if asset_path is None:
@@ -875,6 +1046,52 @@ def serve_api(db_path: Path | str, host: str, port: int) -> None:
 
 def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
     class MarketApiHandler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            parsed = urlparse(self.path)
+            if parsed.path == "/api/mobile/devices":
+                try:
+                    request_payload = self._read_json_object()
+                    with connect(db_path) as connection:
+                        response_payload = register_mobile_device(connection, request_payload)
+                except ValueError as error:
+                    self._write_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+                    return
+                self._write_json(response_payload)
+                return
+
+            if parsed.path == "/api/mobile/alert-rules":
+                try:
+                    request_payload = self._read_json_object()
+                    with connect(db_path) as connection:
+                        response_payload = create_mobile_alert_rule(connection, request_payload)
+                except ValueError as error:
+                    self._write_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+                    return
+                self._write_json(response_payload)
+                return
+
+            self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+
+        def do_PATCH(self) -> None:
+            parsed = urlparse(self.path)
+            if parsed.path.startswith("/api/mobile/alert-rules/"):
+                try:
+                    rule_id = int(parsed.path.removeprefix("/api/mobile/alert-rules/"))
+                    request_payload = self._read_json_object()
+                    with connect(db_path) as connection:
+                        response_payload = patch_mobile_alert_rule(
+                            connection,
+                            rule_id,
+                            request_payload,
+                        )
+                except ValueError as error:
+                    self._write_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+                    return
+                self._write_json(response_payload)
+                return
+
+            self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
             if parsed.path == "/api/health":
@@ -911,6 +1128,17 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 limit = int(limit_value) if limit_value is not None else 50
                 with connect(db_path) as connection:
                     payload = get_alert_events_payload(connection, limit=limit)
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/mobile/alert-rules":
+                query = parse_qs(parsed.query)
+                push_token = _first_query(query, "push_token")
+                if push_token is None:
+                    self._write_json({"error": "push_token required"}, HTTPStatus.BAD_REQUEST)
+                    return
+                with connect(db_path) as connection:
+                    payload = list_mobile_alert_rules(connection, push_token=push_token)
                 self._write_json(payload)
                 return
 
@@ -1010,6 +1238,22 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _read_json_object(self) -> dict[str, object]:
+            length = self.headers.get("Content-Length")
+            if length is None:
+                raise ValueError("Content-Length required")
+            try:
+                body_length = int(length)
+            except ValueError as error:
+                raise ValueError("invalid Content-Length") from error
+            try:
+                payload = json.loads(self.rfile.read(body_length).decode("utf-8"))
+            except json.JSONDecodeError as error:
+                raise ValueError("invalid JSON body") from error
+            if not isinstance(payload, dict):
+                raise ValueError("JSON body must be an object")
+            return payload
 
         def _write_bytes(
             self,
@@ -1137,6 +1381,39 @@ def _first_query(query: dict[str, list[str]], name: str) -> str | None:
     return values[0]
 
 
+def _required_string(payload: dict[str, object], name: str) -> str:
+    value = payload.get(name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} required")
+    return value.strip()
+
+
+def _optional_payload_string(payload: dict[str, object], name: str) -> str | None:
+    value = payload.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a string")
+    stripped = value.strip()
+    return stripped or None
+
+
+def _required_float(payload: dict[str, object], name: str) -> float:
+    value = payload.get(name)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a number")
+    return float(value)
+
+
+def _optional_payload_int(payload: dict[str, object], name: str) -> int | None:
+    value = payload.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{name} must be an integer")
+    return value
+
+
 def _optional_query_int(query: dict[str, list[str]], name: str) -> int | None:
     value = _first_query(query, name)
     if value is None:
@@ -1235,6 +1512,35 @@ def _optional_int(value: object) -> int | None:
 
 def _now_utc() -> str:
     return datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _push_device_row_for_token(
+    connection: sqlite3.Connection,
+    push_token: str,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT push_device_id, push_token, platform, device_label, enabled
+        FROM push_device
+        WHERE push_token = ?
+        """,
+        (push_token,),
+    ).fetchone()
+
+
+def _mobile_alert_rule_payload(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "mobile_alert_rule_id": int(row["mobile_alert_rule_id"]),
+        "push_device_id": int(row["push_device_id"]),
+        "market": str(row["market"]),
+        "symbol": str(row["symbol"]),
+        "condition_type": str(row["condition_type"]),
+        "threshold": float(row["threshold"]),
+        "cooldown_seconds": int(row["cooldown_seconds"]),
+        "enabled": bool(row["enabled"]),
+        "created_at_utc": str(row["created_at_utc"]),
+        "updated_at_utc": str(row["updated_at_utc"]),
+    }
 
 
 def _database_is_writable(connection: sqlite3.Connection) -> bool:

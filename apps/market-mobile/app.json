@@ -7,8 +7,21 @@
     "userInterfaceStyle": "dark",
     "android": {
       "package": "com.local.marketmobile",
-      "permissions": ["POST_NOTIFICATIONS"]
+      "googleServicesFile": "./google-services.json",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ]
     },
-    "plugins": ["expo-notifications"]
+    "plugins": [
+      "expo-notifications",
+      "./plugins/withCleartextTraffic"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c50a802c-c85f-4693-91a4-4cb6e25dba97"
+      }
+    },
+    "owner": "brucenews-organization"
   }
 }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import json
 import tempfile
 import unittest
 from datetime import UTC, datetime
@@ -7,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from market.api import (
+    _make_handler,
     get_alert_events_payload,
     get_alert_metrics_payload,
     get_alert_rules_payload,
@@ -32,6 +35,147 @@ from market.watchlists import sync_watchlist_from_file
 
 
 class ApiTests(unittest.TestCase):
+    def test_register_mobile_device_upserts_push_token(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            response_status, response_body = _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+
+            self.assertEqual(response_status, 200, response_body)
+            with connect(db_path) as connection:
+                rows = connection.execute(
+                    "SELECT platform, push_token, device_label, enabled FROM push_device"
+                ).fetchall()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["platform"], "android")
+        self.assertEqual(rows[0]["push_token"], "ExponentPushToken[test-token]")
+        self.assertEqual(rows[0]["device_label"], "OnePlus 13T")
+        self.assertEqual(rows[0]["enabled"], 1)
+
+    def test_create_mobile_alert_rule_for_registered_device(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+            response_status, response_body = _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/alert-rules",
+                {
+                    "push_token": "ExponentPushToken[test-token]",
+                    "market": "CRYPTO",
+                    "symbol": "BTCUSDT",
+                    "condition_type": "price_above",
+                    "threshold": 68000.0,
+                    "cooldown_seconds": 600,
+                },
+            )
+
+            self.assertEqual(response_status, 200, response_body)
+            payload = json.loads(response_body)
+            self.assertEqual(payload["market"], "CRYPTO")
+            self.assertEqual(payload["symbol"], "BTCUSDT")
+            self.assertEqual(payload["condition_type"], "price_above")
+            self.assertEqual(payload["threshold"], 68000.0)
+            self.assertEqual(payload["cooldown_seconds"], 600)
+            self.assertEqual(payload["enabled"], True)
+
+    def test_get_mobile_alert_rules_filters_by_push_token(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/alert-rules",
+                {
+                    "push_token": "ExponentPushToken[test-token]",
+                    "market": "CRYPTO",
+                    "symbol": "BTCUSDT",
+                    "condition_type": "change_pct_above",
+                    "threshold": 2.0,
+                },
+            )
+            response_status, response_body = _request_api(
+                db_path,
+                "GET",
+                "/api/mobile/alert-rules?push_token=ExponentPushToken%5Btest-token%5D",
+                {},
+            )
+
+        self.assertEqual(response_status, 200, response_body)
+        payload = json.loads(response_body)
+        self.assertEqual(len(payload["rules"]), 1)
+        self.assertEqual(payload["rules"][0]["symbol"], "BTCUSDT")
+        self.assertEqual(payload["rules"][0]["condition_type"], "change_pct_above")
+
+    def test_patch_mobile_alert_rule_disables_rule(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+            _, create_body = _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/alert-rules",
+                {
+                    "push_token": "ExponentPushToken[test-token]",
+                    "market": "CRYPTO",
+                    "symbol": "BTCUSDT",
+                    "condition_type": "price_below",
+                    "threshold": 60000.0,
+                },
+            )
+            rule_id = json.loads(create_body)["mobile_alert_rule_id"]
+            response_status, response_body = _request_api(
+                db_path,
+                "PATCH",
+                f"/api/mobile/alert-rules/{rule_id}",
+                {"enabled": False},
+            )
+
+            self.assertEqual(response_status, 200, response_body)
+            payload = json.loads(response_body)
+            self.assertEqual(payload["enabled"], False)
+
     def test_get_board_payload_returns_ranked_instruments(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -1242,6 +1386,42 @@ class ApiTests(unittest.TestCase):
 def _ms(value: str) -> int:
     normalized = value.replace("Z", "+00:00")
     return int(datetime.fromisoformat(normalized).astimezone(UTC).timestamp() * 1000)
+
+
+class _FakeSocket:
+    def __init__(self, request: bytes) -> None:
+        self._request = io.BytesIO(request)
+        self.response = io.BytesIO()
+
+    def makefile(self, mode: str, buffering: int | None = None):
+        if "r" in mode:
+            return self._request
+        return self.response
+
+    def sendall(self, data: bytes) -> None:
+        self.response.write(data)
+
+
+def _request_api(
+    db_path: Path,
+    method: str,
+    path: str,
+    payload: dict[str, object],
+) -> tuple[int, bytes]:
+    body = json.dumps(payload).encode("utf-8")
+    request = (
+        f"{method} {path} HTTP/1.1\r\n"
+        "Host: testserver\r\n"
+        "Content-Type: application/json\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "\r\n"
+    ).encode("utf-8") + body
+    socket = _FakeSocket(request)
+    _make_handler(db_path)(socket, ("127.0.0.1", 0), object())
+    raw_response = socket.response.getvalue()
+    header, _, response_body = raw_response.partition(b"\r\n\r\n")
+    status = int(header.split(b" ", 2)[1])
+    return status, response_body
 
 
 if __name__ == "__main__":

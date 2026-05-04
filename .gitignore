@@ -10,6 +10,7 @@ logs/
 *.sqlite3-shm
 *.sqlite3-wal
 *.egg-info/
+*-firebase-adminsdk-*.json
 build/
 dist/
 .DS_Store

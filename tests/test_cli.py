@@ -1690,6 +1690,141 @@ class CliTests(unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertIn("alerts evaluated: 1 rules, 1 events", stdout.getvalue())
 
+    def test_evaluate_mobile_alerts_command_sends_pending_push(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                main(["init-db", "--db-path", str(db_path)])
+
+            with sqlite3.connect(db_path) as connection:
+                connection.row_factory = sqlite3.Row
+                instrument_id = connection.execute(
+                    """
+                    INSERT INTO instrument (
+                        market,
+                        symbol,
+                        display_name,
+                        exchange,
+                        instrument_type,
+                        quote_currency,
+                        timezone,
+                        is_active
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                    RETURNING instrument_id
+                    """,
+                    (
+                        "CRYPTO",
+                        "BTCUSDT",
+                        "BTC/USDT",
+                        "BINANCE",
+                        "crypto",
+                        "USDT",
+                        "UTC",
+                    ),
+                ).fetchone()["instrument_id"]
+                connection.execute(
+                    """
+                    INSERT INTO market_snapshot (
+                        instrument_id,
+                        snapshot_ts_utc,
+                        trade_date_local,
+                        last_price,
+                        change_pct,
+                        volume_raw,
+                        turnover_raw,
+                        quote_currency,
+                        source
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        instrument_id,
+                        "2026-05-04T02:59:00Z",
+                        "2026-05-04",
+                        69000.0,
+                        2.0,
+                        120.0,
+                        7_800_000.0,
+                        "USDT",
+                        "test",
+                    ),
+                )
+                push_device_id = connection.execute(
+                    """
+                    INSERT INTO push_device (
+                        push_token,
+                        platform,
+                        device_label,
+                        enabled,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES (?, ?, ?, 1, ?, ?)
+                    RETURNING push_device_id
+                    """,
+                    (
+                        "ExponentPushToken[test-token]",
+                        "android",
+                        "OnePlus 13T",
+                        "2026-05-04T02:58:00Z",
+                        "2026-05-04T02:58:00Z",
+                    ),
+                ).fetchone()["push_device_id"]
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_rule (
+                        push_device_id,
+                        symbol,
+                        market,
+                        condition_type,
+                        threshold,
+                        cooldown_seconds,
+                        enabled,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+                    """,
+                    (
+                        push_device_id,
+                        "BTCUSDT",
+                        "CRYPTO",
+                        "price_above",
+                        68000.0,
+                        900,
+                        "2026-05-04T02:58:00Z",
+                        "2026-05-04T02:58:00Z",
+                    ),
+                )
+                connection.commit()
+
+            with patch("market.cli.send_expo_push_message") as send_push:
+                send_push.return_value.delivery_status = "sent"
+                send_push.return_value.response_id = "receipt-1"
+                send_push.return_value.error = None
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "evaluate-mobile-alerts",
+                            "--db-path",
+                            str(db_path),
+                            "--now-utc",
+                            "2026-05-04T03:00:00Z",
+                        ]
+                    )
+
+            with sqlite3.connect(db_path) as connection:
+                status = connection.execute(
+                    "SELECT delivery_status FROM mobile_alert_event"
+                ).fetchone()[0]
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(status, "sent")
+        self.assertIn("mobile alerts evaluated: 1 deliveries", stdout.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

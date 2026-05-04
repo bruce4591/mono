@@ -136,6 +136,40 @@ CREATE TABLE IF NOT EXISTS alert_event (
     FOREIGN KEY (instrument_id) REFERENCES instrument(instrument_id)
 );
 
+CREATE TABLE IF NOT EXISTS push_device (
+    push_device_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    push_token TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL,
+    device_label TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at_utc TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mobile_alert_rule (
+    mobile_alert_rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    push_device_id INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
+    market TEXT NOT NULL,
+    condition_type TEXT NOT NULL,
+    threshold REAL NOT NULL,
+    cooldown_seconds INTEGER NOT NULL DEFAULT 900,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at_utc TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL,
+    FOREIGN KEY (push_device_id) REFERENCES push_device(push_device_id)
+);
+
+CREATE TABLE IF NOT EXISTS mobile_alert_event (
+    mobile_alert_event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mobile_alert_rule_id INTEGER NOT NULL,
+    triggered_at_utc TEXT NOT NULL,
+    observed_value REAL NOT NULL,
+    message TEXT NOT NULL,
+    delivery_status TEXT NOT NULL,
+    FOREIGN KEY (mobile_alert_rule_id) REFERENCES mobile_alert_rule(mobile_alert_rule_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_bar_daily_trade_date
     ON bar_daily (trade_date);
 

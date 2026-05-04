@@ -274,6 +274,45 @@ http://127.0.0.1:8000/api/bars/intraday?market=CRYPTO&symbol=BTCUSDT&interval=15
 
 Note: the current chart page loads `klinecharts@9.8.12` from jsDelivr. If you need fully offline LAN usage later, vendor the standalone JS file into `frontend/` and serve it locally.
 
+### Android self-use app and OnePlus 13T alerts
+
+The Android app uses native notifications. On OnePlus 13T, enable:
+
+- Notification permission.
+- Lock-screen notifications.
+- Battery setting: no optimization or allow background running.
+- Auto-start/background launch permission.
+- High power usage whitelist if the system prompts.
+
+Foreground alerts can poll the market API every 15-30 seconds. Background,
+locked-screen, or killed-app alerts must be evaluated on `tencent-market` and
+delivered by push notification because Android may suspend app timers.
+
+### Mobile alert worker
+
+Run the server-side alert evaluator on `tencent-market` so Android background,
+locked-screen, and killed-app reminders do not depend on local app polling.
+
+Recommended MVP schedule:
+
+```cron
+* * * * * cd /home/ubuntu/github/mono && deploy/scripts/market-evaluate-mobile-alerts.sh >> logs/mobile-alerts.log 2>&1
+```
+
+Crypto/futures prices are already updated by WebSocket snapshots, so the worker
+only needs to evaluate latest snapshots and send push messages. Cooldowns are
+stored in SQLite to avoid repeated notifications.
+
+Build the self-use APK from the Expo app directory:
+
+```bash
+cd apps/market-mobile
+npx eas-cli@latest build -p android --profile preview
+```
+
+Install the APK on the phone, open the app once, grant notification permission,
+and confirm that the device appears in the server `push_device` table.
+
 ## Next Implementation Slice
 
 - AKShare TradFi focus boards are in place:

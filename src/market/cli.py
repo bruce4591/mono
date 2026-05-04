@@ -36,6 +36,7 @@ from market.crypto_gaps import fill_binance_1m_gaps
 from market.crypto_gaps import fill_binance_futures_1m_gaps
 from market.db import connect, init_database
 from market.models import AlertRule, WatchlistEntry
+from market.push import deliver_mobile_alert_pushes, send_expo_push_message
 from market.realtime import apply_binance_futures_kline_event, apply_binance_ticker_event
 from market.repositories import (
     AlertEventRepository,
@@ -391,6 +392,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     list_alert_events.add_argument("--db-path", type=Path, default=None)
     list_alert_events.add_argument("--limit", type=int, default=50)
+
+    evaluate_mobile_alerts = subparsers.add_parser(
+        "evaluate-mobile-alerts",
+        help="Evaluate mobile alert rules and deliver push notifications",
+    )
+    evaluate_mobile_alerts.add_argument("--db-path", type=Path, default=None)
+    evaluate_mobile_alerts.add_argument("--now-utc", default=None)
     return parser
 
 
@@ -1027,6 +1035,25 @@ def main(argv: list[str] | None = None) -> int:
                 ],
                 ensure_ascii=False,
             )
+        )
+        return 0
+
+    if args.command == "evaluate-mobile-alerts":
+        now_utc = args.now_utc or datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with connect(db_path) as connection:
+            deliveries = deliver_mobile_alert_pushes(
+                connection,
+                now_utc=now_utc,
+                sender=send_expo_push_message,
+            )
+        sent = sum(1 for delivery in deliveries if delivery.delivery_status == "sent")
+        failed = sum(1 for delivery in deliveries if delivery.delivery_status == "failed")
+        skipped = sum(
+            1 for delivery in deliveries if delivery.delivery_status.startswith("skipped")
+        )
+        print(
+            "mobile alerts evaluated: "
+            f"{len(deliveries)} deliveries, {sent} sent, {failed} failed, {skipped} skipped"
         )
         return 0
 

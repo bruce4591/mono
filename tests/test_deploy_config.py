@@ -46,6 +46,7 @@ class DeployConfigTests(unittest.TestCase):
             REPO_ROOT / "deploy" / "scripts" / "market-aggregate-crypto.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-aggregate-crypto-futures.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-fill-crypto-gaps.sh",
+            REPO_ROOT / "deploy" / "scripts" / "market-evaluate-mobile-alerts.sh",
         ]
 
         for script in scripts:
@@ -76,6 +77,17 @@ class DeployConfigTests(unittest.TestCase):
         self.assertIn("COMMODITY_FOCUS20", docs)
         self.assertIn("30 13-21/2 * * 1-5", docs)
         self.assertIn("30 6 * * 2-6", docs)
+
+    def test_mobile_alert_worker_script_and_docs_are_present(self):
+        script = (
+            REPO_ROOT / "deploy" / "scripts" / "market-evaluate-mobile-alerts.sh"
+        ).read_text(encoding="utf-8")
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("evaluate-mobile-alerts", script)
+        self.assertIn("MARKET_DB_PATH", script)
+        self.assertIn("market-evaluate-mobile-alerts.sh", readme)
+        self.assertIn("logs/mobile-alerts.log", readme)
 
 
 if __name__ == "__main__":

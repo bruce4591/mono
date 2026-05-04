@@ -3,6 +3,7 @@ from __future__ import annotations
 import operator
 import sqlite3
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Callable
 
 from market.models import AlertEvent, AlertRule
@@ -58,6 +59,13 @@ OPERATORS: dict[str, Callable[[float, float], bool]] = {
     "==": operator.eq,
 }
 
+MOBILE_ALERT_CONDITIONS: dict[str, tuple[str, str, Callable[[float, float], bool], str]] = {
+    "price_above": ("last_price", ">", operator.gt, "价格提醒"),
+    "price_below": ("last_price", "<", operator.lt, "价格提醒"),
+    "change_pct_above": ("change_pct", ">", operator.gt, "涨跌幅提醒"),
+    "change_pct_below": ("change_pct", "<", operator.lt, "涨跌幅提醒"),
+}
+
 
 def evaluate_alert_rules(
     connection: sqlite3.Connection,
@@ -105,6 +113,97 @@ def evaluate_alert_rules(
     return AlertEvaluationResult(rules_checked=len(rules), events_created=created)
 
 
+def evaluate_mobile_alert_rules(
+    connection: sqlite3.Connection,
+    now_utc: str,
+) -> list[dict[str, object]]:
+    rows = connection.execute(
+        """
+        SELECT
+            mobile_alert_rule.mobile_alert_rule_id,
+            mobile_alert_rule.push_device_id,
+            mobile_alert_rule.symbol,
+            mobile_alert_rule.market,
+            mobile_alert_rule.condition_type,
+            mobile_alert_rule.threshold,
+            mobile_alert_rule.cooldown_seconds,
+            push_device.push_token
+        FROM mobile_alert_rule
+        JOIN push_device
+            ON push_device.push_device_id = mobile_alert_rule.push_device_id
+        WHERE mobile_alert_rule.enabled = 1
+            AND push_device.enabled = 1
+        ORDER BY mobile_alert_rule.mobile_alert_rule_id
+        """
+    ).fetchall()
+    messages: list[dict[str, object]] = []
+    for row in rows:
+        condition = MOBILE_ALERT_CONDITIONS.get(str(row["condition_type"]))
+        if condition is None:
+            continue
+        metric, operator_label, comparator, title_suffix = condition
+        snapshot = _latest_mobile_snapshot(
+            connection,
+            market=str(row["market"]),
+            symbol=str(row["symbol"]),
+        )
+        if snapshot is None:
+            continue
+        observed_value = _optional_float(snapshot.get(metric))
+        if observed_value is None:
+            continue
+        threshold = float(row["threshold"])
+        if not comparator(observed_value, threshold):
+            continue
+        rule_id = int(row["mobile_alert_rule_id"])
+        if _mobile_alert_in_cooldown(
+            connection,
+            rule_id=rule_id,
+            now_utc=now_utc,
+            cooldown_seconds=int(row["cooldown_seconds"]),
+        ):
+            continue
+        message = (
+            f"{row['symbol']} {metric} "
+            f"{_format_float(observed_value)} {operator_label} {_format_float(threshold)}"
+        )
+        connection.execute(
+            """
+            INSERT INTO mobile_alert_event (
+                mobile_alert_rule_id,
+                triggered_at_utc,
+                observed_value,
+                message,
+                delivery_status
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (rule_id, now_utc, observed_value, message, "pending"),
+        )
+        event_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+        messages.append(
+            {
+                "mobile_alert_event_id": event_id,
+                "mobile_alert_rule_id": rule_id,
+                "push_device_id": int(row["push_device_id"]),
+                "push_token": str(row["push_token"]),
+                "title": f"{row['symbol']} {title_suffix}",
+                "body": message,
+                "sound": "default",
+                "channelId": "market-alerts",
+                "data": {
+                    "market": str(row["market"]),
+                    "symbol": str(row["symbol"]),
+                    "url": (
+                        "/instrument.html?"
+                        f"market={row['market']}&symbol={row['symbol']}"
+                    ),
+                },
+            }
+        )
+    return messages
+
+
 def _latest_snapshot_for_rule(
     connection: sqlite3.Connection,
     rule: AlertRule,
@@ -139,6 +238,60 @@ def _latest_snapshot_for_rule(
     return dict(row)
 
 
+def _latest_mobile_snapshot(
+    connection: sqlite3.Connection,
+    *,
+    market: str,
+    symbol: str,
+) -> SnapshotPayload | None:
+    row = connection.execute(
+        """
+        SELECT
+            instrument.instrument_id,
+            instrument.market,
+            instrument.symbol,
+            market_snapshot.snapshot_ts_utc,
+            market_snapshot.last_price,
+            market_snapshot.change_pct
+        FROM instrument
+        JOIN market_snapshot
+            ON market_snapshot.instrument_id = instrument.instrument_id
+        WHERE instrument.market = ?
+            AND instrument.symbol = ?
+            AND instrument.is_active = 1
+        ORDER BY market_snapshot.snapshot_ts_utc DESC
+        LIMIT 1
+        """,
+        (market, symbol),
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def _mobile_alert_in_cooldown(
+    connection: sqlite3.Connection,
+    *,
+    rule_id: int,
+    now_utc: str,
+    cooldown_seconds: int,
+) -> bool:
+    row = connection.execute(
+        """
+        SELECT triggered_at_utc
+        FROM mobile_alert_event
+        WHERE mobile_alert_rule_id = ?
+        ORDER BY triggered_at_utc DESC, mobile_alert_event_id DESC
+        LIMIT 1
+        """,
+        (rule_id,),
+    ).fetchone()
+    if row is None:
+        return False
+    elapsed = _parse_utc(now_utc) - _parse_utc(str(row["triggered_at_utc"]))
+    return elapsed.total_seconds() < cooldown_seconds
+
+
 def _format_alert_message(rule: AlertRule, observed_value: float) -> str:
     return (
         f"{rule.symbol} {rule.metric} "
@@ -154,3 +307,7 @@ def _optional_float(value: object) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _parse_utc(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
