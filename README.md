@@ -307,7 +307,15 @@ Build the self-use APK from the Expo app directory:
 
 ```bash
 cd apps/market-mobile
-npx eas-cli@latest build -p android --profile preview
+npm run build:android
+```
+
+The build script increments the mobile app patch version and Android
+`versionCode` before calling EAS, so each installed APK has a visible version
+number in Android app details. To set a specific version manually, run:
+
+```bash
+MARKET_MOBILE_VERSION=0.1.8 MARKET_MOBILE_VERSION_CODE=8 npm run build:android
 ```
 
 Install the APK on the phone, open the app once, grant notification permission,
