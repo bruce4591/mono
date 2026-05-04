@@ -180,9 +180,6 @@ CREATE INDEX IF NOT EXISTS idx_bar_intraday_lookup
 CREATE INDEX IF NOT EXISTS idx_market_snapshot_turnover
     ON market_snapshot (trade_date_local, turnover_raw DESC);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_push_device_getui_cid
-    ON push_device (getui_cid)
-    WHERE getui_cid IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_alert_event_triggered
     ON alert_event (triggered_at_utc DESC);
