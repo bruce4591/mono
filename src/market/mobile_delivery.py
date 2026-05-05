@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+
+
+MOBILE_PUSH_RATE_LIMIT_PER_HOUR = 20
 
 
 def enqueue_mobile_alert_delivery(
@@ -118,6 +121,32 @@ def is_device_recently_online(
     last_seen = _parse_utc(str(row["last_seen_at_utc"]))
     now = _parse_utc(now_utc)
     return (now - last_seen).total_seconds() <= freshness_seconds
+
+
+def is_mobile_push_rate_limited(
+    connection: sqlite3.Connection,
+    *,
+    push_device_id: int,
+    now_utc: str,
+    limit: int = MOBILE_PUSH_RATE_LIMIT_PER_HOUR,
+) -> bool:
+    if limit <= 0:
+        return False
+    since = _parse_utc(now_utc) - timedelta(hours=1)
+    rows = connection.execute(
+        """
+        SELECT updated_at_utc
+        FROM mobile_alert_delivery
+        WHERE push_device_id = ?
+            AND channel IN ('expo', 'getui')
+            AND status = 'sent'
+        """,
+        (push_device_id,),
+    ).fetchall()
+    sent_count = sum(
+        1 for row in rows if _parse_utc(str(row["updated_at_utc"])) >= since
+    )
+    return sent_count >= limit
 
 
 def _delivery_payload(row: sqlite3.Row) -> dict[str, object]:

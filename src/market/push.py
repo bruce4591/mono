@@ -14,6 +14,7 @@ from market.alerts import evaluate_mobile_alert_rules
 from market.mobile_delivery import (
     enqueue_mobile_alert_delivery,
     is_device_recently_online,
+    is_mobile_push_rate_limited,
     mark_mobile_alert_delivery,
 )
 
@@ -312,7 +313,17 @@ def deliver_mobile_alert_pushes(
             channel=channel,
             now_utc=now_utc,
         )
-        if not has_getui_cid and not _is_expo_push_token(token):
+        priority = str(message.get("priority") or "normal")
+        if priority != "high" and is_mobile_push_rate_limited(
+            connection,
+            push_device_id=push_device_id,
+            now_utc=now_utc,
+        ):
+            result = PushDeliveryResult(
+                delivery_status="skipped_rate_limited",
+                error="mobile push rate limit exceeded",
+            )
+        elif not has_getui_cid and not _is_expo_push_token(token):
             result = PushDeliveryResult(
                 delivery_status="skipped_invalid_token",
                 error="invalid Expo push token",

@@ -713,15 +713,15 @@ git commit -m "Add controlled agent alert APIs"
 - Modify: `tests/test_alerts.py`
 - Modify: `tests/test_mobile_delivery.py`
 
-- [ ] Add per-rule cooldown enforcement for custom indicators.
+- [x] Add per-rule cooldown enforcement for custom indicators.
 
-- [ ] Add per-device cap:
+- [x] Add per-device cap:
 
 ```text
 max 20 normal-priority pushes per hour per device
 ```
 
-- [ ] Add coalescing rule:
+- [x] Add coalescing rule:
 
 ```text
 same device + same market + same symbol + same metric within 60 seconds -> one event with updated message
@@ -742,14 +742,14 @@ git commit -m "Add mobile alert rate limits and coalescing"
 - Modify: `src/market/api.py`
 - Modify: `tests/test_api.py`
 
-- [ ] Add:
+- [x] Add:
 
 ```text
 GET /api/mobile/debug/push-device?push_token=<token>
 GET /api/mobile/debug/deliveries?push_token=<token>&limit=50
 ```
 
-- [ ] Return device, latest CID, checkpoints, sessions, last events, and delivery attempts.
+- [x] Return device, latest CID, checkpoints, sessions, last events, and delivery attempts.
 
 - [ ] Commit:
 

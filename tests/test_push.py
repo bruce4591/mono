@@ -148,6 +148,72 @@ class PushTests(unittest.TestCase):
         self.assertEqual(deliveries, [])
         self.assertEqual(count, 0)
 
+    def test_deliver_mobile_alert_pushes_rate_limits_recent_sent_pushes(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            with connect(db_path) as connection:
+                rule_id = _insert_mobile_push_fixture(
+                    connection,
+                    push_token="getui:getui-cid-1",
+                    cooldown_seconds=0,
+                )
+                push_device_id = connection.execute(
+                    "SELECT push_device_id FROM push_device WHERE push_token = ?",
+                    ("getui:getui-cid-1",),
+                ).fetchone()["push_device_id"]
+                for index in range(20):
+                    event_id = _insert_mobile_push_event(
+                        connection,
+                        rule_id=rule_id,
+                        triggered_at_utc=f"2026-05-04T02:{index:02d}:00Z",
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO mobile_alert_delivery (
+                            mobile_alert_event_id,
+                            push_device_id,
+                            channel,
+                            status,
+                            attempt_count,
+                            provider_message_id,
+                            created_at_utc,
+                            updated_at_utc
+                        )
+                        VALUES (?, ?, 'getui', 'sent', 1, ?, ?, ?)
+                        """,
+                        (
+                            event_id,
+                            push_device_id,
+                            f"old-{index}",
+                            f"2026-05-04T02:{index:02d}:00Z",
+                            f"2026-05-04T02:{index:02d}:00Z",
+                        ),
+                    )
+
+                deliveries = deliver_mobile_alert_pushes(
+                    connection,
+                    now_utc="2026-05-04T03:00:00Z",
+                    sender=lambda message: calls.append(message) or PushDeliveryResult(
+                        delivery_status="sent",
+                        response_id="getui-task-1",
+                    ),
+                )
+                status = connection.execute(
+                    """
+                    SELECT status
+                    FROM mobile_alert_delivery
+                    ORDER BY mobile_alert_delivery_id DESC
+                    LIMIT 1
+                    """
+                ).fetchone()["status"]
+
+        self.assertEqual(calls, [])
+        self.assertEqual(deliveries[0].delivery_status, "skipped_rate_limited")
+        self.assertEqual(status, "skipped_rate_limited")
+
     def test_send_expo_push_payload_returns_failed_result_on_http_error(self):
         def failing_opener(request, timeout):
             raise OSError("network down")
@@ -269,6 +335,7 @@ def _insert_mobile_push_fixture(
     push_token: str,
     getui_cid: str | None = "getui-cid-1",
     push_enabled: bool = True,
+    cooldown_seconds: int = 900,
 ) -> int:
     instrument_id = InstrumentRepository(connection).upsert(
         Instrument(
@@ -342,10 +409,32 @@ def _insert_mobile_push_fixture(
             "CRYPTO",
             "price_above",
             68000.0,
-            900,
+            cooldown_seconds,
             "2026-05-04T02:58:00Z",
             "2026-05-04T02:58:00Z",
         ),
+    )
+    return int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+
+def _insert_mobile_push_event(
+    connection: sqlite3.Connection,
+    *,
+    rule_id: int,
+    triggered_at_utc: str,
+) -> int:
+    connection.execute(
+        """
+        INSERT INTO mobile_alert_event (
+            mobile_alert_rule_id,
+            triggered_at_utc,
+            observed_value,
+            message,
+            delivery_status
+        )
+        VALUES (?, ?, 69000.0, 'previous', 'sent')
+        """,
+        (rule_id, triggered_at_utc),
     )
     return int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
 

@@ -501,6 +501,79 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(row["last_seen_mobile_alert_event_id"], 12)
         self.assertEqual(row["last_ack_mobile_alert_event_id"], 10)
 
+    def test_get_mobile_debug_push_device_returns_runtime_state(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "getui_cid": "getui-cid-1",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+            with connect(db_path) as connection:
+                push_device_id = int(
+                    connection.execute(
+                        "SELECT push_device_id FROM push_device"
+                    ).fetchone()["push_device_id"]
+                )
+                _insert_mobile_debug_state(connection, push_device_id=push_device_id)
+
+            response_status, response_body = _request_api(
+                db_path,
+                "GET",
+                "/api/mobile/debug/push-device?push_token=ExponentPushToken[test-token]",
+                {},
+            )
+
+        self.assertEqual(response_status, 200, response_body)
+        payload = json.loads(response_body)
+        self.assertEqual(payload["device"]["getui_cid"], "getui-cid-1")
+        self.assertEqual(payload["checkpoint"]["last_seen_mobile_alert_event_id"], 1)
+        self.assertEqual(payload["sessions"][0]["transport"], "sse")
+        self.assertEqual(payload["recent_events"][0]["symbol"], "BTCUSDT")
+        self.assertEqual(payload["recent_deliveries"][0]["status"], "sent")
+
+    def test_get_mobile_debug_deliveries_returns_recent_attempts(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "getui_cid": "getui-cid-1",
+                },
+            )
+            with connect(db_path) as connection:
+                push_device_id = int(
+                    connection.execute(
+                        "SELECT push_device_id FROM push_device"
+                    ).fetchone()["push_device_id"]
+                )
+                _insert_mobile_debug_state(connection, push_device_id=push_device_id)
+
+            response_status, response_body = _request_api(
+                db_path,
+                "GET",
+                "/api/mobile/debug/deliveries?push_token=ExponentPushToken[test-token]&limit=5",
+                {},
+            )
+
+        self.assertEqual(response_status, 200, response_body)
+        payload = json.loads(response_body)
+        self.assertEqual(payload["device"]["push_token"], "ExponentPushToken[test-token]")
+        self.assertEqual(payload["deliveries"][0]["channel"], "getui")
+        self.assertEqual(payload["deliveries"][0]["event_delivery_status"], "sent")
+
     def test_get_board_payload_returns_ranked_instruments(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -1706,6 +1779,80 @@ class ApiTests(unittest.TestCase):
 
     def test_get_static_asset_rejects_unknown_paths(self):
         self.assertIsNone(get_static_asset("/missing.js"))
+
+
+def _insert_mobile_debug_state(
+    connection: sqlite3.Connection,
+    *,
+    push_device_id: int,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO mobile_alert_rule (
+            push_device_id,
+            symbol,
+            market,
+            condition_type,
+            threshold,
+            cooldown_seconds,
+            enabled,
+            created_at_utc,
+            updated_at_utc
+        )
+        VALUES (?, 'BTCUSDT', 'CRYPTO', 'price_above', 68000.0, 900, 1, ?, ?)
+        """,
+        (push_device_id, "2026-05-05T00:00:00Z", "2026-05-05T00:00:00Z"),
+    )
+    rule_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+    connection.execute(
+        """
+        INSERT INTO mobile_alert_event (
+            mobile_alert_rule_id,
+            triggered_at_utc,
+            observed_value,
+            message,
+            delivery_status
+        )
+        VALUES (?, ?, 69000.0, 'BTCUSDT last_price 69000.0 > 68000.0', 'sent')
+        """,
+        (rule_id, "2026-05-05T00:00:01Z"),
+    )
+    event_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+    connection.execute(
+        """
+        INSERT INTO mobile_alert_delivery (
+            mobile_alert_event_id,
+            push_device_id,
+            channel,
+            status,
+            attempt_count,
+            provider_message_id,
+            created_at_utc,
+            updated_at_utc
+        )
+        VALUES (?, ?, 'getui', 'sent', 1, 'task-1', ?, ?)
+        """,
+        (event_id, push_device_id, "2026-05-05T00:00:02Z", "2026-05-05T00:00:02Z"),
+    )
+    connection.execute(
+        """
+        INSERT INTO device_checkpoint (
+            push_device_id,
+            last_seen_mobile_alert_event_id,
+            last_ack_mobile_alert_event_id,
+            updated_at_utc
+        )
+        VALUES (?, ?, ?, ?)
+        """,
+        (push_device_id, event_id, event_id, "2026-05-05T00:00:03Z"),
+    )
+    _open_device_session(
+        connection,
+        session_id="debug-session-1",
+        push_device_id=push_device_id,
+        transport="sse",
+        now_utc="2026-05-05T00:00:04Z",
+    )
 
 
 def _ms(value: str) -> int:

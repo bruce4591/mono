@@ -303,6 +303,59 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(messages, [])
         self.assertEqual(event_count, 1)
 
+    def test_evaluate_mobile_alert_rules_coalesces_recent_events(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                rule_id = _insert_mobile_alert_fixture(
+                    connection,
+                    condition_type="price_above",
+                    threshold=64000.0,
+                    last_price=65000.0,
+                    change_pct=1.5,
+                    cooldown_seconds=0,
+                )
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_event (
+                        mobile_alert_rule_id,
+                        triggered_at_utc,
+                        observed_value,
+                        message,
+                        delivery_status
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        rule_id,
+                        "2026-05-04T02:59:30Z",
+                        64100.0,
+                        "previous",
+                        "sent",
+                    ),
+                )
+                messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T03:00:00Z",
+                )
+                rows = connection.execute(
+                    """
+                    SELECT mobile_alert_event_id, triggered_at_utc, observed_value,
+                        message, delivery_status
+                    FROM mobile_alert_event
+                    """
+                ).fetchall()
+
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(messages[0]["mobile_alert_event_id"], rows[0]["mobile_alert_event_id"])
+        self.assertEqual(rows[0]["triggered_at_utc"], "2026-05-04T03:00:00Z")
+        self.assertEqual(rows[0]["observed_value"], 65000.0)
+        self.assertEqual(rows[0]["message"], "BTCUSDT last_price 65000.0 > 64000.0")
+        self.assertEqual(rows[0]["delivery_status"], "pending")
+
     def test_evaluate_mobile_alert_rules_skips_disabled_rules(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

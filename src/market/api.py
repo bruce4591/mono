@@ -1080,6 +1080,127 @@ def get_mobile_alert_events_payload(
     return {"events": [_mobile_alert_event_payload(row) for row in rows]}
 
 
+def get_mobile_push_device_debug_payload(
+    connection: sqlite3.Connection,
+    *,
+    push_token: str,
+) -> dict[str, object]:
+    push_device = _push_device_row_for_token(connection, push_token)
+    if push_device is None:
+        return {
+            "device": None,
+            "checkpoint": None,
+            "sessions": [],
+            "recent_events": [],
+            "recent_deliveries": [],
+        }
+    push_device_id = int(push_device["push_device_id"])
+    checkpoint = connection.execute(
+        """
+        SELECT
+            push_device_id,
+            last_seen_mobile_alert_event_id,
+            last_ack_mobile_alert_event_id,
+            updated_at_utc
+        FROM device_checkpoint
+        WHERE push_device_id = ?
+        """,
+        (push_device_id,),
+    ).fetchone()
+    sessions = connection.execute(
+        """
+        SELECT session_id, transport, connected_at_utc, last_seen_at_utc, disconnected_at_utc
+        FROM device_session
+        WHERE push_device_id = ?
+        ORDER BY last_seen_at_utc DESC
+        LIMIT 5
+        """,
+        (push_device_id,),
+    ).fetchall()
+    event_rows = connection.execute(
+        """
+        SELECT
+            mobile_alert_event.mobile_alert_event_id,
+            mobile_alert_event.triggered_at_utc,
+            mobile_alert_event.observed_value,
+            mobile_alert_event.message,
+            mobile_alert_event.delivery_status,
+            mobile_alert_rule.market,
+            mobile_alert_rule.symbol,
+            mobile_alert_rule.condition_type,
+            mobile_alert_rule.threshold
+        FROM mobile_alert_event
+        JOIN mobile_alert_rule
+            ON mobile_alert_rule.mobile_alert_rule_id = mobile_alert_event.mobile_alert_rule_id
+        WHERE mobile_alert_rule.push_device_id = ?
+        ORDER BY mobile_alert_event.mobile_alert_event_id DESC
+        LIMIT 10
+        """,
+        (push_device_id,),
+    ).fetchall()
+    return {
+        "device": _push_device_payload(push_device),
+        "checkpoint": (
+            _device_checkpoint_payload(checkpoint) if checkpoint is not None else None
+        ),
+        "sessions": [_device_session_payload(row) for row in sessions],
+        "recent_events": [_mobile_alert_event_payload(row) for row in event_rows],
+        "recent_deliveries": get_mobile_delivery_debug_payload(
+            connection,
+            push_token=push_token,
+            limit=10,
+        )["deliveries"],
+    }
+
+
+def get_mobile_delivery_debug_payload(
+    connection: sqlite3.Connection,
+    *,
+    push_token: str,
+    limit: int = 50,
+) -> dict[str, object]:
+    push_device = _push_device_row_for_token(connection, push_token)
+    if push_device is None:
+        return {"device": None, "deliveries": []}
+    push_device_id = int(push_device["push_device_id"])
+    rows = connection.execute(
+        """
+        SELECT
+            mobile_alert_delivery.mobile_alert_delivery_id,
+            mobile_alert_delivery.mobile_alert_event_id,
+            mobile_alert_delivery.push_device_id,
+            mobile_alert_delivery.channel,
+            mobile_alert_delivery.status,
+            mobile_alert_delivery.attempt_count,
+            mobile_alert_delivery.provider_message_id,
+            mobile_alert_delivery.last_error,
+            mobile_alert_delivery.created_at_utc,
+            mobile_alert_delivery.updated_at_utc,
+            mobile_alert_event.message,
+            mobile_alert_event.delivery_status AS event_delivery_status,
+            mobile_alert_rule.market,
+            mobile_alert_rule.symbol,
+            mobile_alert_rule.condition_type
+        FROM mobile_alert_delivery
+        JOIN mobile_alert_event
+            ON mobile_alert_event.mobile_alert_event_id =
+                mobile_alert_delivery.mobile_alert_event_id
+        JOIN mobile_alert_rule
+            ON mobile_alert_rule.mobile_alert_rule_id =
+                mobile_alert_event.mobile_alert_rule_id
+        WHERE mobile_alert_delivery.push_device_id = ?
+        ORDER BY mobile_alert_delivery.updated_at_utc DESC,
+            mobile_alert_delivery.mobile_alert_delivery_id DESC
+        LIMIT ?
+        """,
+        (push_device_id, max(1, min(limit, 200))),
+    ).fetchall()
+    return {
+        "device": _push_device_payload(push_device),
+        "deliveries": [_mobile_delivery_debug_payload(row) for row in rows],
+    }
+
+
 def acknowledge_mobile_alert_events(
     connection: sqlite3.Connection,
     payload: dict[str, object],
@@ -1334,6 +1455,36 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                         connection,
                         push_token=push_token,
                         after_id=after_id,
+                        limit=limit,
+                    )
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/mobile/debug/push-device":
+                query = parse_qs(parsed.query)
+                push_token = _first_query(query, "push_token")
+                if push_token is None:
+                    self._write_json({"error": "push_token required"}, HTTPStatus.BAD_REQUEST)
+                    return
+                with connect(db_path) as connection:
+                    payload = get_mobile_push_device_debug_payload(
+                        connection,
+                        push_token=push_token,
+                    )
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/mobile/debug/deliveries":
+                query = parse_qs(parsed.query)
+                push_token = _first_query(query, "push_token")
+                if push_token is None:
+                    self._write_json({"error": "push_token required"}, HTTPStatus.BAD_REQUEST)
+                    return
+                limit = _optional_query_int(query, "limit") or 50
+                with connect(db_path) as connection:
+                    payload = get_mobile_delivery_debug_payload(
+                        connection,
+                        push_token=push_token,
                         limit=limit,
                     )
                 self._write_json(payload)
@@ -1865,6 +2016,36 @@ def _push_device_row_for_token(
     ).fetchone()
 
 
+def _push_device_payload(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "push_device_id": int(row["push_device_id"]),
+        "push_token": str(row["push_token"]),
+        "getui_cid": _optional_str(row["getui_cid"]),
+        "platform": str(row["platform"]),
+        "device_label": _optional_str(row["device_label"]),
+        "enabled": bool(row["enabled"]),
+    }
+
+
+def _device_checkpoint_payload(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "push_device_id": int(row["push_device_id"]),
+        "last_seen_mobile_alert_event_id": int(row["last_seen_mobile_alert_event_id"]),
+        "last_ack_mobile_alert_event_id": int(row["last_ack_mobile_alert_event_id"]),
+        "updated_at_utc": str(row["updated_at_utc"]),
+    }
+
+
+def _device_session_payload(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "session_id": str(row["session_id"]),
+        "transport": str(row["transport"]),
+        "connected_at_utc": str(row["connected_at_utc"]),
+        "last_seen_at_utc": str(row["last_seen_at_utc"]),
+        "disconnected_at_utc": _optional_str(row["disconnected_at_utc"]),
+    }
+
+
 def _mobile_alert_rule_payload(row: sqlite3.Row) -> dict[str, object]:
     return {
         "mobile_alert_rule_id": int(row["mobile_alert_rule_id"]),
@@ -1902,6 +2083,26 @@ def _mobile_alert_event_payload(row: sqlite3.Row) -> dict[str, object]:
             "symbol": str(row["symbol"]),
             "url": f"/instrument.html?market={row['market']}&symbol={row['symbol']}",
         },
+    }
+
+
+def _mobile_delivery_debug_payload(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "mobile_alert_delivery_id": int(row["mobile_alert_delivery_id"]),
+        "mobile_alert_event_id": int(row["mobile_alert_event_id"]),
+        "push_device_id": int(row["push_device_id"]),
+        "channel": str(row["channel"]),
+        "status": str(row["status"]),
+        "attempt_count": int(row["attempt_count"]),
+        "provider_message_id": _optional_str(row["provider_message_id"]),
+        "last_error": _optional_str(row["last_error"]),
+        "created_at_utc": str(row["created_at_utc"]),
+        "updated_at_utc": str(row["updated_at_utc"]),
+        "message": str(row["message"]),
+        "event_delivery_status": str(row["event_delivery_status"]),
+        "market": str(row["market"]),
+        "symbol": str(row["symbol"]),
+        "condition_type": str(row["condition_type"]),
     }
 
 

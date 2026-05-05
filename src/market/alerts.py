@@ -50,6 +50,7 @@ ALERT_METRICS: tuple[dict[str, str], ...] = (
 )
 
 CHART_INDICATORS: tuple[str, ...] = ("MA", "VOL", "MACD")
+MOBILE_ALERT_COALESCE_SECONDS = 60
 
 OPERATORS: dict[str, Callable[[float, float], bool]] = {
     ">": operator.gt,
@@ -180,20 +181,35 @@ def evaluate_mobile_alert_rules(
             f"{row['symbol']} {metric} "
             f"{_format_float(observed_value)} {operator_label} {_format_float(threshold)}"
         )
-        connection.execute(
-            """
-            INSERT INTO mobile_alert_event (
-                mobile_alert_rule_id,
-                triggered_at_utc,
-                observed_value,
-                message,
-                delivery_status
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (rule_id, now_utc, observed_value, message, "pending"),
+        event_id = _coalesce_recent_mobile_alert_event(
+            connection,
+            push_device_id=int(row["push_device_id"]),
+            market=str(row["market"]),
+            symbol=str(row["symbol"]),
+            source_type=str(row["source_type"]),
+            metric=metric,
+            indicator_id=(
+                int(row["indicator_id"]) if row["indicator_id"] is not None else None
+            ),
+            now_utc=now_utc,
+            observed_value=observed_value,
+            message=message,
         )
-        event_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+        if event_id is None:
+            connection.execute(
+                """
+                INSERT INTO mobile_alert_event (
+                    mobile_alert_rule_id,
+                    triggered_at_utc,
+                    observed_value,
+                    message,
+                    delivery_status
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (rule_id, now_utc, observed_value, message, "pending"),
+            )
+            event_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
         messages.append(
             {
                 "mobile_alert_event_id": event_id,
@@ -351,6 +367,81 @@ def _mobile_alert_in_cooldown(
         return False
     elapsed = _parse_utc(now_utc) - _parse_utc(str(row["triggered_at_utc"]))
     return elapsed.total_seconds() < cooldown_seconds
+
+
+def _coalesce_recent_mobile_alert_event(
+    connection: sqlite3.Connection,
+    *,
+    push_device_id: int,
+    market: str,
+    symbol: str,
+    source_type: str,
+    metric: str,
+    indicator_id: int | None,
+    now_utc: str,
+    observed_value: float,
+    message: str,
+) -> int | None:
+    rows = connection.execute(
+        """
+        SELECT
+            mobile_alert_event.mobile_alert_event_id,
+            mobile_alert_event.triggered_at_utc,
+            mobile_alert_rule.condition_type,
+            mobile_alert_rule.source_type,
+            mobile_alert_rule.metric_key,
+            mobile_alert_rule.operator,
+            mobile_alert_rule.indicator_id
+        FROM mobile_alert_event
+        JOIN mobile_alert_rule
+            ON mobile_alert_rule.mobile_alert_rule_id =
+                mobile_alert_event.mobile_alert_rule_id
+        WHERE mobile_alert_rule.push_device_id = ?
+            AND mobile_alert_rule.market = ?
+            AND mobile_alert_rule.symbol = ?
+        ORDER BY triggered_at_utc DESC, mobile_alert_event_id DESC
+        LIMIT 20
+        """,
+        (push_device_id, market, symbol),
+    ).fetchall()
+    event_id = None
+    for row in rows:
+        elapsed = _parse_utc(now_utc) - _parse_utc(str(row["triggered_at_utc"]))
+        elapsed_seconds = elapsed.total_seconds()
+        if elapsed_seconds < 0:
+            continue
+        if elapsed_seconds > MOBILE_ALERT_COALESCE_SECONDS:
+            break
+        row_metric = _mobile_alert_metric_for_row(row)
+        if row_metric != metric:
+            continue
+        if source_type == "custom_indicator" and row["indicator_id"] != indicator_id:
+            continue
+        event_id = int(row["mobile_alert_event_id"])
+        break
+    if event_id is None:
+        return None
+    connection.execute(
+        """
+        UPDATE mobile_alert_event
+        SET triggered_at_utc = ?,
+            observed_value = ?,
+            message = ?,
+            delivery_status = 'pending'
+        WHERE mobile_alert_event_id = ?
+        """,
+        (now_utc, observed_value, message, event_id),
+    )
+    return event_id
+
+
+def _mobile_alert_metric_for_row(row: sqlite3.Row) -> str | None:
+    if str(row["source_type"]) == "custom_indicator":
+        return "indicator_value"
+    condition = MOBILE_ALERT_CONDITIONS.get(str(row["condition_type"]))
+    if condition is None:
+        return None
+    return condition[0]
 
 
 def _format_alert_message(rule: AlertRule, observed_value: float) -> str:
