@@ -26,6 +26,33 @@ class CliTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             main(["sqlite-count-report"])
 
+    def test_compare_api_payloads_is_registered(self):
+        with patch("market.cli.compare_api_payloads") as compare_api_payloads:
+            compare_api_payloads.return_value.exit_code = 0
+            with patch("market.cli.format_api_compare_report", return_value="ok") as formatter:
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "compare-api-payloads",
+                            "--primary-base-url",
+                            "http://127.0.0.1:8000",
+                            "--candidate-base-url",
+                            "http://127.0.0.1:8001",
+                            "--endpoint",
+                            "/api/health",
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        compare_api_payloads.assert_called_once_with(
+            "http://127.0.0.1:8000",
+            "http://127.0.0.1:8001",
+            endpoints=["/api/health"],
+        )
+        formatter.assert_called_once_with(compare_api_payloads.return_value)
+        self.assertEqual(stdout.getvalue(), "ok\n")
+
     def test_init_db_creates_sqlite_database(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

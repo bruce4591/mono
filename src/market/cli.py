@@ -9,6 +9,7 @@ from pathlib import Path
 from market.alerts import evaluate_alert_rules
 from market.aggregators import aggregate_crypto_from_1m, aggregate_market_from_1m
 from market.api import serve_api
+from market.api_compare import compare_api_payloads, format_api_compare_report
 from market.binance import (
     fetch_binance_24hr_tickers,
     fetch_top_binance_usdt_symbols,
@@ -157,6 +158,19 @@ def build_parser() -> argparse.ArgumentParser:
         "health-check", help="Check whether the SQLite database is readable"
     )
     health_check.add_argument("--db-path", type=Path, default=None)
+
+    compare_api_payloads_parser = subparsers.add_parser(
+        "compare-api-payloads",
+        help="Compare JSON payloads between two API base URLs",
+    )
+    compare_api_payloads_parser.add_argument("--primary-base-url", required=True)
+    compare_api_payloads_parser.add_argument("--candidate-base-url", required=True)
+    compare_api_payloads_parser.add_argument(
+        "--endpoint",
+        action="append",
+        default=[],
+        help="Endpoint path to compare; can be provided multiple times",
+    )
 
     sync_watchlists = subparsers.add_parser(
         "sync-watchlists", help="Import a static watchlist JSON file"
@@ -453,6 +467,15 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("database: ok")
         return 0
+
+    if args.command == "compare-api-payloads":
+        result = compare_api_payloads(
+            args.primary_base_url,
+            args.candidate_base_url,
+            endpoints=args.endpoint or None,
+        )
+        print(format_api_compare_report(result))
+        return result.exit_code
 
     if args.command == "sync-watchlists":
         with connect(db_path) as connection:
