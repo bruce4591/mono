@@ -89,6 +89,15 @@ class DeployConfigTests(unittest.TestCase):
         self.assertIn("market-evaluate-mobile-alerts.sh", readme)
         self.assertIn("logs/mobile-alerts.log", readme)
 
+    def test_market_api_service_uses_environment_database_url(self):
+        service = (
+            REPO_ROOT / "deploy" / "systemd" / "market-api.service"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("EnvironmentFile=-/home/ubuntu/github/mono/.market.env", service)
+        self.assertIn("market serve-api --host 0.0.0.0 --port 8000", service)
+        self.assertNotIn("--db-path", service)
+
     def test_postgres_backfill_script_exists(self):
         script = REPO_ROOT / "deploy" / "scripts" / "market-backfill-postgres.sh"
 

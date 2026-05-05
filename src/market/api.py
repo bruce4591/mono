@@ -1566,11 +1566,13 @@ def serve_api(
     port: int,
     *,
     database_url: str | None = None,
+    read_only_canary: bool = False,
 ) -> None:
     resolved_database_url = database_url or f"sqlite:///{Path(db_path)}"
     handler = _make_handler(
         resolved_database_url,
         sqlite_db_path=Path(db_path) if db_path is not None else None,
+        read_only_canary=read_only_canary,
     )
     server = ThreadingHTTPServer((host, port), handler)
     print(f"api listening: http://{host}:{port}")
@@ -1581,11 +1583,12 @@ def _make_handler(
     database_url: str | Path,
     *,
     sqlite_db_path: Path | None = None,
+    read_only_canary: bool = False,
 ) -> type[BaseHTTPRequestHandler]:
     if isinstance(database_url, Path):
         sqlite_db_path = database_url
         database_url = f"sqlite:///{database_url}"
-    read_only_canary = database_url.startswith(("postgresql://", "postgres://"))
+    read_only_canary = read_only_canary
 
     def open_connection():
         return connect_database_url(database_url)
@@ -1594,7 +1597,7 @@ def _make_handler(
         def do_POST(self) -> None:
             if read_only_canary:
                 self._write_json(
-                    {"error": "postgres canary is read-only"},
+                    {"error": "read-only canary is read-only"},
                     HTTPStatus.SERVICE_UNAVAILABLE,
                 )
                 return
@@ -1640,7 +1643,7 @@ def _make_handler(
         def do_PATCH(self) -> None:
             if read_only_canary:
                 self._write_json(
-                    {"error": "postgres canary is read-only"},
+                    {"error": "read-only canary is read-only"},
                     HTTPStatus.SERVICE_UNAVAILABLE,
                 )
                 return

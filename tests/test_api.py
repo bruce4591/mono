@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from market.api import (
     _make_handler,
@@ -44,6 +44,63 @@ from market.watchlists import sync_watchlist_from_file
 
 
 class ApiTests(unittest.TestCase):
+    def test_read_only_canary_blocks_mobile_writes_for_sqlite(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            response_status, response_body = _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                },
+                read_only_canary=True,
+            )
+            with connect(db_path) as connection:
+                device_count = connection.execute("SELECT count(*) FROM push_device").fetchone()[0]
+
+        self.assertEqual(response_status, 503, response_body)
+        self.assertEqual(device_count, 0)
+
+    def test_postgres_handler_is_writable_unless_canary_flag_is_set(self):
+        body = json.dumps(
+            {
+                "platform": "android",
+                "push_token": "ExponentPushToken[test-token]",
+            }
+        ).encode("utf-8")
+        request = (
+            "POST /api/mobile/devices HTTP/1.1\r\n"
+            "Host: testserver\r\n"
+            "Content-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\n"
+            "\r\n"
+        ).encode("utf-8") + body
+        socket = _FakeSocket(request)
+        fake_connection = object()
+        fake_context = Mock()
+        fake_context.__enter__ = Mock(return_value=fake_connection)
+        fake_context.__exit__ = Mock(return_value=False)
+
+        with patch("market.api.connect_database_url", return_value=fake_context):
+            with patch(
+                "market.api.register_mobile_device",
+                return_value={"push_device_id": 1},
+            ) as register_mobile_device:
+                _make_handler("postgresql://market_app:secret@127.0.0.1:5432/market")(
+                    socket,
+                    ("127.0.0.1", 0),
+                    object(),
+                )
+
+        raw_response = socket.response.getvalue()
+        header, _, response_body = raw_response.partition(b"\r\n\r\n")
+        status = int(header.split(b" ", 2)[1])
+        self.assertEqual(status, 200, response_body)
+        register_mobile_device.assert_called_once()
+
     def test_register_mobile_device_upserts_push_token(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -1994,6 +2051,8 @@ def _request_api(
     method: str,
     path: str,
     payload: dict[str, object],
+    *,
+    read_only_canary: bool = False,
 ) -> tuple[int, bytes]:
     body = json.dumps(payload).encode("utf-8")
     request = (
@@ -2004,7 +2063,11 @@ def _request_api(
         "\r\n"
     ).encode("utf-8") + body
     socket = _FakeSocket(request)
-    _make_handler(db_path)(socket, ("127.0.0.1", 0), object())
+    _make_handler(db_path, read_only_canary=read_only_canary)(
+        socket,
+        ("127.0.0.1", 0),
+        object(),
+    )
     raw_response = socket.response.getvalue()
     header, _, response_body = raw_response.partition(b"\r\n\r\n")
     status = int(header.split(b" ", 2)[1])

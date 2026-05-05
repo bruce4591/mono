@@ -217,6 +217,31 @@ class CliTests(unittest.TestCase):
             database_url="postgresql://market_app:secret@127.0.0.1:5432/market",
             host="127.0.0.1",
             port=8001,
+            read_only_canary=False,
+        )
+
+    def test_serve_api_accepts_read_only_canary_flag(self):
+        with patch("market.cli.serve_api") as serve_api:
+            exit_code = main(
+                [
+                    "serve-api",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    "8002",
+                    "--read-only-canary",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        serve_api.assert_called_once_with(
+            db_path=Path("./data/market.sqlite3"),
+            database_url=None,
+            host="127.0.0.1",
+            port=8002,
+            read_only_canary=True,
         )
 
     def test_sync_binance_klines_is_registered(self):

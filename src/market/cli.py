@@ -210,6 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve_api_parser.add_argument("--database-url", default=None)
     serve_api_parser.add_argument("--host", default="127.0.0.1")
     serve_api_parser.add_argument("--port", type=int, default=8000)
+    serve_api_parser.add_argument("--read-only-canary", action="store_true")
     serve_api_parser.add_argument("--dry-run", action="store_true")
 
     sync_binance = subparsers.add_parser(
@@ -534,6 +535,7 @@ def main(argv: list[str] | None = None) -> int:
             database_url=database_url,
             host=args.host,
             port=args.port,
+            read_only_canary=args.read_only_canary,
         )
         return 0
 
