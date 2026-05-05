@@ -64,6 +64,35 @@ CREATE TABLE IF NOT EXISTS market_snapshot (
     FOREIGN KEY (instrument_id) REFERENCES instrument(instrument_id)
 );
 
+CREATE TABLE IF NOT EXISTS latest_market_snapshot (
+    instrument_id INTEGER PRIMARY KEY,
+    snapshot_ts_utc TEXT NOT NULL,
+    trade_date_local TEXT NOT NULL,
+    last_price REAL,
+    change_pct REAL,
+    volume_raw REAL,
+    turnover_raw REAL,
+    quote_currency TEXT NOT NULL,
+    source TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instrument_id) REFERENCES instrument(instrument_id)
+);
+
+CREATE TABLE IF NOT EXISTS market_snapshot_history (
+    instrument_id INTEGER NOT NULL,
+    snapshot_ts_utc TEXT NOT NULL,
+    trade_date_local TEXT NOT NULL,
+    last_price REAL,
+    change_pct REAL,
+    volume_raw REAL,
+    turnover_raw REAL,
+    quote_currency TEXT NOT NULL,
+    source TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (instrument_id, snapshot_ts_utc),
+    FOREIGN KEY (instrument_id) REFERENCES instrument(instrument_id)
+);
+
 CREATE TABLE IF NOT EXISTS ranking_snapshot (
     board_name TEXT NOT NULL,
     snapshot_ts_utc TEXT NOT NULL,
@@ -245,6 +274,12 @@ CREATE INDEX IF NOT EXISTS idx_bar_intraday_lookup
 
 CREATE INDEX IF NOT EXISTS idx_market_snapshot_turnover
     ON market_snapshot (trade_date_local, turnover_raw DESC);
+
+CREATE INDEX IF NOT EXISTS idx_latest_market_snapshot_turnover
+    ON latest_market_snapshot (trade_date_local, turnover_raw DESC);
+
+CREATE INDEX IF NOT EXISTS idx_market_snapshot_history_lookup
+    ON market_snapshot_history (instrument_id, snapshot_ts_utc DESC);
 
 
 CREATE INDEX IF NOT EXISTS idx_alert_event_triggered

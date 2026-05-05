@@ -235,7 +235,7 @@ git commit -m "Add database migration tracking"
 - Modify: `src/market/migrations.py`
 - Test: `tests/test_db_schema.py`
 
-- [ ] **Step 1: Write a failing table existence test**
+- [x] **Step 1: Write a failing table existence test**
 
 Add this test to `tests/test_db_schema.py`:
 
@@ -255,7 +255,7 @@ def test_latest_and_history_snapshot_tables_exist(self):
     self.assertIn("market_snapshot_history", tables)
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -265,7 +265,7 @@ PYTHONPATH=src python3 -m unittest tests.test_db_schema.TestDatabaseSchema.test_
 
 Expected: FAIL because the new tables do not exist.
 
-- [ ] **Step 3: Add the new tables to `schema.sql`**
+- [x] **Step 3: Add the new tables to `schema.sql`**
 
 Add after `market_snapshot` in `src/market/schema.sql`:
 
@@ -310,7 +310,7 @@ CREATE INDEX IF NOT EXISTS idx_market_snapshot_history_lookup
     ON market_snapshot_history (instrument_id, snapshot_ts_utc DESC);
 ```
 
-- [ ] **Step 4: Add an idempotent migration for existing databases**
+- [x] **Step 4: Add an idempotent migration for existing databases**
 
 Append this migration to `SQLITE_MIGRATIONS` in `src/market/migrations.py`:
 
@@ -406,7 +406,7 @@ Migration(
 ),
 ```
 
-- [ ] **Step 5: Run the table test**
+- [x] **Step 5: Run the table test**
 
 Run:
 
@@ -416,7 +416,7 @@ PYTHONPATH=src python3 -m unittest tests.test_db_schema.TestDatabaseSchema.test_
 
 Expected: PASS.
 
-- [ ] **Step 6: Add a migration backfill test**
+- [x] **Step 6: Add a migration backfill test**
 
 Add this test to `tests/test_db_schema.py`:
 
@@ -464,7 +464,7 @@ def test_snapshot_split_migration_backfills_existing_snapshot(self):
     self.assertEqual(float(history["last_price"]), 468.2)
 ```
 
-- [ ] **Step 7: Run DB schema tests**
+- [x] **Step 7: Run DB schema tests**
 
 Run:
 
@@ -474,7 +474,7 @@ PYTHONPATH=src python3 -m unittest tests.test_db_schema -v
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/market/schema.sql src/market/migrations.py tests/test_db_schema.py

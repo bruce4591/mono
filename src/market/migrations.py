@@ -19,6 +19,95 @@ SQLITE_MIGRATIONS: tuple[Migration, ...] = (
         VALUES ('0001_initial_schema')
         """,
     ),
+    Migration(
+        migration_id="0002_split_market_snapshots",
+        sql="""
+        CREATE TABLE IF NOT EXISTS latest_market_snapshot (
+            instrument_id INTEGER PRIMARY KEY,
+            snapshot_ts_utc TEXT NOT NULL,
+            trade_date_local TEXT NOT NULL,
+            last_price REAL,
+            change_pct REAL,
+            volume_raw REAL,
+            turnover_raw REAL,
+            quote_currency TEXT NOT NULL,
+            source TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (instrument_id) REFERENCES instrument(instrument_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS market_snapshot_history (
+            instrument_id INTEGER NOT NULL,
+            snapshot_ts_utc TEXT NOT NULL,
+            trade_date_local TEXT NOT NULL,
+            last_price REAL,
+            change_pct REAL,
+            volume_raw REAL,
+            turnover_raw REAL,
+            quote_currency TEXT NOT NULL,
+            source TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (instrument_id, snapshot_ts_utc),
+            FOREIGN KEY (instrument_id) REFERENCES instrument(instrument_id)
+        );
+
+        INSERT OR IGNORE INTO latest_market_snapshot (
+            instrument_id,
+            snapshot_ts_utc,
+            trade_date_local,
+            last_price,
+            change_pct,
+            volume_raw,
+            turnover_raw,
+            quote_currency,
+            source,
+            updated_at
+        )
+        SELECT
+            instrument_id,
+            snapshot_ts_utc,
+            trade_date_local,
+            last_price,
+            change_pct,
+            volume_raw,
+            turnover_raw,
+            quote_currency,
+            source,
+            updated_at
+        FROM market_snapshot;
+
+        INSERT OR IGNORE INTO market_snapshot_history (
+            instrument_id,
+            snapshot_ts_utc,
+            trade_date_local,
+            last_price,
+            change_pct,
+            volume_raw,
+            turnover_raw,
+            quote_currency,
+            source,
+            updated_at
+        )
+        SELECT
+            instrument_id,
+            snapshot_ts_utc,
+            trade_date_local,
+            last_price,
+            change_pct,
+            volume_raw,
+            turnover_raw,
+            quote_currency,
+            source,
+            updated_at
+        FROM market_snapshot;
+
+        CREATE INDEX IF NOT EXISTS idx_latest_market_snapshot_turnover
+            ON latest_market_snapshot (trade_date_local, turnover_raw DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_market_snapshot_history_lookup
+            ON market_snapshot_history (instrument_id, snapshot_ts_utc DESC);
+        """,
+    ),
 )
 
 
