@@ -1542,7 +1542,7 @@ git commit -m "Add Parquet partition path helper"
 - Create: `src/market/agent_data.py`
 - Test: `tests/test_agent_data.py`
 
-- [ ] **Step 1: Get dependency approval**
+- [x] **Step 1: Get dependency approval**
 
 Before editing `pyproject.toml`, ask:
 
@@ -1550,7 +1550,7 @@ Before editing `pyproject.toml`, ask:
 需要新增历史分析依赖 duckdb>=1.2,<2 和 pyarrow>=18,<19。是否批准？
 ```
 
-- [ ] **Step 2: Add dependencies after approval**
+- [x] **Step 2: Add dependencies after approval**
 
 Modify `pyproject.toml`:
 
@@ -1564,7 +1564,7 @@ dependencies = [
 ]
 ```
 
-- [ ] **Step 3: Create Agent data helper**
+- [x] **Step 3: Create Agent data helper**
 
 Create `src/market/agent_data.py`:
 
@@ -1614,7 +1614,7 @@ def query_symbol_history(
     return [dict(zip(columns, row, strict=True)) for row in rows]
 ```
 
-- [ ] **Step 4: Add import error test**
+- [x] **Step 4: Add import error test**
 
 Add to `tests/test_agent_data.py`:
 
@@ -1651,7 +1651,7 @@ class AgentDataTests(unittest.TestCase):
                 )
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
@@ -1661,7 +1661,7 @@ PYTHONPATH=src python3 -m unittest tests.test_agent_data -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pyproject.toml src/market/agent_data.py tests/test_agent_data.py
