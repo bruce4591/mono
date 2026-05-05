@@ -187,6 +187,7 @@ def build_parser() -> argparse.ArgumentParser:
         "serve-api", help="Serve the read-only local JSON API"
     )
     serve_api_parser.add_argument("--db-path", type=Path, default=None)
+    serve_api_parser.add_argument("--database-url", default=None)
     serve_api_parser.add_argument("--host", default="127.0.0.1")
     serve_api_parser.add_argument("--port", type=int, default=8000)
     serve_api_parser.add_argument("--dry-run", action="store_true")
@@ -494,7 +495,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             print(f"api ready: http://{args.host}:{args.port}")
             return 0
-        serve_api(db_path=db_path, host=args.host, port=args.port)
+        database_url = args.database_url
+        if database_url is None and getattr(args, "db_path", None) is None:
+            database_url = settings.database_url
+        api_db_path = None if database_url and not database_url.startswith("sqlite:///") else db_path
+        serve_api(
+            db_path=api_db_path,
+            database_url=database_url,
+            host=args.host,
+            port=args.port,
+        )
         return 0
 
     if args.command == "sync-binance-klines":

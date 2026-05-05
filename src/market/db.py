@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from market.migrations import apply_sqlite_migrations
 
@@ -24,6 +25,50 @@ def connect(db_path: Path | str) -> sqlite3.Connection:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 5000")
     return connection
+
+
+class PostgresConnectionAdapter:
+    backend = "postgres"
+
+    def __init__(self, connection: Any) -> None:
+        self._connection = connection
+
+    def __enter__(self) -> "PostgresConnectionAdapter":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        try:
+            if exc_type is None:
+                self._connection.commit()
+            else:
+                self._connection.rollback()
+        finally:
+            self._connection.close()
+
+    def execute(self, sql: str, params: object = ()) -> Any:
+        return self._connection.execute(_translate_sqlite_placeholders(sql), params)
+
+    def commit(self) -> None:
+        self._connection.commit()
+
+
+def connect_database_url(database_url: str) -> sqlite3.Connection | PostgresConnectionAdapter:
+    if database_url.startswith("sqlite:///"):
+        return connect(database_url.removeprefix("sqlite:///"))
+    if not database_url.startswith(("postgresql://", "postgres://")):
+        raise ValueError(f"unsupported database URL: {database_url}")
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+    except ImportError as exc:
+        raise RuntimeError("PostgreSQL support requires psycopg[binary]") from exc
+    connection = psycopg.connect(database_url, row_factory=dict_row)
+    connection.execute("SET TIME ZONE 'UTC'")
+    return PostgresConnectionAdapter(connection)
+
+
+def _translate_sqlite_placeholders(sql: str) -> str:
+    return sql.replace("?", "%s")
 
 
 def init_database(db_path: Path | str) -> None:

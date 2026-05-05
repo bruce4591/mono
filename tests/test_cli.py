@@ -169,6 +169,28 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(parser, 0)
 
+    def test_serve_api_accepts_postgres_database_url(self):
+        with patch("market.cli.serve_api") as serve_api:
+            exit_code = main(
+                [
+                    "serve-api",
+                    "--database-url",
+                    "postgresql://market_app:secret@127.0.0.1:5432/market",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    "8001",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        serve_api.assert_called_once_with(
+            db_path=None,
+            database_url="postgresql://market_app:secret@127.0.0.1:5432/market",
+            host="127.0.0.1",
+            port=8001,
+        )
+
     def test_sync_binance_klines_is_registered(self):
         exit_code = main(
             [

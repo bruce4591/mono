@@ -107,7 +107,7 @@ class InstrumentRepository:
             quote_currency=str(row["quote_currency"]),
             timezone=str(row["timezone"]),
             is_active=bool(row["is_active"]),
-            extra_meta=json.loads(str(row["extra_meta"])),
+            extra_meta=_json_object(row["extra_meta"]),
         )
 
 
@@ -334,7 +334,7 @@ class WatchlistRepository:
             """
             SELECT instrument_id, sort_order, is_active
             FROM watchlist
-            WHERE watchlist_name = ? AND is_active = 1
+            WHERE watchlist_name = ? AND is_active = TRUE
             ORDER BY sort_order, instrument_id
             """,
             (watchlist_name,),
@@ -555,7 +555,7 @@ class RankingRepository:
                 WHERE market_snapshot.trade_date_local = ?
                     AND instrument.market = ?
                     AND instrument.instrument_type = ?
-                    AND instrument.is_active = 1
+                    AND instrument.is_active = TRUE
                     AND market_snapshot.turnover_raw IS NOT NULL
                     AND (
                         instrument.market != 'CRYPTO'
@@ -580,11 +580,11 @@ class RankingRepository:
             JOIN watchlist
                 ON watchlist.instrument_id = market_snapshot.instrument_id
                 AND watchlist.watchlist_name = ?
-                AND watchlist.is_active = 1
+                AND watchlist.is_active = TRUE
             WHERE market_snapshot.trade_date_local = ?
                 AND instrument.market = ?
                 AND instrument.instrument_type = ?
-                AND instrument.is_active = 1
+                AND instrument.is_active = TRUE
                 AND market_snapshot.turnover_raw IS NOT NULL
                 AND (
                     instrument.market != 'CRYPTO'
@@ -655,7 +655,7 @@ class AlertRuleRepository:
                 threshold,
                 is_active
             FROM alert_rule
-            WHERE is_active = 1
+            WHERE is_active = TRUE
             ORDER BY name
             """
         ).fetchall()
@@ -777,3 +777,9 @@ def _optional_float(value: object) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _json_object(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return dict(value)
+    return json.loads(str(value))

@@ -33,7 +33,7 @@ from market.crypto_gaps import (
     fill_binance_1m_gaps,
     fill_binance_futures_1m_gaps,
 )
-from market.db import connect
+from market.db import connect, connect_database_url
 from market.models import DailyBar, Instrument, IntradayBar
 from market.repositories import (
     AlertEventRepository,
@@ -422,12 +422,13 @@ def get_instrument_payload(
     instrument_metadata_fetcher: InstrumentMetadataFetcher = fetch_binance_symbol_trading_meta,
     include_funding: bool = False,
     futures_funding_fetcher: FuturesFundingFetcher = fetch_binance_futures_premium_index,
+    allow_metadata_refresh: bool = True,
 ) -> dict[str, object] | None:
     instrument_repository = InstrumentRepository(connection)
     instrument = instrument_repository.get_by_market_symbol(market, symbol)
     if instrument is None or instrument.instrument_id is None:
         return None
-    if market == "CRYPTO":
+    if market == "CRYPTO" and allow_metadata_refresh:
         instrument = _ensure_crypto_instrument_metadata(
             instrument_repository,
             instrument,
@@ -500,11 +501,12 @@ def get_daily_bars_payload(
     limit: int | None = None,
     now_ts_utc: str | None = None,
     futures_fetcher: RangeKlineFetcher = fetch_binance_futures_klines_range,
+    allow_backfill: bool = True,
 ) -> dict[str, object]:
     instrument_repository = InstrumentRepository(connection)
     instrument = instrument_repository.get_by_market_symbol(market, symbol)
     resolved_limit = _clamp_limit(limit) if limit is not None else None
-    if market == "CRYPTO_FUTURES" and (
+    if allow_backfill and market == "CRYPTO_FUTURES" and (
         instrument is None or instrument.instrument_id is None
     ):
         _ensure_binance_futures_daily_window(
@@ -526,7 +528,7 @@ def get_daily_bars_payload(
         limit=resolved_limit,
     )
     requested_limit = resolved_limit or FUTURES_MIN_HISTORY_BARS
-    should_backfill = market == "CRYPTO_FUTURES" and (
+    should_backfill = allow_backfill and market == "CRYPTO_FUTURES" and (
         not bars
         or (before_trade_date is not None and len(bars) < requested_limit)
         or (before_trade_date is None and len(bars) < FUTURES_MIN_HISTORY_BARS)
@@ -579,12 +581,13 @@ def get_intraday_bars_payload(
     now_ts_utc: str | None = None,
     gap_fetcher: RangeKlineFetcher | None = None,
     gap_min_request_interval_seconds: float = 1.0,
+    allow_backfill: bool = True,
 ) -> dict[str, object]:
     instrument_repository = InstrumentRepository(connection)
     instrument = instrument_repository.get_by_market_symbol(market, symbol)
     backfilled_missing_instrument = False
     if instrument is None or instrument.instrument_id is None:
-        if market in {"CRYPTO", "CRYPTO_FUTURES"}:
+        if allow_backfill and market in {"CRYPTO", "CRYPTO_FUTURES"}:
             _ensure_crypto_intraday_window(
                 connection,
                 market=market,
@@ -632,7 +635,7 @@ def get_intraday_bars_payload(
         or short_futures_history
         or (before_ts_utc is not None and len(bars) < resolved_limit)
     )
-    if market in {"CRYPTO", "CRYPTO_FUTURES"} and should_backfill:
+    if allow_backfill and market in {"CRYPTO", "CRYPTO_FUTURES"} and should_backfill:
         _ensure_crypto_intraday_window(
             connection,
             market=market,
@@ -929,8 +932,8 @@ def get_watchlists_payload(connection: sqlite3.Connection) -> dict[str, object]:
         FROM watchlist
         JOIN instrument
             ON instrument.instrument_id = watchlist.instrument_id
-        WHERE watchlist.is_active = 1
-            AND instrument.is_active = 1
+        WHERE watchlist.is_active = TRUE
+            AND instrument.is_active = TRUE
         ORDER BY watchlist.watchlist_name, watchlist.sort_order, instrument.symbol
         """
     ).fetchall()
@@ -1557,21 +1560,49 @@ def get_static_asset(path: str) -> StaticAsset | None:
     )
 
 
-def serve_api(db_path: Path | str, host: str, port: int) -> None:
-    handler = _make_handler(Path(db_path))
+def serve_api(
+    db_path: Path | str | None,
+    host: str,
+    port: int,
+    *,
+    database_url: str | None = None,
+) -> None:
+    resolved_database_url = database_url or f"sqlite:///{Path(db_path)}"
+    handler = _make_handler(
+        resolved_database_url,
+        sqlite_db_path=Path(db_path) if db_path is not None else None,
+    )
     server = ThreadingHTTPServer((host, port), handler)
     print(f"api listening: http://{host}:{port}")
     server.serve_forever()
 
 
-def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
+def _make_handler(
+    database_url: str | Path,
+    *,
+    sqlite_db_path: Path | None = None,
+) -> type[BaseHTTPRequestHandler]:
+    if isinstance(database_url, Path):
+        sqlite_db_path = database_url
+        database_url = f"sqlite:///{database_url}"
+    read_only_canary = database_url.startswith(("postgresql://", "postgres://"))
+
+    def open_connection():
+        return connect_database_url(database_url)
+
     class MarketApiHandler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
+            if read_only_canary:
+                self._write_json(
+                    {"error": "postgres canary is read-only"},
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                return
             parsed = urlparse(self.path)
             if parsed.path == "/api/mobile/devices":
                 try:
                     request_payload = self._read_json_object()
-                    with connect(db_path) as connection:
+                    with open_connection() as connection:
                         response_payload = register_mobile_device(connection, request_payload)
                 except ValueError as error:
                     self._write_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
@@ -1582,7 +1613,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
             if parsed.path == "/api/mobile/alert-rules":
                 try:
                     request_payload = self._read_json_object()
-                    with connect(db_path) as connection:
+                    with open_connection() as connection:
                         response_payload = create_mobile_alert_rule(connection, request_payload)
                 except ValueError as error:
                     self._write_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
@@ -1593,7 +1624,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
             if parsed.path == "/api/mobile/alert-events/ack":
                 try:
                     request_payload = self._read_json_object()
-                    with connect(db_path) as connection:
+                    with open_connection() as connection:
                         response_payload = acknowledge_mobile_alert_events(
                             connection,
                             request_payload,
@@ -1607,12 +1638,18 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
             self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
         def do_PATCH(self) -> None:
+            if read_only_canary:
+                self._write_json(
+                    {"error": "postgres canary is read-only"},
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                )
+                return
             parsed = urlparse(self.path)
             if parsed.path.startswith("/api/mobile/alert-rules/"):
                 try:
                     rule_id = int(parsed.path.removeprefix("/api/mobile/alert-rules/"))
                     request_payload = self._read_json_object()
-                    with connect(db_path) as connection:
+                    with open_connection() as connection:
                         response_payload = patch_mobile_alert_rule(
                             connection,
                             rule_id,
@@ -1629,25 +1666,25 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
             if parsed.path == "/api/health":
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_health_payload(connection)
                 self._write_json(payload)
                 return
 
             if parsed.path == "/api/watchlists":
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_watchlists_payload(connection)
                 self._write_json(payload)
                 return
 
             if parsed.path == "/api/jobs":
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_jobs_payload(connection)
                 self._write_json(payload)
                 return
 
             if parsed.path == "/api/alerts/rules":
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_alert_rules_payload(connection)
                 self._write_json(payload)
                 return
@@ -1660,7 +1697,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 query = parse_qs(parsed.query)
                 limit_value = _first_query(query, "limit")
                 limit = int(limit_value) if limit_value is not None else 50
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_alert_events_payload(connection, limit=limit)
                 self._write_json(payload)
                 return
@@ -1671,7 +1708,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 if push_token is None:
                     self._write_json({"error": "push_token required"}, HTTPStatus.BAD_REQUEST)
                     return
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = list_mobile_alert_rules(connection, push_token=push_token)
                 self._write_json(payload)
                 return
@@ -1686,7 +1723,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 limit_value = _first_query(query, "limit")
                 after_id = int(after_id_value) if after_id_value is not None else 0
                 limit = int(limit_value) if limit_value is not None else 100
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_mobile_alert_events_payload(
                         connection,
                         push_token=push_token,
@@ -1702,7 +1739,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 if push_token is None:
                     self._write_json({"error": "push_token required"}, HTTPStatus.BAD_REQUEST)
                     return
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_mobile_push_device_debug_payload(
                         connection,
                         push_token=push_token,
@@ -1717,7 +1754,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                     self._write_json({"error": "push_token required"}, HTTPStatus.BAD_REQUEST)
                     return
                 limit = _optional_query_int(query, "limit") or 50
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_mobile_delivery_debug_payload(
                         connection,
                         push_token=push_token,
@@ -1731,6 +1768,12 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 push_token = _first_query(query, "push_token")
                 if push_token is None:
                     self._write_json({"error": "push_token required"}, HTTPStatus.BAD_REQUEST)
+                    return
+                if read_only_canary:
+                    self._write_json(
+                        {"error": "postgres canary does not support alert streaming"},
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                    )
                     return
                 after_id = _optional_query_int(query, "after_id") or 0
                 self.send_response(HTTPStatus.OK)
@@ -1747,8 +1790,9 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
 
             if parsed.path.startswith("/api/boards/"):
                 board_name = unquote(parsed.path.removeprefix("/api/boards/"))
-                schedule_board_prices_refresh_on_open(db_path, board_name)
-                with connect(db_path) as connection:
+                if not read_only_canary and sqlite_db_path is not None:
+                    schedule_board_prices_refresh_on_open(sqlite_db_path, board_name)
+                with open_connection() as connection:
                     payload = get_board_payload(connection, board_name)
                 self._write_json(payload)
                 return
@@ -1762,12 +1806,13 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 symbol = unquote(parts[1])
                 query = parse_qs(parsed.query)
                 include_funding = _first_query(query, "include_funding") == "1"
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_instrument_payload(
                         connection,
                         market,
                         symbol,
                         include_funding=include_funding,
+                        allow_metadata_refresh=not read_only_canary,
                     )
                 if payload is None:
                     self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
@@ -1784,13 +1829,14 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 if market is None or symbol is None:
                     self._write_json({"error": "market and symbol required"}, HTTPStatus.BAD_REQUEST)
                     return
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_daily_bars_payload(
                         connection,
                         market,
                         symbol,
                         before_trade_date=before_trade_date,
                         limit=limit,
+                        allow_backfill=not read_only_canary,
                     )
                 self._write_json(payload)
                 return
@@ -1808,7 +1854,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                         HTTPStatus.BAD_REQUEST,
                     )
                     return
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     payload = get_intraday_bars_payload(
                         connection,
                         market,
@@ -1816,6 +1862,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                         interval,
                         before_ts_utc=before_ts_utc,
                         limit=limit,
+                        allow_backfill=not read_only_canary,
                     )
                 self._write_json(payload)
                 return
@@ -1848,7 +1895,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
             last_heartbeat = 0.0
             current_after_id = after_id
             try:
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     push_device = _push_device_row_for_token(connection, push_token)
                     if push_device is None:
                         self.wfile.write(mobile_alert_sse_heartbeat())
@@ -1863,7 +1910,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                         now_utc=_now_utc(),
                     )
                 while time.monotonic() - started < SSE_MAX_CONNECTION_SECONDS:
-                    with connect(db_path) as connection:
+                    with open_connection() as connection:
                         payload = get_mobile_alert_events_payload(
                             connection,
                             push_token=push_token,
@@ -1896,7 +1943,7 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
             except (BrokenPipeError, ConnectionResetError):
                 pass
             finally:
-                with connect(db_path) as connection:
+                with open_connection() as connection:
                     _close_device_session(
                         connection,
                         session_id=session_id,
@@ -2078,10 +2125,10 @@ def _latest_watchlist_snapshot_trade_date(
         JOIN watchlist
             ON watchlist.instrument_id = market_snapshot.instrument_id
             AND watchlist.watchlist_name = ?
-            AND watchlist.is_active = 1
+            AND watchlist.is_active = TRUE
         WHERE instrument.market = ?
             AND instrument.instrument_type = ?
-            AND instrument.is_active = 1
+            AND instrument.is_active = TRUE
             AND market_snapshot.turnover_raw IS NOT NULL
         """,
         (watchlist_name, market, instrument_type),
@@ -2389,13 +2436,18 @@ def _operator_for_condition_type(condition_type: str) -> str:
 
 def _database_is_writable(connection: sqlite3.Connection) -> bool:
     try:
-        connection.execute("PRAGMA quick_check").fetchone()
-    except sqlite3.DatabaseError:
+        if getattr(connection, "backend", "sqlite") == "postgres":
+            connection.execute("SELECT 1").fetchone()
+        else:
+            connection.execute("PRAGMA quick_check").fetchone()
+    except Exception:
         return False
     return True
 
 
 def _journal_mode(connection: sqlite3.Connection) -> str:
+    if getattr(connection, "backend", "sqlite") == "postgres":
+        return "postgres"
     row = connection.execute("PRAGMA journal_mode").fetchone()
     if row is None:
         return "unknown"

@@ -5,7 +5,38 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from market.db import connect, init_database
+from market.db import PostgresConnectionAdapter, connect, init_database
+
+
+class FakePostgresCursor:
+    def __init__(self, rows: list[dict[str, object]] | None = None):
+        self.rows = rows or []
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+    def fetchall(self):
+        return list(self.rows)
+
+
+class FakePostgresConnection:
+    def __init__(self):
+        self.executed: list[tuple[str, object]] = []
+        self.committed = False
+        self.closed = False
+
+    def execute(self, sql: str, params: object = ()) -> FakePostgresCursor:
+        self.executed.append((sql, params))
+        return FakePostgresCursor([{"one": 1}])
+
+    def commit(self) -> None:
+        self.committed = True
+
+    def rollback(self) -> None:
+        pass
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class DatabaseSchemaTests(unittest.TestCase):
@@ -62,6 +93,26 @@ class DatabaseSchemaTests(unittest.TestCase):
 
             with self.assertRaises(sqlite3.ProgrammingError):
                 connection.execute("SELECT 1").fetchone()
+
+    def test_postgres_adapter_translates_sqlite_placeholders(self):
+        fake_connection = FakePostgresConnection()
+
+        with PostgresConnectionAdapter(fake_connection) as connection:
+            row = connection.execute(
+                "SELECT one FROM example WHERE market = ? AND symbol = ?",
+                ("HK", "00700"),
+            ).fetchone()
+
+        self.assertEqual(row["one"], 1)
+        self.assertEqual(
+            fake_connection.executed[0],
+            (
+                "SELECT one FROM example WHERE market = %s AND symbol = %s",
+                ("HK", "00700"),
+            ),
+        )
+        self.assertTrue(fake_connection.committed)
+        self.assertTrue(fake_connection.closed)
 
     def test_schema_migrations_are_recorded(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
