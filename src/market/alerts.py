@@ -125,6 +125,10 @@ def evaluate_mobile_alert_rules(
             mobile_alert_rule.symbol,
             mobile_alert_rule.market,
             mobile_alert_rule.condition_type,
+            mobile_alert_rule.source_type,
+            mobile_alert_rule.metric_key,
+            mobile_alert_rule.operator,
+            mobile_alert_rule.indicator_id,
             mobile_alert_rule.threshold,
             mobile_alert_rule.cooldown_seconds,
             push_device.push_token,
@@ -139,15 +143,23 @@ def evaluate_mobile_alert_rules(
     ).fetchall()
     messages: list[dict[str, object]] = []
     for row in rows:
-        condition = MOBILE_ALERT_CONDITIONS.get(str(row["condition_type"]))
+        condition = _mobile_alert_condition_for_row(row)
         if condition is None:
             continue
         metric, operator_label, comparator, title_suffix = condition
-        snapshot = _latest_mobile_snapshot(
-            connection,
-            market=str(row["market"]),
-            symbol=str(row["symbol"]),
-        )
+        if str(row["source_type"]) == "custom_indicator":
+            snapshot = _latest_mobile_indicator_value(
+                connection,
+                market=str(row["market"]),
+                symbol=str(row["symbol"]),
+                indicator_id=int(row["indicator_id"]),
+            )
+        else:
+            snapshot = _latest_mobile_snapshot(
+                connection,
+                market=str(row["market"]),
+                symbol=str(row["symbol"]),
+            )
         if snapshot is None:
             continue
         observed_value = _optional_float(snapshot.get(metric))
@@ -271,6 +283,51 @@ def _latest_mobile_snapshot(
     if row is None:
         return None
     return dict(row)
+
+
+def _latest_mobile_indicator_value(
+    connection: sqlite3.Connection,
+    *,
+    market: str,
+    symbol: str,
+    indicator_id: int,
+) -> SnapshotPayload | None:
+    row = connection.execute(
+        """
+        SELECT
+            instrument.instrument_id,
+            instrument.market,
+            instrument.symbol,
+            indicator_value.value_ts_utc AS snapshot_ts_utc,
+            indicator_value.value AS indicator_value
+        FROM instrument
+        JOIN indicator_value
+            ON indicator_value.instrument_id = instrument.instrument_id
+        WHERE instrument.market = ?
+            AND instrument.symbol = ?
+            AND indicator_value.indicator_id = ?
+            AND instrument.is_active = 1
+            AND indicator_value.status = 'ok'
+        ORDER BY indicator_value.value_ts_utc DESC, indicator_value.indicator_value_id DESC
+        LIMIT 1
+        """,
+        (market, symbol, indicator_id),
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def _mobile_alert_condition_for_row(
+    row: sqlite3.Row,
+) -> tuple[str, str, Callable[[float, float], bool], str] | None:
+    if str(row["source_type"]) == "custom_indicator":
+        operator_label = str(row["operator"] or "")
+        comparator = OPERATORS.get(operator_label)
+        if comparator is None or row["indicator_id"] is None:
+            return None
+        return ("indicator_value", operator_label, comparator, "自定义指标提醒")
+    return MOBILE_ALERT_CONDITIONS.get(str(row["condition_type"]))
 
 
 def _mobile_alert_in_cooldown(

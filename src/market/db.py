@@ -31,6 +31,7 @@ def init_database(db_path: Path | str) -> None:
         connection.execute("PRAGMA journal_mode = WAL")
         connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         _ensure_push_device_columns(connection)
+        _ensure_mobile_alert_rule_columns(connection)
 
 
 def _ensure_push_device_columns(connection: sqlite3.Connection) -> None:
@@ -47,3 +48,20 @@ def _ensure_push_device_columns(connection: sqlite3.Connection) -> None:
         WHERE getui_cid IS NOT NULL
         """
     )
+
+
+def _ensure_mobile_alert_rule_columns(connection: sqlite3.Connection) -> None:
+    columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(mobile_alert_rule)").fetchall()
+    }
+    additions = {
+        "source_type": "TEXT NOT NULL DEFAULT 'builtin'",
+        "metric_key": "TEXT",
+        "operator": "TEXT",
+        "indicator_id": "INTEGER",
+        "created_by": "TEXT NOT NULL DEFAULT 'manual'",
+    }
+    for column, definition in additions.items():
+        if column not in columns:
+            connection.execute(f"ALTER TABLE mobile_alert_rule ADD COLUMN {column} {definition}")

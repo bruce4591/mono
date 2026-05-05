@@ -153,12 +153,44 @@ CREATE TABLE IF NOT EXISTS mobile_alert_rule (
     symbol TEXT NOT NULL,
     market TEXT NOT NULL,
     condition_type TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'builtin',
+    metric_key TEXT,
+    operator TEXT,
+    indicator_id INTEGER,
+    created_by TEXT NOT NULL DEFAULT 'manual',
     threshold REAL NOT NULL,
     cooldown_seconds INTEGER NOT NULL DEFAULT 900,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at_utc TEXT NOT NULL,
     updated_at_utc TEXT NOT NULL,
     FOREIGN KEY (push_device_id) REFERENCES push_device(push_device_id)
+);
+
+CREATE TABLE IF NOT EXISTS indicator_definition (
+    indicator_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    expression TEXT NOT NULL,
+    input_scope TEXT NOT NULL,
+    unit TEXT,
+    created_by TEXT NOT NULL DEFAULT 'manual',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at_utc TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS indicator_value (
+    indicator_value_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    indicator_id INTEGER NOT NULL,
+    instrument_id INTEGER NOT NULL,
+    value_ts_utc TEXT NOT NULL,
+    value REAL NOT NULL,
+    input_snapshot TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL,
+    FOREIGN KEY (indicator_id) REFERENCES indicator_definition(indicator_id),
+    FOREIGN KEY (instrument_id) REFERENCES instrument(instrument_id),
+    UNIQUE (indicator_id, instrument_id, value_ts_utc)
 );
 
 CREATE TABLE IF NOT EXISTS mobile_alert_event (

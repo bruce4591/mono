@@ -935,16 +935,38 @@ def create_mobile_alert_rule(
     push_token = _required_string(payload, "push_token")
     market = _required_string(payload, "market")
     symbol = _required_string(payload, "symbol")
-    condition_type = _required_string(payload, "condition_type")
+    source_type = _optional_payload_string(payload, "source_type") or "builtin"
+    condition_type = _optional_payload_string(payload, "condition_type") or "custom_indicator"
+    metric_key = _optional_payload_string(payload, "metric_key")
+    operator_label = _optional_payload_string(payload, "operator")
+    indicator_id = _optional_payload_int(payload, "indicator_id")
     threshold = _required_float(payload, "threshold")
     cooldown_seconds = _optional_payload_int(payload, "cooldown_seconds") or 900
-    if condition_type not in {
-        "price_above",
-        "price_below",
-        "change_pct_above",
-        "change_pct_below",
-    }:
-        raise ValueError("invalid condition_type")
+    if source_type == "builtin":
+        if condition_type not in {
+            "price_above",
+            "price_below",
+            "change_pct_above",
+            "change_pct_below",
+        }:
+            raise ValueError("invalid condition_type")
+        metric_key = _metric_key_for_condition_type(condition_type)
+        operator_label = _operator_for_condition_type(condition_type)
+        indicator_id = None
+    elif source_type == "custom_indicator":
+        if indicator_id is None:
+            raise ValueError("indicator_id required")
+        if operator_label not in {">", ">=", "<", "<=", "=="}:
+            raise ValueError("invalid operator")
+        indicator_row = connection.execute(
+            "SELECT indicator_id FROM indicator_definition WHERE indicator_id = ? AND enabled = 1",
+            (indicator_id,),
+        ).fetchone()
+        if indicator_row is None:
+            raise ValueError("indicator_id not found")
+        metric_key = metric_key or "indicator_value"
+    else:
+        raise ValueError("invalid source_type")
     if cooldown_seconds < 0:
         raise ValueError("cooldown_seconds must be non-negative")
 
@@ -959,19 +981,27 @@ def create_mobile_alert_rule(
             symbol,
             market,
             condition_type,
+            source_type,
+            metric_key,
+            operator,
+            indicator_id,
             threshold,
             cooldown_seconds,
             enabled,
             created_at_utc,
             updated_at_utc
         )
-        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
         """,
         (
             int(push_device["push_device_id"]),
             symbol,
             market,
             condition_type,
+            source_type,
+            metric_key,
+            operator_label,
+            indicator_id,
             threshold,
             cooldown_seconds,
             now,
@@ -1719,6 +1749,11 @@ def _mobile_alert_rule_payload(row: sqlite3.Row) -> dict[str, object]:
         "market": str(row["market"]),
         "symbol": str(row["symbol"]),
         "condition_type": str(row["condition_type"]),
+        "source_type": str(row["source_type"]),
+        "metric_key": _optional_str(row["metric_key"]),
+        "operator": _optional_str(row["operator"]),
+        "indicator_id": int(row["indicator_id"]) if row["indicator_id"] is not None else None,
+        "created_by": str(row["created_by"]),
         "threshold": float(row["threshold"]),
         "cooldown_seconds": int(row["cooldown_seconds"]),
         "enabled": bool(row["enabled"]),
@@ -1751,6 +1786,16 @@ def _mobile_alert_title_suffix(condition_type: str) -> str:
     if condition_type.startswith("change_pct_"):
         return "涨跌幅提醒"
     return "价格提醒"
+
+
+def _metric_key_for_condition_type(condition_type: str) -> str:
+    if condition_type.startswith("change_pct_"):
+        return "change_pct"
+    return "last_price"
+
+
+def _operator_for_condition_type(condition_type: str) -> str:
+    return ">" if condition_type.endswith("_above") else "<"
 
 
 def _database_is_writable(connection: sqlite3.Connection) -> bool:

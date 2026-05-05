@@ -33,6 +33,8 @@ class AlertTests(unittest.TestCase):
         self.assertIn("alert_event", tables)
         self.assertIn("mobile_alert_rule", tables)
         self.assertIn("mobile_alert_event", tables)
+        self.assertIn("indicator_definition", tables)
+        self.assertIn("indicator_value", tables)
 
     def test_mobile_delivery_tables_are_created_by_schema(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -50,6 +52,25 @@ class AlertTests(unittest.TestCase):
         self.assertIn("mobile_alert_delivery", tables)
         self.assertIn("device_checkpoint", tables)
         self.assertIn("device_session", tables)
+
+    def test_mobile_alert_rule_custom_indicator_columns_are_created(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                columns = {
+                    row["name"]
+                    for row in connection.execute(
+                        "PRAGMA table_info(mobile_alert_rule)"
+                    ).fetchall()
+                }
+
+        self.assertIn("source_type", columns)
+        self.assertIn("metric_key", columns)
+        self.assertIn("operator", columns)
+        self.assertIn("indicator_id", columns)
+        self.assertIn("created_by", columns)
 
     def test_alert_rule_repository_upserts_by_name(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -306,6 +327,89 @@ class AlertTests(unittest.TestCase):
 
         self.assertEqual(messages, [])
         self.assertEqual(event_count, 0)
+
+    def test_evaluate_mobile_alert_rules_triggers_custom_indicator(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                rule_id = _insert_mobile_alert_fixture(
+                    connection,
+                    condition_type="custom_indicator",
+                    threshold=2.5,
+                    last_price=65000.0,
+                    change_pct=1.5,
+                )
+                instrument = InstrumentRepository(connection).get_by_market_symbol(
+                    "CRYPTO",
+                    "BTCUSDT",
+                )
+                assert instrument is not None
+                connection.execute(
+                    """
+                    INSERT INTO indicator_definition (
+                        name,
+                        description,
+                        expression,
+                        input_scope,
+                        unit,
+                        created_by,
+                        enabled,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES (?, '', ?, 'instrument', NULL, 'manual', 1, ?, ?)
+                    """,
+                    (
+                        "volume pressure",
+                        "volume_raw / max(turnover_raw, 1)",
+                        "2026-05-04T02:58:00Z",
+                        "2026-05-04T02:58:00Z",
+                    ),
+                )
+                indicator_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+                connection.execute(
+                    """
+                    UPDATE mobile_alert_rule
+                    SET source_type = 'custom_indicator',
+                        metric_key = 'indicator_value',
+                        operator = '>',
+                        indicator_id = ?
+                    WHERE mobile_alert_rule_id = ?
+                    """,
+                    (indicator_id, rule_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO indicator_value (
+                        indicator_id,
+                        instrument_id,
+                        value_ts_utc,
+                        value,
+                        input_snapshot,
+                        status,
+                        created_at_utc
+                    )
+                    VALUES (?, ?, ?, ?, '{}', 'ok', ?)
+                    """,
+                    (
+                        indicator_id,
+                        instrument.instrument_id,
+                        "2026-05-04T02:59:00Z",
+                        3.1,
+                        "2026-05-04T02:59:00Z",
+                    ),
+                )
+
+                messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T03:00:00Z",
+                )
+
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]["title"], "BTCUSDT 自定义指标提醒")
+        self.assertEqual(messages[0]["body"], "BTCUSDT indicator_value 3.1 > 2.5")
 
 
 def _insert_mobile_alert_fixture(

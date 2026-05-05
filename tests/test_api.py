@@ -128,6 +128,65 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(payload["threshold"], 68000.0)
             self.assertEqual(payload["cooldown_seconds"], 600)
             self.assertEqual(payload["enabled"], True)
+            self.assertEqual(payload["source_type"], "builtin")
+            self.assertEqual(payload["metric_key"], "last_price")
+            self.assertEqual(payload["operator"], ">")
+
+    def test_create_mobile_alert_rule_for_custom_indicator(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+            with connect(db_path) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO indicator_definition (
+                        name,
+                        description,
+                        expression,
+                        input_scope,
+                        created_by,
+                        enabled,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES ('volume pressure', '', 'volume_raw / max(turnover_raw, 1)', 'instrument', 'manual', 1, ?, ?)
+                    """,
+                    ("2026-05-05T00:00:00Z", "2026-05-05T00:00:00Z"),
+                )
+                indicator_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+
+            response_status, response_body = _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/alert-rules",
+                {
+                    "push_token": "ExponentPushToken[test-token]",
+                    "market": "CRYPTO",
+                    "symbol": "BTCUSDT",
+                    "source_type": "custom_indicator",
+                    "indicator_id": indicator_id,
+                    "operator": ">",
+                    "threshold": 2.5,
+                },
+            )
+
+        self.assertEqual(response_status, 200, response_body)
+        payload = json.loads(response_body)
+        self.assertEqual(payload["condition_type"], "custom_indicator")
+        self.assertEqual(payload["source_type"], "custom_indicator")
+        self.assertEqual(payload["metric_key"], "indicator_value")
+        self.assertEqual(payload["operator"], ">")
+        self.assertEqual(payload["indicator_id"], indicator_id)
 
     def test_get_mobile_alert_rules_filters_by_push_token(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
