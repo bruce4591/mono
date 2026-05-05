@@ -7,6 +7,9 @@ const lastPrice = document.querySelector("#lastPrice");
 const changePct = document.querySelector("#changePct");
 const turnover = document.querySelector("#turnover");
 const volume = document.querySelector("#volume");
+const dataTime = document.querySelector("#dataTime");
+const tradeDate = document.querySelector("#tradeDate");
+const dataSource = document.querySelector("#dataSource");
 const fundingRatePanel = document.querySelector("#fundingRatePanel");
 const fundingRate = document.querySelector("#fundingRate");
 const nextFundingTime = document.querySelector("#nextFundingTime");
@@ -72,6 +75,16 @@ function formatVolume(value) {
 function formatFundingRate(value) {
   if (value === null || value === undefined) return "--";
   return `${Number(value).toFixed(4)}%`;
+}
+
+function formatSnapshotTime(value) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return `${date.toLocaleString("zh-CN", {
+    hour12: false,
+    timeZone: "Asia/Shanghai",
+  })} GMT+8`;
 }
 
 function normalizeChartTimestamp(bar) {
@@ -288,6 +301,9 @@ function renderSnapshot(snapshot) {
       : `${Number(snapshot.change_pct).toFixed(2)}%`;
   turnover.textContent = formatTurnover(snapshot.turnover_raw, snapshot.quote_currency);
   volume.textContent = formatVolume(snapshot.volume_raw);
+  dataTime.textContent = formatSnapshotTime(snapshot.snapshot_ts_utc);
+  tradeDate.textContent = snapshot.trade_date_local || "--";
+  dataSource.textContent = snapshot.source || "--";
 }
 
 function renderFundingRate(funding) {

@@ -26,11 +26,14 @@ from market.api import (
     get_board_payload,
     get_static_asset,
     get_watchlists_payload,
+    _finish_board_refresh,
+    _reserve_board_refresh,
     refresh_board_prices_on_open,
 )
 from market.binance import binance_symbol_to_instrument
 from market.binance_futures import binance_futures_symbol_to_instrument
 from market.db import connect, init_database
+from market.collectors.base import CollectorResult
 from market.repositories import InstrumentRepository, IntradayBarRepository, RankingRepository
 from market.models import AlertRule, IntradayBar
 from market.repositories import AlertEventRepository, AlertRuleRepository
@@ -680,6 +683,89 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(calls, [(["ETF_FOCUS20"], "2026-05-03T12:40:00Z")])
         self.assertEqual(payload["items"][0]["last_price"], 512.34)
         self.assertEqual(payload["items"][0]["turnover_raw"], 36734400000.0)
+
+    def test_refresh_board_prices_on_open_syncs_hk_board(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            calls = []
+
+            class FakeAkshareCollector:
+                def sync_focus(
+                    self,
+                    connection,
+                    *,
+                    watchlist_names,
+                    days,
+                    snapshot_ts_utc,
+                    trade_date_local,
+                ):
+                    calls.append((watchlist_names, days, snapshot_ts_utc, trade_date_local))
+                    instrument = connection.execute(
+                        """
+                        SELECT instrument_id, quote_currency
+                        FROM instrument
+                        WHERE market = 'HK'
+                        ORDER BY symbol
+                        LIMIT 1
+                        """
+                    ).fetchone()
+                    assert instrument is not None
+                    connection.execute(
+                        """
+                        INSERT INTO market_snapshot (
+                            instrument_id,
+                            snapshot_ts_utc,
+                            trade_date_local,
+                            last_price,
+                            change_pct,
+                            volume_raw,
+                            turnover_raw,
+                            quote_currency,
+                            source
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            instrument["instrument_id"],
+                            snapshot_ts_utc,
+                            "2026-05-05",
+                            64.9,
+                            -0.61,
+                            1000.0,
+                            64900.0,
+                            instrument["quote_currency"],
+                            "akshare",
+                        ),
+                    )
+                    return CollectorResult(
+                        source_name="akshare",
+                        items_synced=1,
+                        metadata={"trade_date_local": "2026-05-05"},
+                    )
+
+            with connect(db_path) as connection:
+                refreshed = refresh_board_prices_on_open(
+                    connection,
+                    "HK_STOCK_FOCUS20",
+                    snapshot_ts_utc="2026-05-05T03:01:04Z",
+                    akshare_collector_factory=FakeAkshareCollector,
+                )
+                payload = get_board_payload(connection, "HK_STOCK_FOCUS20")
+
+        self.assertTrue(refreshed)
+        self.assertEqual(calls, [(["HK_STOCK_FOCUS20"], 365, "2026-05-05T03:01:04Z", None)])
+        self.assertEqual(payload["snapshot_ts_utc"], "2026-05-05T03:01:04Z")
+        self.assertEqual(payload["items"][0]["market"], "HK")
+        self.assertEqual(payload["items"][0]["last_price"], 64.9)
+
+    def test_board_refresh_reservation_enforces_one_minute_ttl(self):
+        self.assertTrue(_reserve_board_refresh("HK_STOCK_FOCUS20", 100.0, 60))
+        self.assertFalse(_reserve_board_refresh("HK_STOCK_FOCUS20", 130.0, 60))
+        _finish_board_refresh("HK_STOCK_FOCUS20")
+        self.assertFalse(_reserve_board_refresh("HK_STOCK_FOCUS20", 159.0, 60))
+        self.assertTrue(_reserve_board_refresh("HK_STOCK_FOCUS20", 160.0, 60))
+        _finish_board_refresh("HK_STOCK_FOCUS20")
 
     def test_get_board_payload_returns_volume_change_from_previous_trade_date(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1676,6 +1762,9 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"klinecharts@9.8.12", asset.body)
         self.assertIn(b"KLineCharts", asset.body)
         self.assertIn(b'id="volume"', asset.body)
+        self.assertIn(b'id="dataTime"', asset.body)
+        self.assertIn(b'id="tradeDate"', asset.body)
+        self.assertIn(b'id="dataSource"', asset.body)
         self.assertIn(b'id="fundingRatePanel"', asset.body)
         self.assertIn(b'id="fundingRate"', asset.body)
         self.assertIn(b'id="nextFundingTime"', asset.body)
@@ -1705,6 +1794,10 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b'replace(/0+$/, "")', asset.body)
         self.assertIn(b"renderFundingRate", asset.body)
         self.assertIn(b"formatFundingRate", asset.body)
+        self.assertIn(b"formatSnapshotTime", asset.body)
+        self.assertIn(b"snapshot.snapshot_ts_utc", asset.body)
+        self.assertIn(b"snapshot.trade_date_local", asset.body)
+        self.assertIn(b"snapshot.source", asset.body)
         self.assertIn(b"fetchDailyBars", asset.body)
         self.assertIn(
             b"fetchDailyBars(DEFAULT_VISIBLE_CANDLES[\"1d\"] || 120)",

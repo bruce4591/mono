@@ -37,6 +37,18 @@
           <p class="label">成交量</p>
           <p class="value" id="volume">--</p>
         </div>
+        <div class="detail-wide">
+          <p class="label">数据时间</p>
+          <p class="value data-time" id="dataTime">--</p>
+        </div>
+        <div>
+          <p class="label">交易日</p>
+          <p class="value" id="tradeDate">--</p>
+        </div>
+        <div>
+          <p class="label">来源</p>
+          <p class="value" id="dataSource">--</p>
+        </div>
         <div id="fundingRatePanel" hidden>
           <p class="label">资金费率 / 下次结算</p>
           <p class="value"><span id="fundingRate">--</span> <span id="nextFundingTime">--</span></p>
@@ -62,6 +74,6 @@
       </section>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/klinecharts@9.8.12/dist/umd/klinecharts.min.js"></script>
-    <script src="/instrument.js?v=daily-latest-window" defer></script>
+    <script src="/instrument.js?v=data-time-refresh" defer></script>
   </body>
 </html>

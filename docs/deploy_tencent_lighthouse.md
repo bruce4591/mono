@@ -91,14 +91,16 @@ This job refreshes `A_SHARE_FOCUS20`, `HK_STOCK_FOCUS20`,
 `US_STOCK_FOCUS20`, `ETF_FOCUS20`, `INDEX_FOCUS20`, and
 `COMMODITY_FOCUS20` daily bars, snapshots, and turnover boards through
 AKShare. It imports the local watchlist configs first, then syncs only those
-small focus pools. The first cron entry refreshes every 2 hours from the US
-open through a post-close buffer; the second keeps one post-close fallback sync.
+small focus pools. The cron entry refreshes every 30 minutes on weekdays.
+Board API requests also trigger a best-effort one-board refresh with a
+one-minute per-board throttle, so opening the app can pull fresher TradeFi data
+without waiting for the next scheduled run.
 
 ```bash
 mkdir -p /home/ubuntu/bin
 cp deploy/scripts/market-sync-akshare-focus.sh /home/ubuntu/bin/market-sync-akshare-focus.sh
 chmod +x /home/ubuntu/bin/market-sync-akshare-focus.sh
-(crontab -l 2>/dev/null | grep -v market-sync-akshare-focus.sh; echo "30 13-21/2 * * 1-5 /home/ubuntu/bin/market-sync-akshare-focus.sh >> /home/ubuntu/github/mono/logs/akshare-focus-sync.log 2>&1"; echo "30 6 * * 2-6 /home/ubuntu/bin/market-sync-akshare-focus.sh >> /home/ubuntu/github/mono/logs/akshare-focus-sync.log 2>&1") | crontab -
+(crontab -l 2>/dev/null | grep -v market-sync-akshare-focus.sh; echo "*/30 * * * 1-5 /home/ubuntu/bin/market-sync-akshare-focus.sh >> /home/ubuntu/github/mono/logs/akshare-focus-sync.log 2>&1") | crontab -
 ```
 
 ## Aggregate Crypto K Lines Every 5 Minutes

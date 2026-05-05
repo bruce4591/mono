@@ -75,8 +75,8 @@ class DeployConfigTests(unittest.TestCase):
         self.assertIn("ETF_FOCUS20", docs)
         self.assertIn("INDEX_FOCUS20", docs)
         self.assertIn("COMMODITY_FOCUS20", docs)
-        self.assertIn("30 13-21/2 * * 1-5", docs)
-        self.assertIn("30 6 * * 2-6", docs)
+        self.assertIn("*/30 * * * 1-5", docs)
+        self.assertNotIn("30 13-21/2 * * 1-5", docs)
 
     def test_mobile_alert_worker_script_and_docs_are_present(self):
         script = (

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 import uuid
 from dataclasses import dataclass, replace
@@ -26,6 +27,7 @@ from market.binance_futures import (
     sync_binance_futures_klines_range,
 )
 from market.collectors.alpaca import AlpacaCollector
+from market.collectors.akshare import AkshareCollector
 from market.crypto_gaps import (
     BINANCE_KLINES_MAX_LIMIT,
     fill_binance_1m_gaps,
@@ -39,14 +41,61 @@ from market.repositories import (
     DailyBarRepository,
     InstrumentRepository,
     IntradayBarRepository,
+    RankingRepository,
 )
+from market.watchlists import sync_watchlist_from_file
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 FUTURES_MIN_HISTORY_BARS = 60
-ALPACA_PRICE_REFRESH_BOARDS = {
-    "US_STOCK_FOCUS20": ["US_STOCK_FOCUS20"],
-    "ETF_FOCUS20": ["ETF_FOCUS20"],
+TRADEFI_BOARD_REFRESH_INTERVAL_SECONDS = 60
+TRADEFI_BOARD_REFRESH_CONFIGS = {
+    "A_SHARE_FOCUS20": {
+        "provider": "akshare",
+        "watchlist_config": REPO_ROOT / "config" / "watchlists" / "a_share_focus20.json",
+        "watchlist_name": "A_SHARE_FOCUS20",
+        "market": "A_SHARE",
+        "instrument_type": "stock",
+    },
+    "HK_STOCK_FOCUS20": {
+        "provider": "akshare",
+        "watchlist_config": REPO_ROOT / "config" / "watchlists" / "hk_stock_focus20.json",
+        "watchlist_name": "HK_STOCK_FOCUS20",
+        "market": "HK",
+        "instrument_type": "stock",
+    },
+    "US_STOCK_FOCUS20": {
+        "provider": "alpaca",
+        "watchlist_config": REPO_ROOT / "config" / "watchlists" / "us_stock_focus20.json",
+        "watchlist_name": "US_STOCK_FOCUS20",
+        "market": "US",
+        "instrument_type": "stock",
+    },
+    "ETF_FOCUS20": {
+        "provider": "alpaca",
+        "watchlist_config": REPO_ROOT / "config" / "watchlists" / "etf_focus20.json",
+        "watchlist_name": "ETF_FOCUS20",
+        "market": "US",
+        "instrument_type": "etf",
+    },
+    "INDEX_FOCUS20": {
+        "provider": "akshare",
+        "watchlist_config": REPO_ROOT / "config" / "watchlists" / "index_focus20.json",
+        "watchlist_name": "INDEX_FOCUS20",
+        "market": "US",
+        "instrument_type": "index",
+    },
+    "COMMODITY_FOCUS20": {
+        "provider": "akshare",
+        "watchlist_config": REPO_ROOT / "config" / "watchlists" / "commodity_focus20.json",
+        "watchlist_name": "COMMODITY_FOCUS20",
+        "market": "CMDTY",
+        "instrument_type": "commodity",
+    },
 }
+_BOARD_REFRESH_LOCK = threading.Lock()
+_BOARD_REFRESH_LAST_AT: dict[str, float] = {}
+_BOARD_REFRESH_IN_FLIGHT: set[str] = set()
 SSE_POLL_SECONDS = 1.0
 SSE_HEARTBEAT_SECONDS = 20.0
 SSE_MAX_CONNECTION_SECONDS = 30 * 60
@@ -164,18 +213,107 @@ def refresh_board_prices_on_open(
     board_name: str,
     *,
     snapshot_ts_utc: str | None = None,
-) -> None:
-    watchlist_names = ALPACA_PRICE_REFRESH_BOARDS.get(board_name)
-    if watchlist_names is None:
-        return
-    try:
-        AlpacaCollector().refresh_latest_prices(
+    akshare_collector_factory=None,
+    alpaca_collector_factory=None,
+) -> bool:
+    config = TRADEFI_BOARD_REFRESH_CONFIGS.get(board_name)
+    if config is None:
+        return False
+    sync_watchlist_from_file(connection, Path(config["watchlist_config"]))
+    connection.commit()
+    resolved_snapshot_ts = snapshot_ts_utc or _now_utc()
+    watchlist_name = str(config["watchlist_name"])
+    provider = str(config["provider"])
+    if provider == "alpaca":
+        alpaca_collector_factory = alpaca_collector_factory or AlpacaCollector
+        alpaca_collector_factory().refresh_latest_prices(
             connection,
-            watchlist_names=watchlist_names,
-            snapshot_ts_utc=snapshot_ts_utc or _now_utc(),
+            watchlist_names=[watchlist_name],
+            snapshot_ts_utc=resolved_snapshot_ts,
         )
+        return True
+
+    akshare_collector_factory = akshare_collector_factory or AkshareCollector
+    result = akshare_collector_factory().sync_focus(
+        connection,
+        watchlist_names=[watchlist_name],
+        days=365,
+        snapshot_ts_utc=resolved_snapshot_ts,
+        trade_date_local=None,
+    )
+    board_trade_date = _latest_watchlist_snapshot_trade_date(
+        connection,
+        watchlist_name=watchlist_name,
+        market=str(config["market"]),
+        instrument_type=str(config["instrument_type"]),
+    )
+    ranking_trade_date = (
+        board_trade_date
+        or result.metadata.get("trade_date_local")
+        or datetime.now(tz=UTC).date().isoformat()
+    )
+    RankingRepository(connection).refresh_turnover_board(
+        board_name=board_name,
+        snapshot_ts_utc=resolved_snapshot_ts,
+        trade_date_local=str(ranking_trade_date),
+        market=str(config["market"]),
+        instrument_type=str(config["instrument_type"]),
+        limit=30,
+        watchlist_name=watchlist_name,
+    )
+    connection.commit()
+    return True
+
+
+def schedule_board_prices_refresh_on_open(
+    db_path: Path | str,
+    board_name: str,
+    *,
+    min_interval_seconds: int = TRADEFI_BOARD_REFRESH_INTERVAL_SECONDS,
+) -> bool:
+    if board_name not in TRADEFI_BOARD_REFRESH_CONFIGS:
+        return False
+    if not _reserve_board_refresh(board_name, time.monotonic(), min_interval_seconds):
+        return False
+
+    thread = threading.Thread(
+        target=_run_board_prices_refresh,
+        args=(Path(db_path), board_name),
+        daemon=True,
+    )
+    thread.start()
+    return True
+
+
+def _run_board_prices_refresh(db_path: Path, board_name: str) -> None:
+    try:
+        with connect(db_path) as connection:
+            refresh_board_prices_on_open(connection, board_name)
     except Exception:
         return
+    finally:
+        _finish_board_refresh(board_name)
+
+
+def _reserve_board_refresh(
+    board_name: str,
+    now_monotonic: float,
+    min_interval_seconds: int,
+) -> bool:
+    with _BOARD_REFRESH_LOCK:
+        if board_name in _BOARD_REFRESH_IN_FLIGHT:
+            return False
+        previous = _BOARD_REFRESH_LAST_AT.get(board_name)
+        if previous is not None and now_monotonic - previous < min_interval_seconds:
+            return False
+        _BOARD_REFRESH_LAST_AT[board_name] = now_monotonic
+        _BOARD_REFRESH_IN_FLIGHT.add(board_name)
+        return True
+
+
+def _finish_board_refresh(board_name: str) -> None:
+    with _BOARD_REFRESH_LOCK:
+        _BOARD_REFRESH_IN_FLIGHT.discard(board_name)
 
 
 def get_instrument_payload(
@@ -1511,8 +1649,8 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
 
             if parsed.path.startswith("/api/boards/"):
                 board_name = unquote(parsed.path.removeprefix("/api/boards/"))
+                schedule_board_prices_refresh_on_open(db_path, board_name)
                 with connect(db_path) as connection:
-                    refresh_board_prices_on_open(connection, board_name)
                     payload = get_board_payload(connection, board_name)
                 self._write_json(payload)
                 return
@@ -1824,6 +1962,35 @@ def _previous_snapshot_ts(
     if row is None or row["snapshot_ts_utc"] is None:
         return None
     return str(row["snapshot_ts_utc"])
+
+
+def _latest_watchlist_snapshot_trade_date(
+    connection: sqlite3.Connection,
+    *,
+    watchlist_name: str,
+    market: str,
+    instrument_type: str,
+) -> str | None:
+    row = connection.execute(
+        """
+        SELECT max(market_snapshot.trade_date_local) AS trade_date_local
+        FROM market_snapshot
+        JOIN instrument
+            ON instrument.instrument_id = market_snapshot.instrument_id
+        JOIN watchlist
+            ON watchlist.instrument_id = market_snapshot.instrument_id
+            AND watchlist.watchlist_name = ?
+            AND watchlist.is_active = 1
+        WHERE instrument.market = ?
+            AND instrument.instrument_type = ?
+            AND instrument.is_active = 1
+            AND market_snapshot.turnover_raw IS NOT NULL
+        """,
+        (watchlist_name, market, instrument_type),
+    ).fetchone()
+    if row is None or row["trade_date_local"] is None:
+        return None
+    return str(row["trade_date_local"])
 
 
 def _latest_snapshot(
