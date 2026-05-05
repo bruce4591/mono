@@ -151,6 +151,69 @@ sudo systemctl restart market-binance-kline-ws.service
 sudo systemctl restart market-binance-futures-kline-ws.service
 ```
 
+## PostgreSQL Cutover
+
+PostgreSQL is the planned online database. SQLite remains the rollback source
+until backup, row counts, and API validation all pass. Do not remove
+`data/market.sqlite3` during cutover.
+
+1. Install PostgreSQL and create an app database/user:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y postgresql postgresql-contrib
+sudo -u postgres createuser market_app
+sudo -u postgres createdb -O market_app market
+sudo -u postgres psql -c "ALTER USER market_app WITH PASSWORD '<strong-password>';"
+```
+
+2. Back up the current SQLite database and verify it before any PostgreSQL work:
+
+```bash
+cd /home/ubuntu/github/mono
+cp data/market.sqlite3 data/market.sqlite3.$(date +%Y%m%d%H%M%S).bak
+sqlite3 data/market.sqlite3 "PRAGMA integrity_check;"
+```
+
+The integrity check must print `ok`. Stop if it does not.
+
+3. Set the PostgreSQL connection string in `/home/ubuntu/github/mono/.market.env`:
+
+```bash
+MARKET_DATABASE_URL=postgresql://market_app:<strong-password>@127.0.0.1:5432/market
+```
+
+4. Run the additive, idempotent PostgreSQL initialization and backfill script:
+
+```bash
+/home/ubuntu/github/mono/deploy/scripts/market-backfill-postgres.sh
+```
+
+The script saves a SQLite row-count report under
+`/home/ubuntu/github/mono/logs/sqlite-count-report.*.csv` before copying data.
+
+5. Compare the saved SQLite count report with PostgreSQL row counts for every
+online table. The counts must match before cutover.
+
+6. Restart `market-api.service` only after counts match and after explicit
+production cutover approval:
+
+```bash
+sudo systemctl restart market-api.service
+```
+
+7. Validate production reads:
+
+```bash
+curl -fsS http://127.0.0.1:8000/api/status
+curl -fsS http://127.0.0.1:8000/api/boards/HK_STOCK_FOCUS20
+curl -fsS "http://127.0.0.1:8000/api/bars/daily?market=HK&symbol=00700"
+```
+
+8. Roll back by removing or commenting out `MARKET_DATABASE_URL` in
+`.market.env`, then restarting `market-api.service`. SQLite remains available
+as the source of truth until PostgreSQL has passed validation.
+
 ## Firewall
 
 Tencent Lighthouse firewall must allow:

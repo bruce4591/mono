@@ -1679,7 +1679,7 @@ git commit -m "Add DuckDB agent data helper"
 - Create: `deploy/scripts/market-backfill-postgres.sh`
 - Test: `tests/test_deploy_config.py`
 
-- [ ] **Step 1: Add deployment script test**
+- [x] **Step 1: Add deployment script test**
 
 Add to `tests/test_deploy_config.py`:
 
@@ -1692,7 +1692,7 @@ def test_postgres_backfill_script_exists(self):
     self.assertIn("MARKET_DATABASE_URL", content)
 ```
 
-- [ ] **Step 2: Create backfill script**
+- [x] **Step 2: Create backfill script**
 
 Create `deploy/scripts/market-backfill-postgres.sh`:
 
@@ -1717,7 +1717,7 @@ PYTHONPATH=src .venv/bin/market backfill-postgres \
   --postgres-url "$MARKET_DATABASE_URL"
 ```
 
-- [ ] **Step 3: Update deployment docs**
+- [x] **Step 3: Update deployment docs**
 
 Add a section to `docs/deploy_tencent_lighthouse.md`:
 
@@ -1746,7 +1746,7 @@ sqlite3 /home/ubuntu/github/mono/data/market.sqlite3 "PRAGMA integrity_check;"
 8. Roll back by removing `MARKET_DATABASE_URL` and restarting the service.
 ```
 
-- [ ] **Step 4: Run deployment tests**
+- [x] **Step 4: Run deployment tests**
 
 Run:
 
@@ -1756,7 +1756,7 @@ PYTHONPATH=src python3 -m unittest tests.test_deploy_config -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/deploy_tencent_lighthouse.md deploy/scripts/market-backfill-postgres.sh tests/test_deploy_config.py

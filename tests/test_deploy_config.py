@@ -89,6 +89,14 @@ class DeployConfigTests(unittest.TestCase):
         self.assertIn("market-evaluate-mobile-alerts.sh", readme)
         self.assertIn("logs/mobile-alerts.log", readme)
 
+    def test_postgres_backfill_script_exists(self):
+        script = REPO_ROOT / "deploy" / "scripts" / "market-backfill-postgres.sh"
+
+        self.assertTrue(script.exists())
+        content = script.read_text(encoding="utf-8")
+        self.assertIn("market backfill-postgres", content)
+        self.assertIn("MARKET_DATABASE_URL", content)
+
 
 if __name__ == "__main__":
     unittest.main()
