@@ -1338,10 +1338,10 @@ def _latest_watchlist_snapshot_trade_date(
         JOIN watchlist
             ON watchlist.instrument_id = market_snapshot.instrument_id
             AND watchlist.watchlist_name = ?
-            AND watchlist.is_active = 1
+            AND watchlist.is_active = TRUE
         WHERE instrument.market = ?
             AND instrument.instrument_type = ?
-            AND instrument.is_active = 1
+            AND instrument.is_active = TRUE
             AND market_snapshot.turnover_raw IS NOT NULL
         """,
         (watchlist_name, market, instrument_type),
@@ -1375,7 +1375,7 @@ def _crypto_symbols_for_aggregation(
             AND market_snapshot.snapshot_ts_utc = latest_snapshot.snapshot_ts_utc
         WHERE instrument.market = 'CRYPTO'
             AND instrument.instrument_type = 'crypto'
-            AND instrument.is_active = 1
+            AND instrument.is_active = TRUE
         ORDER BY market_snapshot.turnover_raw DESC, instrument.symbol
         LIMIT ?
         """,
@@ -1389,7 +1389,7 @@ def _crypto_symbols_for_aggregation(
         FROM instrument
         WHERE market = 'CRYPTO'
             AND instrument_type = 'crypto'
-            AND is_active = 1
+            AND is_active = TRUE
         ORDER BY symbol
         LIMIT ?
         """,

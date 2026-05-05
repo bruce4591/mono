@@ -137,8 +137,8 @@ def evaluate_mobile_alert_rules(
         FROM mobile_alert_rule
         JOIN push_device
             ON push_device.push_device_id = mobile_alert_rule.push_device_id
-        WHERE mobile_alert_rule.enabled = 1
-            AND push_device.enabled = 1
+        WHERE mobile_alert_rule.enabled = TRUE
+            AND push_device.enabled = TRUE
         ORDER BY mobile_alert_rule.mobile_alert_rule_id
         """
     ).fetchall()
@@ -196,7 +196,7 @@ def evaluate_mobile_alert_rules(
             message=message,
         )
         if event_id is None:
-            connection.execute(
+            inserted_row = connection.execute(
                 """
                 INSERT INTO mobile_alert_event (
                     mobile_alert_rule_id,
@@ -206,10 +206,13 @@ def evaluate_mobile_alert_rules(
                     delivery_status
                 )
                 VALUES (?, ?, ?, ?, ?)
+                RETURNING mobile_alert_event_id
                 """,
                 (rule_id, now_utc, observed_value, message, "pending"),
-            )
-            event_id = int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
+            ).fetchone()
+            if inserted_row is None:
+                raise RuntimeError("mobile alert event insert did not return a row")
+            event_id = int(inserted_row["mobile_alert_event_id"])
         messages.append(
             {
                 "mobile_alert_event_id": event_id,
@@ -259,7 +262,7 @@ def _latest_snapshot_for_rule(
             ON market_snapshot.instrument_id = instrument.instrument_id
         WHERE instrument.market = ?
             AND instrument.symbol = ?
-            AND instrument.is_active = 1
+            AND instrument.is_active = TRUE
         ORDER BY market_snapshot.snapshot_ts_utc DESC
         LIMIT 1
         """,
@@ -290,7 +293,7 @@ def _latest_mobile_snapshot(
             ON market_snapshot.instrument_id = instrument.instrument_id
         WHERE instrument.market = ?
             AND instrument.symbol = ?
-            AND instrument.is_active = 1
+            AND instrument.is_active = TRUE
         ORDER BY market_snapshot.snapshot_ts_utc DESC
         LIMIT 1
         """,
@@ -322,7 +325,7 @@ def _latest_mobile_indicator_value(
         WHERE instrument.market = ?
             AND instrument.symbol = ?
             AND indicator_value.indicator_id = ?
-            AND instrument.is_active = 1
+            AND instrument.is_active = TRUE
             AND indicator_value.status = 'ok'
         ORDER BY indicator_value.value_ts_utc DESC, indicator_value.indicator_value_id DESC
         LIMIT 1

@@ -1140,12 +1140,12 @@ def register_mobile_device(
             created_at_utc,
             updated_at_utc
         )
-        VALUES (?, ?, ?, ?, 1, ?, ?)
+        VALUES (?, ?, ?, ?, TRUE, ?, ?)
         ON CONFLICT(push_token) DO UPDATE SET
             getui_cid = COALESCE(excluded.getui_cid, push_device.getui_cid),
             platform = excluded.platform,
             device_label = excluded.device_label,
-            enabled = 1,
+            enabled = TRUE,
             updated_at_utc = excluded.updated_at_utc
         """,
         (push_token, getui_cid, platform, device_label, now, now),
@@ -1203,7 +1203,7 @@ def create_mobile_alert_rule(
         if operator_label not in {">", ">=", "<", "<=", "=="}:
             raise ValueError("invalid operator")
         indicator_row = connection.execute(
-            "SELECT indicator_id FROM indicator_definition WHERE indicator_id = ? AND enabled = 1",
+            "SELECT indicator_id FROM indicator_definition WHERE indicator_id = ? AND enabled = TRUE",
             (indicator_id,),
         ).fetchone()
         if indicator_row is None:
@@ -1218,7 +1218,7 @@ def create_mobile_alert_rule(
     if push_device is None:
         raise ValueError("push_token is not registered")
     now = now_ts_utc or _now_utc()
-    connection.execute(
+    row = connection.execute(
         """
         INSERT INTO mobile_alert_rule (
             push_device_id,
@@ -1235,7 +1235,8 @@ def create_mobile_alert_rule(
             created_at_utc,
             updated_at_utc
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
+        RETURNING *
         """,
         (
             int(push_device["push_device_id"]),
@@ -1251,13 +1252,6 @@ def create_mobile_alert_rule(
             now,
             now,
         ),
-    )
-    row = connection.execute(
-        """
-        SELECT *
-        FROM mobile_alert_rule
-        WHERE mobile_alert_rule_id = last_insert_rowid()
-        """
     ).fetchone()
     if row is None:
         raise ValueError("mobile alert rule creation failed")
@@ -1463,14 +1457,18 @@ def acknowledge_mobile_alert_events(
         )
         VALUES (?, ?, ?, ?)
         ON CONFLICT(push_device_id) DO UPDATE SET
-            last_seen_mobile_alert_event_id = max(
-                device_checkpoint.last_seen_mobile_alert_event_id,
-                excluded.last_seen_mobile_alert_event_id
-            ),
-            last_ack_mobile_alert_event_id = max(
-                device_checkpoint.last_ack_mobile_alert_event_id,
-                excluded.last_ack_mobile_alert_event_id
-            ),
+            last_seen_mobile_alert_event_id = CASE
+                WHEN device_checkpoint.last_seen_mobile_alert_event_id >
+                    excluded.last_seen_mobile_alert_event_id
+                THEN device_checkpoint.last_seen_mobile_alert_event_id
+                ELSE excluded.last_seen_mobile_alert_event_id
+            END,
+            last_ack_mobile_alert_event_id = CASE
+                WHEN device_checkpoint.last_ack_mobile_alert_event_id >
+                    excluded.last_ack_mobile_alert_event_id
+                THEN device_checkpoint.last_ack_mobile_alert_event_id
+                ELSE excluded.last_ack_mobile_alert_event_id
+            END,
             updated_at_utc = excluded.updated_at_utc
         """,
         (int(push_device["push_device_id"]), last_seen, last_ack, now),
@@ -1535,7 +1533,7 @@ def patch_mobile_alert_rule(
             updated_at_utc = ?
         WHERE mobile_alert_rule_id = ?
         """,
-        (int(enabled), now, rule_id),
+        (enabled, now, rule_id),
     )
     row = connection.execute(
         """

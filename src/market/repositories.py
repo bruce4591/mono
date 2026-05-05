@@ -54,7 +54,7 @@ class InstrumentRepository:
                 instrument.instrument_type,
                 instrument.quote_currency,
                 instrument.timezone,
-                int(instrument.is_active),
+                instrument.is_active,
                 json.dumps(extra_meta, sort_keys=True),
             ),
         )
@@ -243,7 +243,7 @@ class IntradayBarRepository:
                 bar.close,
                 bar.volume_raw,
                 bar.turnover_raw,
-                int(bar.is_closed_bar),
+                bar.is_closed_bar,
                 bar.source,
             ),
         )
@@ -299,7 +299,7 @@ class WatchlistRepository:
         self.connection.execute(
             """
             UPDATE watchlist
-            SET is_active = 0,
+            SET is_active = FALSE,
                 updated_at = CURRENT_TIMESTAMP
             WHERE watchlist_name = ?
             """,
@@ -325,7 +325,7 @@ class WatchlistRepository:
                     watchlist_name,
                     entry.instrument_id,
                     entry.sort_order,
-                    int(entry.is_active),
+                    entry.is_active,
                 ),
             )
 
@@ -422,7 +422,7 @@ class MarketSnapshotRepository:
         )
         self.connection.execute(
             """
-            INSERT OR IGNORE INTO market_snapshot_history (
+            INSERT INTO market_snapshot_history (
                 instrument_id,
                 snapshot_ts_utc,
                 trade_date_local,
@@ -435,6 +435,7 @@ class MarketSnapshotRepository:
                 updated_at
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(instrument_id, snapshot_ts_utc) DO NOTHING
             """,
             params,
         )
@@ -631,7 +632,7 @@ class AlertRuleRepository:
                 rule.metric,
                 rule.operator,
                 rule.threshold,
-                int(rule.is_active),
+                rule.is_active,
             ),
         )
         row = self.connection.execute(
@@ -685,7 +686,7 @@ class AlertEventRepository:
         self.connection = connection
 
     def insert(self, event: AlertEvent) -> int:
-        self.connection.execute(
+        row = self.connection.execute(
             """
             INSERT INTO alert_event (
                 rule_id,
@@ -698,6 +699,7 @@ class AlertEventRepository:
                 is_acknowledged
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING event_id
             """,
             (
                 event.rule_id,
@@ -707,13 +709,12 @@ class AlertEventRepository:
                 event.observed_value,
                 event.threshold,
                 event.message,
-                int(event.is_acknowledged),
+                event.is_acknowledged,
             ),
-        )
-        row = self.connection.execute("SELECT last_insert_rowid()").fetchone()
+        ).fetchone()
         if row is None:
             raise RuntimeError("alert event insert did not return a row")
-        return int(row[0])
+        return int(row["event_id"])
 
     def list_recent(self, limit: int = 50) -> list[AlertEvent]:
         rows = self.connection.execute(

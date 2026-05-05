@@ -170,7 +170,7 @@ def _missing_ranges(
             FROM bar_intraday
             WHERE instrument_id = ?
                 AND interval = '1m'
-                AND is_closed_bar = 1
+                AND is_closed_bar = TRUE
                 AND bar_start_ts_utc >= ?
                 AND bar_start_ts_utc < ?
             """,
