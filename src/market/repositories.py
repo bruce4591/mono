@@ -354,6 +354,17 @@ class MarketSnapshotRepository:
         self.connection = connection
 
     def upsert(self, snapshot: MarketSnapshot) -> None:
+        params = (
+            snapshot.instrument_id,
+            snapshot.snapshot_ts_utc,
+            snapshot.trade_date_local,
+            snapshot.last_price,
+            snapshot.change_pct,
+            snapshot.volume_raw,
+            snapshot.turnover_raw,
+            snapshot.quote_currency,
+            snapshot.source,
+        )
         self.connection.execute(
             """
             INSERT INTO market_snapshot (
@@ -379,17 +390,53 @@ class MarketSnapshotRepository:
                 source = excluded.source,
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (
-                snapshot.instrument_id,
-                snapshot.snapshot_ts_utc,
-                snapshot.trade_date_local,
-                snapshot.last_price,
-                snapshot.change_pct,
-                snapshot.volume_raw,
-                snapshot.turnover_raw,
-                snapshot.quote_currency,
-                snapshot.source,
-            ),
+            params,
+        )
+        self.connection.execute(
+            """
+            INSERT INTO latest_market_snapshot (
+                instrument_id,
+                snapshot_ts_utc,
+                trade_date_local,
+                last_price,
+                change_pct,
+                volume_raw,
+                turnover_raw,
+                quote_currency,
+                source,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(instrument_id) DO UPDATE SET
+                snapshot_ts_utc = excluded.snapshot_ts_utc,
+                trade_date_local = excluded.trade_date_local,
+                last_price = excluded.last_price,
+                change_pct = excluded.change_pct,
+                volume_raw = excluded.volume_raw,
+                turnover_raw = excluded.turnover_raw,
+                quote_currency = excluded.quote_currency,
+                source = excluded.source,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            params,
+        )
+        self.connection.execute(
+            """
+            INSERT OR IGNORE INTO market_snapshot_history (
+                instrument_id,
+                snapshot_ts_utc,
+                trade_date_local,
+                last_price,
+                change_pct,
+                volume_raw,
+                turnover_raw,
+                quote_currency,
+                source,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            params,
         )
 
 

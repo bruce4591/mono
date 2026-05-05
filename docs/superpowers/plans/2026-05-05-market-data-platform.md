@@ -487,7 +487,7 @@ git commit -m "Split market snapshots into latest and history tables"
 - Modify: `src/market/repositories.py`
 - Test: `tests/test_repositories.py`
 
-- [ ] **Step 1: Write a failing repository test**
+- [x] **Step 1: Write a failing repository test**
 
 Add this test to `tests/test_repositories.py`:
 
@@ -550,7 +550,7 @@ def test_market_snapshot_upsert_writes_latest_and_history(self):
     self.assertEqual(int(history_count["count"]), 2)
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -560,7 +560,7 @@ PYTHONPATH=src python3 -m unittest tests.test_repositories.TestRepositories.test
 
 Expected: FAIL because `MarketSnapshotRepository.upsert` does not write both new tables.
 
-- [ ] **Step 3: Update `MarketSnapshotRepository.upsert`**
+- [x] **Step 3: Update `MarketSnapshotRepository.upsert`**
 
 Modify the existing `upsert` method in `src/market/repositories.py` so it keeps writing the legacy table and additionally writes the new tables:
 
@@ -652,7 +652,7 @@ def upsert(self, snapshot: MarketSnapshot) -> None:
     )
 ```
 
-- [ ] **Step 4: Run the repository test**
+- [x] **Step 4: Run the repository test**
 
 Run:
 
@@ -662,7 +662,7 @@ PYTHONPATH=src python3 -m unittest tests.test_repositories.TestRepositories.test
 
 Expected: PASS.
 
-- [ ] **Step 5: Run affected tests**
+- [x] **Step 5: Run affected tests**
 
 Run:
 
@@ -672,7 +672,7 @@ PYTHONPATH=src python3 -m unittest tests.test_repositories tests.test_api tests.
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/market/repositories.py tests/test_repositories.py
