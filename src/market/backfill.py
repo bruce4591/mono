@@ -28,6 +28,17 @@ ONLINE_BACKFILL_TABLES: tuple[str, ...] = (
     "board_refresh_state",
 )
 
+POSTGRES_BOOLEAN_COLUMNS: dict[str, frozenset[str]] = {
+    "instrument": frozenset({"is_active"}),
+    "bar_intraday": frozenset({"is_closed_bar"}),
+    "watchlist": frozenset({"is_active"}),
+    "alert_rule": frozenset({"is_active"}),
+    "alert_event": frozenset({"is_acknowledged"}),
+    "push_device": frozenset({"enabled"}),
+    "mobile_alert_rule": frozenset({"enabled"}),
+    "indicator_definition": frozenset({"enabled"}),
+}
+
 
 def list_table_columns(connection: sqlite3.Connection, table_name: str) -> list[str]:
     rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
@@ -43,6 +54,19 @@ def fetch_sqlite_rows(
     column_sql = ", ".join(columns)
     rows = connection.execute(f"SELECT {column_sql} FROM {table_name}").fetchall()
     return [{column: row[column] for column in columns} for row in rows]
+
+
+def coerce_postgres_value(
+    *,
+    table_name: str,
+    column: str,
+    value: object,
+) -> object:
+    if column not in POSTGRES_BOOLEAN_COLUMNS.get(table_name, frozenset()):
+        return value
+    if value is None or isinstance(value, bool):
+        return value
+    return bool(value)
 
 
 def insert_postgres_rows(
@@ -63,5 +87,15 @@ def insert_postgres_rows(
     )
     with pg_connection.cursor() as cursor:
         for row in rows:
-            cursor.execute(sql, tuple(row[column] for column in columns))
+            cursor.execute(
+                sql,
+                tuple(
+                    coerce_postgres_value(
+                        table_name=table_name,
+                        column=column,
+                        value=row[column],
+                    )
+                    for column in columns
+                ),
+            )
     return len(rows)
