@@ -1076,7 +1076,7 @@ git commit -m "Add PostgreSQL online schema"
 - Modify: `src/market/cli.py`
 - Test: `tests/test_cli.py`
 
-- [ ] **Step 1: Get dependency approval**
+- [x] **Step 1: Get dependency approval**
 
 Before editing `pyproject.toml`, ask the user to approve:
 
@@ -1084,7 +1084,7 @@ Before editing `pyproject.toml`, ask the user to approve:
 需要新增 PostgreSQL 驱动依赖 psycopg[binary]>=3.2,<4。是否批准？
 ```
 
-- [ ] **Step 2: Add dependency after approval**
+- [x] **Step 2: Add dependency after approval**
 
 Modify `pyproject.toml`:
 
@@ -1096,7 +1096,7 @@ dependencies = [
 ]
 ```
 
-- [ ] **Step 3: Add PostgreSQL schema initializer**
+- [x] **Step 3: Add PostgreSQL schema initializer**
 
 Modify `src/market/db.py`:
 
@@ -1115,7 +1115,7 @@ def init_postgres_database(database_url: str) -> None:
         connection.commit()
 ```
 
-- [ ] **Step 4: Add CLI parser command**
+- [x] **Step 4: Add CLI parser command**
 
 Modify `src/market/cli.py` to add:
 
@@ -1133,7 +1133,7 @@ def _handle_init_postgres_db(args: argparse.Namespace) -> int:
     return 0
 ```
 
-- [ ] **Step 5: Add CLI test for parser wiring**
+- [x] **Step 5: Add CLI test for parser wiring**
 
 Add to `tests/test_cli.py`:
 
@@ -1144,7 +1144,7 @@ def test_init_postgres_db_requires_database_url(self):
         parser.parse_args(["init-postgres-db"])
 ```
 
-- [ ] **Step 6: Run affected tests**
+- [x] **Step 6: Run affected tests**
 
 Run:
 
@@ -1154,7 +1154,7 @@ PYTHONPATH=src python3 -m unittest tests.test_cli tests.test_db_schema -v
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add pyproject.toml src/market/db.py src/market/cli.py tests/test_cli.py

@@ -14,6 +14,10 @@ from market.collectors.base import CollectorResult
 
 
 class CliTests(unittest.TestCase):
+    def test_init_postgres_db_requires_database_url(self):
+        with self.assertRaises(SystemExit):
+            main(["init-postgres-db"])
+
     def test_init_db_creates_sqlite_database(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

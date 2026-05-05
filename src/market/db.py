@@ -7,6 +7,7 @@ from market.migrations import apply_sqlite_migrations
 
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
+PG_SCHEMA_PATH = Path(__file__).with_name("pg_schema.sql")
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -35,6 +36,17 @@ def init_database(db_path: Path | str) -> None:
         _ensure_push_device_columns(connection)
         _ensure_mobile_alert_rule_columns(connection)
         apply_sqlite_migrations(connection)
+
+
+def init_postgres_database(database_url: str) -> None:
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise RuntimeError("PostgreSQL support requires psycopg[binary]") from exc
+    with psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(PG_SCHEMA_PATH.read_text(encoding="utf-8"))
+        connection.commit()
 
 
 def _ensure_push_device_columns(connection: sqlite3.Connection) -> None:

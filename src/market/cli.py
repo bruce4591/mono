@@ -34,7 +34,7 @@ from market.collectors.binance_ws import BinanceKlineWebSocketCollector
 from market.collectors.base import CollectorResult, run_collector_job
 from market.crypto_gaps import fill_binance_1m_gaps
 from market.crypto_gaps import fill_binance_futures_1m_gaps
-from market.db import connect, init_database
+from market.db import connect, init_database, init_postgres_database
 from market.models import AlertRule, WatchlistEntry
 from market.push import deliver_mobile_alert_pushes, send_expo_push_message
 from market.realtime import apply_binance_futures_kline_event, apply_binance_ticker_event
@@ -133,6 +133,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_db = subparsers.add_parser("init-db", help="Initialize the SQLite database")
     init_db.add_argument("--db-path", type=Path, default=None)
+
+    init_postgres_db = subparsers.add_parser(
+        "init-postgres-db",
+        help="Initialize the PostgreSQL database",
+    )
+    init_postgres_db.add_argument("--database-url", required=True)
 
     health_check = subparsers.add_parser(
         "health-check", help="Check whether the SQLite database is readable"
@@ -406,11 +412,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     settings = load_settings()
-    db_path = args.db_path or settings.db_path
+    db_path = getattr(args, "db_path", None) or settings.db_path
 
     if args.command == "init-db":
         init_database(db_path)
         print(f"database initialized: {db_path}")
+        return 0
+
+    if args.command == "init-postgres-db":
+        init_postgres_database(args.database_url)
+        print("postgres database initialized")
         return 0
 
     if args.command == "health-check":

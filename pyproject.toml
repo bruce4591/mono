@@ -5,6 +5,7 @@ description = "Lightweight multi-market data, ranking, and charting system."
 requires-python = ">=3.11"
 dependencies = [
     "akshare>=1.18,<2",
+    "psycopg[binary]>=3.2,<4",
     "websocket-client>=1.8,<2",
 ]
 
