@@ -729,7 +729,7 @@ same device + same market + same symbol + same metric within 60 seconds -> one e
 
 - [ ] High priority events can bypass coalescing, but still log delivery count.
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add src/market/alerts.py src/market/mobile_delivery.py tests/test_alerts.py tests/test_mobile_delivery.py
@@ -751,7 +751,7 @@ GET /api/mobile/debug/deliveries?push_token=<token>&limit=50
 
 - [x] Return device, latest CID, checkpoints, sessions, last events, and delivery attempts.
 
-- [ ] Commit:
+- [x] Commit:
 
 ```bash
 git add src/market/api.py tests/test_api.py
@@ -764,7 +764,7 @@ git commit -m "Add mobile alert debug endpoints"
 
 ### Task 15: Deploy Server and Verify Existing Push Still Works
 
-- [ ] Run locally:
+- [x] Run locally:
 
 ```bash
 .venv/bin/python -m unittest tests.test_api tests.test_alerts tests.test_push tests.test_mobile_delivery tests.test_indicators -v
@@ -772,23 +772,23 @@ git commit -m "Add mobile alert debug endpoints"
 
 Expected: PASS.
 
-- [ ] Push branch:
+- [x] Push branch:
 
 ```bash
 git push origin codex-market-mobile-app
 ```
 
-- [ ] Deploy server:
+- [x] Deploy server:
 
 ```bash
 ssh tencent-market 'cd /home/ubuntu/github/mono && git fetch origin codex-market-mobile-app && git merge --ff-only FETCH_HEAD && .venv/bin/python -m unittest tests.test_api tests.test_alerts tests.test_push -v && sudo systemctl restart market-api.service && git rev-parse --short HEAD'
 ```
 
-- [ ] Send one Getui test message to the known CID and confirm phone receives it.
+- [x] Send one Getui test message to the known CID and confirm phone receives it.
 
 ### Task 16: Build and Install App Only After API Is Stable
 
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cd apps/market-mobile
@@ -797,7 +797,7 @@ npm run typecheck
 
 Expected: PASS.
 
-- [ ] Local Android build:
+- [x] Local Android build:
 
 ```bash
 cd /Users/dt.shi/work/mono/apps/market-mobile/android
@@ -805,14 +805,14 @@ source /Users/dt.shi/work/android-local-build/env.sh
 ./gradlew assembleRelease
 ```
 
-- [ ] Install:
+- [x] Install:
 
 ```bash
 source /Users/dt.shi/work/android-local-build/env.sh
 adb install -r /Users/dt.shi/work/mono/apps/market-mobile/android/app/build/outputs/apk/release/app-release.apk
 ```
 
-- [ ] Manual test:
+- [x] Manual test:
   - Open app.
   - Confirm registration.
   - Put app foreground and trigger an alert: expect online alert.
