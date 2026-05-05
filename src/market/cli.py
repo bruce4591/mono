@@ -147,6 +147,12 @@ def build_parser() -> argparse.ArgumentParser:
     backfill_postgres.add_argument("--sqlite-db", required=True)
     backfill_postgres.add_argument("--postgres-url", required=True)
 
+    sqlite_count_report = subparsers.add_parser(
+        "sqlite-count-report",
+        help="Print row counts for online SQLite tables",
+    )
+    sqlite_count_report.add_argument("--sqlite-db", required=True)
+
     health_check = subparsers.add_parser(
         "health-check", help="Check whether the SQLite database is readable"
     )
@@ -433,6 +439,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "backfill-postgres":
         return _handle_backfill_postgres(args)
+
+    if args.command == "sqlite-count-report":
+        return _handle_sqlite_count_report(args)
 
     if args.command == "health-check":
         try:
@@ -1078,6 +1087,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    return 0
+
+
+def _handle_sqlite_count_report(args: argparse.Namespace) -> int:
+    from market.backfill import ONLINE_BACKFILL_TABLES
+    from market.data_integrity import format_count_report, sqlite_table_counts
+
+    with connect(Path(args.sqlite_db)) as connection:
+        counts = sqlite_table_counts(connection, ONLINE_BACKFILL_TABLES)
+    print(format_count_report(counts))
     return 0
 
 

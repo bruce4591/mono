@@ -22,6 +22,10 @@ class CliTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             main(["backfill-postgres"])
 
+    def test_sqlite_count_report_requires_sqlite_db(self):
+        with self.assertRaises(SystemExit):
+            main(["sqlite-count-report"])
+
     def test_init_db_creates_sqlite_database(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

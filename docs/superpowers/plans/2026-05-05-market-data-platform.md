@@ -1336,7 +1336,7 @@ git commit -m "Add SQLite to PostgreSQL backfill command"
 - Test: `tests/test_data_integrity.py`
 - Test: `tests/test_cli.py`
 
-- [ ] **Step 1: Write a row count report test**
+- [x] **Step 1: Write a row count report test**
 
 Create `tests/test_data_integrity.py`:
 
@@ -1362,7 +1362,7 @@ class DataIntegrityTests(unittest.TestCase):
         self.assertEqual(counts["push_device"], 0)
 ```
 
-- [ ] **Step 2: Create integrity helpers**
+- [x] **Step 2: Create integrity helpers**
 
 Create `src/market/data_integrity.py`:
 
@@ -1391,7 +1391,7 @@ def format_count_report(counts: dict[str, int]) -> str:
     return "\n".join(lines)
 ```
 
-- [ ] **Step 3: Add CLI report command**
+- [x] **Step 3: Add CLI report command**
 
 Modify `src/market/cli.py`:
 
@@ -1414,7 +1414,7 @@ def _handle_sqlite_count_report(args: argparse.Namespace) -> int:
     return 0
 ```
 
-- [ ] **Step 4: Add CLI parser test**
+- [x] **Step 4: Add CLI parser test**
 
 Add to `tests/test_cli.py`:
 
@@ -1425,7 +1425,7 @@ def test_sqlite_count_report_requires_sqlite_db(self):
         parser.parse_args(["sqlite-count-report"])
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
@@ -1435,7 +1435,7 @@ PYTHONPATH=src python3 -m unittest tests.test_data_integrity tests.test_cli -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/market/data_integrity.py src/market/cli.py tests/test_data_integrity.py tests/test_cli.py
