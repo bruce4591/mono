@@ -16,6 +16,9 @@ DEFAULT_COMPARE_ENDPOINTS = [
     "/api/bars/daily?market=HK&symbol=00700&limit=5",
     "/api/bars/intraday?market=CRYPTO&symbol=BTCUSDT&interval=1m&limit=5",
 ]
+DEFAULT_IGNORE_PATHS = {
+    "/api/health": {"database.journal_mode"},
+}
 
 
 @dataclass(frozen=True)
@@ -65,9 +68,11 @@ def compare_api_payloads(
     candidate_base_url: str,
     *,
     endpoints: list[str] | None = None,
+    ignore_paths: dict[str, set[str]] | None = None,
     fetch_json: Callable[[str], object] = fetch_json,
 ) -> ApiCompareResult:
     selected_endpoints = endpoints or DEFAULT_COMPARE_ENDPOINTS
+    selected_ignore_paths = ignore_paths if ignore_paths is not None else DEFAULT_IGNORE_PATHS
     matched: list[str] = []
     differences: list[ApiPayloadDifference] = []
     errors: list[ApiPayloadError] = []
@@ -78,7 +83,13 @@ def compare_api_payloads(
         except Exception as error:  # pragma: no cover - exact urllib failures vary
             errors.append(ApiPayloadError(endpoint=endpoint, message=str(error)))
             continue
-        difference = _first_difference(primary_payload, candidate_payload)
+        ignored_paths = set(selected_ignore_paths.get("*", set()))
+        ignored_paths.update(selected_ignore_paths.get(endpoint, set()))
+        difference = _first_difference(
+            primary_payload,
+            candidate_payload,
+            ignored_paths=ignored_paths,
+        )
         if difference is None:
             matched.append(endpoint)
             continue
@@ -123,8 +134,13 @@ def _join_endpoint(base_url: str, endpoint: str) -> str:
 def _first_difference(
     primary: object,
     candidate: object,
+    *,
     path: str = "",
+    ignored_paths: set[str] | None = None,
 ) -> tuple[str, object, object] | None:
+    ignored_paths = ignored_paths or set()
+    if path in ignored_paths:
+        return None
     if type(primary) is not type(candidate):
         return path or "$", primary, candidate
     if isinstance(primary, dict) and isinstance(candidate, dict):
@@ -137,7 +153,8 @@ def _first_difference(
             difference = _first_difference(
                 primary[key],
                 candidate[key],
-                _join_path(path, key),
+                path=_join_path(path, key),
+                ignored_paths=ignored_paths,
             )
             if difference is not None:
                 return difference
@@ -151,7 +168,8 @@ def _first_difference(
             difference = _first_difference(
                 primary_item,
                 candidate_item,
-                f"{path}[{index}]" if path else f"[{index}]",
+                path=f"{path}[{index}]" if path else f"[{index}]",
+                ignored_paths=ignored_paths,
             )
             if difference is not None:
                 return difference

@@ -46,6 +46,24 @@ class ApiCompareTests(unittest.TestCase):
         self.assertEqual(result.differences[0].primary, 30)
         self.assertEqual(result.differences[0].candidate, 29)
 
+    def test_compare_api_payloads_ignores_allowed_endpoint_path(self):
+        payloads = {
+            "http://primary/api/health": {"database": {"journal_mode": "wal"}},
+            "http://candidate/api/health": {"database": {"journal_mode": "postgres"}},
+        }
+
+        result = compare_api_payloads(
+            "http://primary",
+            "http://candidate",
+            endpoints=["/api/health"],
+            ignore_paths={"/api/health": {"database.journal_mode"}},
+            fetch_json=lambda url: payloads[url],
+        )
+
+        self.assertEqual(result.status, "match")
+        self.assertEqual(result.matched, ["/api/health"])
+        self.assertEqual(result.differences, [])
+
     def test_format_api_compare_report_summarizes_differences(self):
         payloads = {
             "http://primary/api/health": {"status": "ok"},

@@ -49,6 +49,7 @@ class CliTests(unittest.TestCase):
             "http://127.0.0.1:8000",
             "http://127.0.0.1:8001",
             endpoints=["/api/health"],
+            ignore_paths=None,
         )
         formatter.assert_called_once_with(compare_api_payloads.return_value)
         self.assertEqual(stdout.getvalue(), "ok\n")

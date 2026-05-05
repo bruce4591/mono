@@ -171,6 +171,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Endpoint path to compare; can be provided multiple times",
     )
+    compare_api_payloads_parser.add_argument(
+        "--ignore-path",
+        action="append",
+        default=[],
+        help="Ignored JSON path, optionally scoped as endpoint:path",
+    )
 
     sync_watchlists = subparsers.add_parser(
         "sync-watchlists", help="Import a static watchlist JSON file"
@@ -473,6 +479,7 @@ def main(argv: list[str] | None = None) -> int:
             args.primary_base_url,
             args.candidate_base_url,
             endpoints=args.endpoint or None,
+            ignore_paths=_parse_api_compare_ignore_paths(args.ignore_path) or None,
         )
         print(format_api_compare_report(result))
         return result.exit_code
@@ -1131,6 +1138,17 @@ def _handle_sqlite_count_report(args: argparse.Namespace) -> int:
         counts = sqlite_table_counts(connection, ONLINE_BACKFILL_TABLES)
     print(format_count_report(counts))
     return 0
+
+
+def _parse_api_compare_ignore_paths(values: list[str]) -> dict[str, set[str]]:
+    ignore_paths: dict[str, set[str]] = {}
+    for value in values:
+        if ":" in value:
+            endpoint, path = value.split(":", 1)
+        else:
+            endpoint, path = "*", value
+        ignore_paths.setdefault(endpoint, set()).add(path)
+    return ignore_paths
 
 
 def _handle_backfill_postgres(args: argparse.Namespace) -> int:
