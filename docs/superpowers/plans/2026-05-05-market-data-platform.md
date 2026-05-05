@@ -1452,7 +1452,7 @@ git commit -m "Add data integrity reports for database cutover"
 - Create: `src/market/parquet_export.py`
 - Test: `tests/test_parquet_export.py`
 
-- [ ] **Step 1: Write a path builder test**
+- [x] **Step 1: Write a path builder test**
 
 Create `tests/test_parquet_export.py`:
 
@@ -1485,7 +1485,7 @@ class ParquetExportTests(unittest.TestCase):
         )
 ```
 
-- [ ] **Step 2: Implement path builder**
+- [x] **Step 2: Implement path builder**
 
 Create `src/market/parquet_export.py`:
 
@@ -1518,7 +1518,7 @@ def parquet_partition_path(
     return path / "part-000.parquet"
 ```
 
-- [ ] **Step 3: Run test**
+- [x] **Step 3: Run test**
 
 Run:
 
@@ -1528,7 +1528,7 @@ PYTHONPATH=src python3 -m unittest tests.test_parquet_export -v
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/market/parquet_export.py tests/test_parquet_export.py
