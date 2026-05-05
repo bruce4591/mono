@@ -13,13 +13,14 @@ class SettingsTests(unittest.TestCase):
         env = {
             key: value
             for key, value in os.environ.items()
-            if key not in {"MARKET_DB_PATH", "MARKET_LOG_LEVEL"}
+            if key not in {"MARKET_DATABASE_URL", "MARKET_DB_PATH", "MARKET_LOG_LEVEL"}
         }
 
         with patch.dict(os.environ, env, clear=True):
             settings = load_settings()
 
         self.assertEqual(settings.db_path, Path("./data/market.sqlite3"))
+        self.assertEqual(settings.database_url, "sqlite:///data/market.sqlite3")
         self.assertEqual(settings.log_level, "INFO")
 
     def test_load_settings_reads_environment(self):
@@ -34,7 +35,24 @@ class SettingsTests(unittest.TestCase):
             settings = load_settings()
 
         self.assertEqual(settings.db_path, Path("/tmp/market.sqlite3"))
+        self.assertEqual(settings.database_url, "sqlite:////tmp/market.sqlite3")
         self.assertEqual(settings.log_level, "DEBUG")
+
+    def test_load_settings_accepts_postgres_database_url(self):
+        with patch.dict(
+            os.environ,
+            {
+                "MARKET_DATABASE_URL": "postgresql://market:secret@localhost:5432/market",
+            },
+            clear=True,
+        ):
+            settings = load_settings()
+
+        self.assertEqual(
+            settings.database_url,
+            "postgresql://market:secret@localhost:5432/market",
+        )
+        self.assertIsNone(settings.db_path)
 
 
 if __name__ == "__main__":

@@ -858,7 +858,7 @@ git commit -m "Persist board refresh throttling state"
 - Modify: `src/market/settings.py`
 - Test: `tests/test_settings.py`
 
-- [ ] **Step 1: Write failing settings tests**
+- [x] **Step 1: Write failing settings tests**
 
 Add to `tests/test_settings.py`:
 
@@ -881,7 +881,7 @@ def test_load_settings_accepts_postgres_database_url(self):
     self.assertIsNone(settings.db_path)
 ```
 
-- [ ] **Step 2: Update settings model**
+- [x] **Step 2: Update settings model**
 
 Modify `src/market/settings.py`:
 
@@ -910,7 +910,7 @@ def load_settings() -> Settings:
     return Settings(database_url=database_url, db_path=db_path, log_level=log_level)
 ```
 
-- [ ] **Step 3: Run settings tests**
+- [x] **Step 3: Run settings tests**
 
 Run:
 
@@ -920,7 +920,7 @@ PYTHONPATH=src python3 -m unittest tests.test_settings -v
 
 Expected: PASS.
 
-- [ ] **Step 4: Run API smoke tests**
+- [x] **Step 4: Run API smoke tests**
 
 Run:
 
@@ -930,7 +930,7 @@ PYTHONPATH=src python3 -m unittest tests.test_api -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/market/settings.py tests/test_settings.py
