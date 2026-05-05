@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from market.migrations import apply_sqlite_migrations
+
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
@@ -32,6 +34,7 @@ def init_database(db_path: Path | str) -> None:
         connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         _ensure_push_device_columns(connection)
         _ensure_mobile_alert_rule_columns(connection)
+        apply_sqlite_migrations(connection)
 
 
 def _ensure_push_device_columns(connection: sqlite3.Connection) -> None:

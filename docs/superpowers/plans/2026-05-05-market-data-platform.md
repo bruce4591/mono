@@ -80,7 +80,7 @@
 - Modify: `src/market/db.py`
 - Test: `tests/test_db_schema.py`
 
-- [ ] **Step 1: Write a failing schema migration test**
+- [x] **Step 1: Write a failing schema migration test**
 
 Add this test to `tests/test_db_schema.py`:
 
@@ -101,7 +101,7 @@ def test_schema_migrations_are_recorded(self):
     self.assertEqual(str(rows[0]["migration_id"]), "0001_initial_schema")
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -111,7 +111,7 @@ PYTHONPATH=src python3 -m unittest tests.test_db_schema.TestDatabaseSchema.test_
 
 Expected: FAIL with `no such table: schema_migration`.
 
-- [ ] **Step 3: Create the migration helper**
+- [x] **Step 3: Create the migration helper**
 
 Create `src/market/migrations.py`:
 
@@ -178,7 +178,7 @@ def apply_sqlite_migrations(
         )
 ```
 
-- [ ] **Step 4: Run migrations from database initialization**
+- [x] **Step 4: Run migrations from database initialization**
 
 Modify `src/market/db.py`:
 
@@ -201,7 +201,7 @@ def init_database(db_path: Path | str) -> None:
         apply_sqlite_migrations(connection)
 ```
 
-- [ ] **Step 5: Run the migration test**
+- [x] **Step 5: Run the migration test**
 
 Run:
 
@@ -211,7 +211,7 @@ PYTHONPATH=src python3 -m unittest tests.test_db_schema.TestDatabaseSchema.test_
 
 Expected: PASS.
 
-- [ ] **Step 6: Run all DB schema tests**
+- [x] **Step 6: Run all DB schema tests**
 
 Run:
 
@@ -221,7 +221,7 @@ PYTHONPATH=src python3 -m unittest tests.test_db_schema -v
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/market/migrations.py src/market/db.py tests/test_db_schema.py

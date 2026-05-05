@@ -63,6 +63,22 @@ class DatabaseSchemaTests(unittest.TestCase):
             with self.assertRaises(sqlite3.ProgrammingError):
                 connection.execute("SELECT 1").fetchone()
 
+    def test_schema_migrations_are_recorded(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            with connect(db_path) as connection:
+                rows = connection.execute(
+                    """
+                    SELECT migration_id
+                    FROM schema_migration
+                    ORDER BY migration_id
+                    """
+                ).fetchall()
+
+        self.assertGreaterEqual(len(rows), 1)
+        self.assertEqual(str(rows[0]["migration_id"]), "0001_initial_schema")
+
 
 if __name__ == "__main__":
     unittest.main()
