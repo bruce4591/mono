@@ -1045,6 +1045,77 @@ def get_mobile_alert_events_payload(
     return {"events": [_mobile_alert_event_payload(row) for row in rows]}
 
 
+def acknowledge_mobile_alert_events(
+    connection: sqlite3.Connection,
+    payload: dict[str, object],
+    *,
+    now_ts_utc: str | None = None,
+) -> dict[str, object]:
+    push_token = _required_string(payload, "push_token")
+    last_seen = _optional_payload_int(payload, "last_seen_mobile_alert_event_id") or 0
+    last_ack = _optional_payload_int(payload, "last_ack_mobile_alert_event_id") or last_seen
+    push_device = _push_device_row_for_token(connection, push_token)
+    if push_device is None:
+        raise ValueError("push_token is not registered")
+    now = now_ts_utc or _now_utc()
+    connection.execute(
+        """
+        INSERT INTO device_checkpoint (
+            push_device_id,
+            last_seen_mobile_alert_event_id,
+            last_ack_mobile_alert_event_id,
+            updated_at_utc
+        )
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(push_device_id) DO UPDATE SET
+            last_seen_mobile_alert_event_id = max(
+                device_checkpoint.last_seen_mobile_alert_event_id,
+                excluded.last_seen_mobile_alert_event_id
+            ),
+            last_ack_mobile_alert_event_id = max(
+                device_checkpoint.last_ack_mobile_alert_event_id,
+                excluded.last_ack_mobile_alert_event_id
+            ),
+            updated_at_utc = excluded.updated_at_utc
+        """,
+        (int(push_device["push_device_id"]), last_seen, last_ack, now),
+    )
+    row = connection.execute(
+        """
+        SELECT last_seen_mobile_alert_event_id, last_ack_mobile_alert_event_id, updated_at_utc
+        FROM device_checkpoint
+        WHERE push_device_id = ?
+        """,
+        (int(push_device["push_device_id"]),),
+    ).fetchone()
+    if row is None:
+        raise ValueError("mobile alert checkpoint failed")
+    return {
+        "push_device_id": int(push_device["push_device_id"]),
+        "last_seen_mobile_alert_event_id": int(row["last_seen_mobile_alert_event_id"]),
+        "last_ack_mobile_alert_event_id": int(row["last_ack_mobile_alert_event_id"]),
+        "updated_at_utc": str(row["updated_at_utc"]),
+    }
+
+
+def format_mobile_alert_sse_events(events: list[dict[str, object]]) -> bytes:
+    chunks = []
+    for event in events:
+        event_id = int(event["mobile_alert_event_id"])
+        chunks.append(
+            "\n".join(
+                [
+                    "event: alert",
+                    f"id: {event_id}",
+                    f"data: {json.dumps(event, ensure_ascii=False)}",
+                    "",
+                    "",
+                ]
+            )
+        )
+    return "".join(chunks).encode("utf-8")
+
+
 def patch_mobile_alert_rule(
     connection: sqlite3.Connection,
     rule_id: int,
@@ -1117,6 +1188,20 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                     request_payload = self._read_json_object()
                     with connect(db_path) as connection:
                         response_payload = create_mobile_alert_rule(connection, request_payload)
+                except ValueError as error:
+                    self._write_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
+                    return
+                self._write_json(response_payload)
+                return
+
+            if parsed.path == "/api/mobile/alert-events/ack":
+                try:
+                    request_payload = self._read_json_object()
+                    with connect(db_path) as connection:
+                        response_payload = acknowledge_mobile_alert_events(
+                            connection,
+                            request_payload,
+                        )
                 except ValueError as error:
                     self._write_json({"error": str(error)}, HTTPStatus.BAD_REQUEST)
                     return
@@ -1213,6 +1298,32 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                         limit=limit,
                     )
                 self._write_json(payload)
+                return
+
+            if parsed.path == "/api/mobile/alert-stream":
+                query = parse_qs(parsed.query)
+                push_token = _first_query(query, "push_token")
+                if push_token is None:
+                    self._write_json({"error": "push_token required"}, HTTPStatus.BAD_REQUEST)
+                    return
+                after_id_value = _first_query(query, "after_id")
+                after_id = int(after_id_value) if after_id_value is not None else 0
+                with connect(db_path) as connection:
+                    payload = get_mobile_alert_events_payload(
+                        connection,
+                        push_token=push_token,
+                        after_id=after_id,
+                        limit=100,
+                    )
+                body = format_mobile_alert_sse_events(
+                    payload["events"] if isinstance(payload["events"], list) else []
+                )
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self.end_headers()
+                self.wfile.write(body or b": keep-alive\n\n")
                 return
 
             if parsed.path.startswith("/api/boards/"):

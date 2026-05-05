@@ -8,6 +8,7 @@ from pathlib import Path
 from market.db import connect, init_database
 from market.mobile_delivery import (
     enqueue_mobile_alert_delivery,
+    is_device_recently_online,
     list_pending_mobile_alert_deliveries,
     mark_mobile_alert_delivery,
 )
@@ -83,6 +84,48 @@ class MobileDeliveryTests(unittest.TestCase):
 
         self.assertEqual(first_id, second_id)
         self.assertEqual(count, 1)
+
+    def test_is_device_recently_online_checks_active_session_freshness(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                push_device_id = _insert_push_device(connection)
+                connection.execute(
+                    """
+                    INSERT INTO device_session (
+                        session_id,
+                        push_device_id,
+                        transport,
+                        connected_at_utc,
+                        last_seen_at_utc
+                    )
+                    VALUES (?, ?, 'sse', ?, ?)
+                    """,
+                    (
+                        "session-1",
+                        push_device_id,
+                        "2026-05-05T00:00:00Z",
+                        "2026-05-05T00:00:10Z",
+                    ),
+                )
+
+                online = is_device_recently_online(
+                    connection,
+                    push_device_id=push_device_id,
+                    now_utc="2026-05-05T00:00:20Z",
+                    freshness_seconds=15,
+                )
+                stale = is_device_recently_online(
+                    connection,
+                    push_device_id=push_device_id,
+                    now_utc="2026-05-05T00:00:30Z",
+                    freshness_seconds=15,
+                )
+
+        self.assertTrue(online)
+        self.assertFalse(stale)
 
 
 def _insert_push_device(connection: sqlite3.Connection) -> int:

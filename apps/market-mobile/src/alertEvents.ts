@@ -50,3 +50,26 @@ export async function displayNewAlertEvents({
   }
   return maxEventId;
 }
+
+export async function acknowledgeMobileAlertEvents({
+  pushToken,
+  lastSeenEventId,
+  lastAckEventId
+}: {
+  pushToken: string;
+  lastSeenEventId: number;
+  lastAckEventId: number;
+}): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/mobile/alert-events/ack`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      push_token: pushToken,
+      last_seen_mobile_alert_event_id: lastSeenEventId,
+      last_ack_mobile_alert_event_id: lastAckEventId
+    })
+  });
+  if (!response.ok) {
+    throw new Error("Failed to acknowledge mobile alert events");
+  }
+}

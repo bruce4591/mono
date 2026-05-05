@@ -13,6 +13,7 @@ from urllib.parse import quote
 from market.alerts import evaluate_mobile_alert_rules
 from market.mobile_delivery import (
     enqueue_mobile_alert_delivery,
+    is_device_recently_online,
     mark_mobile_alert_delivery,
 )
 
@@ -274,11 +275,40 @@ def deliver_mobile_alert_pushes(
         token = str(message["push_token"])
         getui_cid = message.get("getui_cid")
         has_getui_cid = isinstance(getui_cid, str) and bool(getui_cid.strip())
+        push_device_id = int(message["push_device_id"])
+        if is_device_recently_online(
+            connection,
+            push_device_id=push_device_id,
+            now_utc=now_utc,
+        ):
+            delivery_id = enqueue_mobile_alert_delivery(
+                connection,
+                event_id=int(message["mobile_alert_event_id"]),
+                push_device_id=push_device_id,
+                channel="online",
+                now_utc=now_utc,
+            )
+            result = PushDeliveryResult(delivery_status="delivered_online")
+            mark_mobile_alert_delivery(
+                connection,
+                delivery_id=delivery_id,
+                status=result.delivery_status,
+                provider_message_id=None,
+                error=None,
+                now_utc=now_utc,
+            )
+            _update_mobile_alert_event_status(
+                connection,
+                event_id=int(message["mobile_alert_event_id"]),
+                status=result.delivery_status,
+            )
+            results.append(result)
+            continue
         channel = "getui" if has_getui_cid else "expo"
         delivery_id = enqueue_mobile_alert_delivery(
             connection,
             event_id=int(message["mobile_alert_event_id"]),
-            push_device_id=int(message["push_device_id"]),
+            push_device_id=push_device_id,
             channel=channel,
             now_utc=now_utc,
         )

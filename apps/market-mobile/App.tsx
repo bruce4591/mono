@@ -4,11 +4,16 @@ import { AppState, BackHandler, StatusBar, StyleSheet, Text, View } from "react-
 import { WebView } from "react-native-webview";
 import type { WebViewNavigation } from "react-native-webview";
 
-import { displayNewAlertEvents, fetchMobileAlertEvents } from "./src/alertEvents";
+import {
+  acknowledgeMobileAlertEvents,
+  displayNewAlertEvents,
+  fetchMobileAlertEvents
+} from "./src/alertEvents";
 import { WEB_BASE_URL } from "./src/config";
 import { startForegroundAlerts } from "./src/foregroundAlerts";
 import { initializeGetuiPush, waitForGetuiClientId } from "./src/getui";
 import { getExpoPushToken, registerDeviceForPush } from "./src/notifications";
+import { startOnlineAlerts } from "./src/onlineAlerts";
 
 function notificationUrlFromData(data: Record<string, unknown>): string {
   const url = typeof data.url === "string" ? data.url : null;
@@ -72,6 +77,13 @@ export default function App() {
       seenEventIds: seenAlertEventIdsRef.current
     });
     latestSeenAlertEventIdRef.current = Math.max(latestSeenAlertEventIdRef.current, maxEventId);
+    if (maxEventId > 0) {
+      await acknowledgeMobileAlertEvents({
+        pushToken,
+        lastSeenEventId: latestSeenAlertEventIdRef.current,
+        lastAckEventId: latestSeenAlertEventIdRef.current
+      });
+    }
   }
 
   useEffect(() => {
@@ -82,6 +94,19 @@ export default function App() {
     });
     return () => subscription.remove();
   }, []);
+
+  useEffect(
+    () =>
+      startOnlineAlerts({
+        getPushToken: () => devicePushTokenRef.current,
+        getAfterId: () => latestSeenAlertEventIdRef.current,
+        setAfterId: (eventId) => {
+          latestSeenAlertEventIdRef.current = eventId;
+        },
+        seenEventIds: seenAlertEventIdsRef.current
+      }),
+    []
+  );
 
   useEffect(() => startForegroundAlerts(() => []), []);
 

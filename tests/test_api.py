@@ -14,6 +14,7 @@ from market.api import (
     get_alert_metrics_payload,
     get_alert_rules_payload,
     get_daily_bars_payload,
+    format_mobile_alert_sse_events,
     get_health_payload,
     get_instrument_payload,
     get_intraday_bars_payload,
@@ -332,6 +333,61 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["events"][0]["mobile_alert_event_id"], expected_id)
         self.assertEqual(payload["events"][0]["title"], "BTCUSDT 价格提醒")
         self.assertEqual(payload["events"][0]["data"]["url"], "/instrument.html?market=CRYPTO&symbol=BTCUSDT")
+
+    def test_format_mobile_alert_sse_events_outputs_alert_events(self):
+        body = format_mobile_alert_sse_events(
+            [
+                {
+                    "mobile_alert_event_id": 123,
+                    "title": "BTCUSDT 价格提醒",
+                    "body": "BTCUSDT last_price 70000 > 68000",
+                }
+            ]
+        ).decode("utf-8")
+
+        self.assertIn("event: alert", body)
+        self.assertIn("id: 123", body)
+        self.assertIn('"mobile_alert_event_id": 123', body)
+
+    def test_ack_mobile_alert_events_updates_device_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+            response_status, response_body = _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/alert-events/ack",
+                {
+                    "push_token": "ExponentPushToken[test-token]",
+                    "last_seen_mobile_alert_event_id": 12,
+                    "last_ack_mobile_alert_event_id": 10,
+                },
+            )
+
+            self.assertEqual(response_status, 200, response_body)
+            payload = json.loads(response_body)
+            self.assertEqual(payload["last_seen_mobile_alert_event_id"], 12)
+            self.assertEqual(payload["last_ack_mobile_alert_event_id"], 10)
+            with connect(db_path) as connection:
+                row = connection.execute(
+                    """
+                    SELECT last_seen_mobile_alert_event_id, last_ack_mobile_alert_event_id
+                    FROM device_checkpoint
+                    """
+                ).fetchone()
+
+        self.assertEqual(row["last_seen_mobile_alert_event_id"], 12)
+        self.assertEqual(row["last_ack_mobile_alert_event_id"], 10)
 
     def test_get_board_payload_returns_ranked_instruments(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

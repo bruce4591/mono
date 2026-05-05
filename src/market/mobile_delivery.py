@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import UTC, datetime
 
 
 def enqueue_mobile_alert_delivery(
@@ -94,6 +95,31 @@ def list_pending_mobile_alert_deliveries(
     return [_delivery_payload(row) for row in rows]
 
 
+def is_device_recently_online(
+    connection: sqlite3.Connection,
+    *,
+    push_device_id: int,
+    now_utc: str,
+    freshness_seconds: int = 15,
+) -> bool:
+    row = connection.execute(
+        """
+        SELECT last_seen_at_utc
+        FROM device_session
+        WHERE push_device_id = ?
+            AND disconnected_at_utc IS NULL
+        ORDER BY last_seen_at_utc DESC
+        LIMIT 1
+        """,
+        (push_device_id,),
+    ).fetchone()
+    if row is None:
+        return False
+    last_seen = _parse_utc(str(row["last_seen_at_utc"]))
+    now = _parse_utc(now_utc)
+    return (now - last_seen).total_seconds() <= freshness_seconds
+
+
 def _delivery_payload(row: sqlite3.Row) -> dict[str, object]:
     return {
         "mobile_alert_delivery_id": int(row["mobile_alert_delivery_id"]),
@@ -111,3 +137,7 @@ def _delivery_payload(row: sqlite3.Row) -> dict[str, object]:
         "created_at_utc": str(row["created_at_utc"]),
         "updated_at_utc": str(row["updated_at_utc"]),
     }
+
+
+def _parse_utc(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
