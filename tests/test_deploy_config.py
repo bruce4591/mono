@@ -15,6 +15,8 @@ class DeployConfigTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("Environment=MARKET_WS_TOP_USDT_LIMIT=60", service)
+        self.assertIn("EnvironmentFile=-/home/ubuntu/github/mono/.market.env", service)
+        self.assertNotIn("Environment=MARKET_DB_PATH=", service)
         self.assertNotIn("Environment=MARKET_WS_SYMBOLS=BTCUSDT ETHUSDT", service)
 
     def test_binance_ws_script_fills_gaps_only_after_reconnect(self):
@@ -23,6 +25,8 @@ class DeployConfigTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("--gap-fill-on-reconnect", script)
+        self.assertIn("MARKET_DATABASE_URL", script)
+        self.assertIn('db_args+=(--db-path "$DB_PATH")', script)
 
     def test_binance_futures_ws_service_uses_top_usdt_limit_and_gap_fill(self):
         service = (
@@ -33,8 +37,11 @@ class DeployConfigTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("Environment=MARKET_FUTURES_WS_TOP_USDT_LIMIT=60", service)
+        self.assertIn("EnvironmentFile=-/home/ubuntu/github/mono/.market.env", service)
+        self.assertNotIn("Environment=MARKET_DB_PATH=", service)
         self.assertIn("run-binance-futures-kline-ws", script)
         self.assertIn("--gap-fill-on-reconnect", script)
+        self.assertIn("MARKET_DATABASE_URL", script)
 
     def test_deploy_scripts_used_by_systemd_are_executable(self):
         scripts = [
@@ -86,6 +93,7 @@ class DeployConfigTests(unittest.TestCase):
 
         self.assertIn("evaluate-mobile-alerts", script)
         self.assertIn("MARKET_DB_PATH", script)
+        self.assertIn("MARKET_DATABASE_URL", script)
         self.assertIn("market-evaluate-mobile-alerts.sh", readme)
         self.assertIn("logs/mobile-alerts.log", readme)
 

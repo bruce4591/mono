@@ -35,7 +35,7 @@ from market.collectors.binance_ws import BinanceKlineWebSocketCollector
 from market.collectors.base import CollectorResult, run_collector_job
 from market.crypto_gaps import fill_binance_1m_gaps
 from market.crypto_gaps import fill_binance_futures_1m_gaps
-from market.db import connect, init_database, init_postgres_database
+from market.db import connect, connect_database_url, init_database, init_postgres_database
 from market.models import AlertRule, WatchlistEntry
 from market.push import deliver_mobile_alert_pushes, send_expo_push_message
 from market.realtime import apply_binance_futures_kline_event, apply_binance_ticker_event
@@ -447,7 +447,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     settings = load_settings()
-    db_path = getattr(args, "db_path", None) or settings.db_path
+    explicit_db_path = getattr(args, "db_path", None)
+    db_path = explicit_db_path or settings.db_path
+    command_database_url = _database_url_for_command(explicit_db_path, settings)
+
+    def open_database():
+        return connect_database_url(command_database_url)
 
     if args.command == "init-db":
         init_database(db_path)
@@ -467,9 +472,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "health-check":
         try:
-            with connect(db_path) as connection:
+            with open_database() as connection:
                 connection.execute("SELECT 1 FROM instrument LIMIT 1").fetchone()
-        except sqlite3.Error as error:
+        except Exception as error:
             print(f"database: error: {error}")
             return 1
         print("database: ok")
@@ -486,14 +491,14 @@ def main(argv: list[str] | None = None) -> int:
         return result.exit_code
 
     if args.command == "sync-watchlists":
-        with connect(db_path) as connection:
+        with open_database() as connection:
             count = sync_watchlist_from_file(connection, args.path)
         payload = json.loads(args.path.read_text(encoding="utf-8"))
         print(f"watchlist synced: {payload['watchlist_name']} ({count} entries)")
         return 0
 
     if args.command == "refresh-rankings":
-        with connect(db_path) as connection:
+        with open_database() as connection:
             count = RankingRepository(connection).refresh_turnover_board(
                 board_name=args.board_name,
                 snapshot_ts_utc=args.snapshot_ts_utc,
@@ -507,7 +512,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "seed-sample-data":
-        with connect(db_path) as connection:
+        with open_database() as connection:
             result = seed_sample_data(
                 connection,
                 snapshot_ts_utc=args.snapshot_ts_utc,
@@ -546,7 +551,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"{args.symbol.upper()} {args.interval} limit={args.limit}"
             )
             return 0
-        with connect(db_path) as connection:
+        with open_database() as connection:
             result = sync_binance_klines(
                 connection,
                 symbol=args.symbol,
@@ -564,7 +569,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.dry_run:
             print(f"binance daily ready: {args.symbol.upper()} 1d days={args.days}")
             return 0
-        with connect(db_path) as connection:
+        with open_database() as connection:
             result = sync_binance_daily_bars(
                 connection,
                 symbol=args.symbol,
@@ -585,7 +590,7 @@ def main(argv: list[str] | None = None) -> int:
             symbol_text = ",".join(normalized_symbols) or f"top_usdt_limit={args.top_usdt_limit}"
             print(f"crypto kline aggregate ready: {symbol_text}")
             return 0
-        with connect(db_path) as connection:
+        with open_database() as connection:
             normalized_symbols = _crypto_symbols_for_aggregation(
                 connection,
                 symbols=args.symbol,
@@ -627,7 +632,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         tickers = fetch_binance_futures_24hr_tickers()
         exchange_info = fetch_binance_futures_exchange_info()
-        with connect(db_path) as connection:
+        with open_database() as connection:
             result = run_collector_job(
                 connection,
                 job_name="sync-crypto-futures-boards",
@@ -669,7 +674,7 @@ def main(argv: list[str] | None = None) -> int:
             limit=args.top_usdt_limit,
         )
         normalized_symbols = [symbol.upper() for symbol in symbols]
-        with connect(db_path) as connection:
+        with open_database() as connection:
             checkpoint = ",".join(normalized_symbols) + f":{args.interval}"
             ranking_count = 0
 
@@ -733,7 +738,7 @@ def main(argv: list[str] | None = None) -> int:
             symbol_text = ",".join(normalized_symbols) or "none"
             print(f"crypto futures aggregate ready: {symbol_text}")
             return 0
-        with connect(db_path) as connection:
+        with open_database() as connection:
             result = aggregate_market_from_1m(
                 connection,
                 market="CRYPTO_FUTURES",
@@ -759,7 +764,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"{symbol_text} 1m lookback={args.lookback_minutes}m"
             )
             return 0
-        with connect(db_path) as connection:
+        with open_database() as connection:
             checkpoint = ",".join(normalized_symbols) + f":1m:{start_ts_utc}:{end_ts_utc}"
             result = run_collector_job(
                 connection,
@@ -792,7 +797,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"{','.join(normalized_symbols)} days={args.days}"
             )
             return 0
-        with connect(db_path) as connection:
+        with open_database() as connection:
             checkpoint = ",".join(normalized_symbols) + f":1d:{args.days}"
 
             result = run_collector_job(
@@ -826,7 +831,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"{','.join(watchlist_names)} days={args.days}"
             )
             return 0
-        with connect(db_path) as connection:
+        with open_database() as connection:
             for config_path in watchlist_configs:
                 sync_watchlist_from_file(connection, config_path)
             connection.commit()
@@ -904,7 +909,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"{','.join(watchlist_names)} days={args.days}"
             )
             return 0
-        with connect(db_path) as connection:
+        with open_database() as connection:
             for config_path in watchlist_configs:
                 sync_watchlist_from_file(connection, config_path)
             connection.commit()
@@ -970,7 +975,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "apply-binance-ticker-event":
         payload = json.loads(args.path.read_text(encoding="utf-8"))
-        with connect(db_path) as connection:
+        with open_database() as connection:
             event = apply_binance_ticker_event(connection, payload)
         print(
             "binance ticker applied: "
@@ -997,7 +1002,8 @@ def main(argv: list[str] | None = None) -> int:
             print("binance kline ws error: at least one --symbol is required")
             return 1
         collector = BinanceKlineWebSocketCollector(
-            db_path=db_path,
+            db_path=db_path if command_database_url.startswith("sqlite:///") else None,
+            database_url=command_database_url,
             symbols=normalized_symbols,
             interval=args.interval,
             max_streams_per_connection=args.max_streams_per_connection,
@@ -1038,7 +1044,8 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         collector = BinanceKlineWebSocketCollector(
-            db_path=db_path,
+            db_path=db_path if command_database_url.startswith("sqlite:///") else None,
+            database_url=command_database_url,
             symbols=normalized_symbols,
             interval=args.interval,
             max_streams_per_connection=args.max_streams_per_connection,
@@ -1056,7 +1063,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "add-alert-rule":
-        with connect(db_path) as connection:
+        with open_database() as connection:
             AlertRuleRepository(connection).upsert(
                 AlertRule(
                     name=args.name,
@@ -1074,7 +1081,7 @@ def main(argv: list[str] | None = None) -> int:
         triggered_at_utc = args.triggered_at_utc or datetime.now(tz=UTC).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
-        with connect(db_path) as connection:
+        with open_database() as connection:
             result = evaluate_alert_rules(
                 connection,
                 triggered_at_utc=triggered_at_utc,
@@ -1086,7 +1093,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "list-alert-events":
-        with connect(db_path) as connection:
+        with open_database() as connection:
             events = AlertEventRepository(connection).list_recent(limit=args.limit)
         print(
             json.dumps(
@@ -1112,7 +1119,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "evaluate-mobile-alerts":
         now_utc = args.now_utc or datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        with connect(db_path) as connection:
+        with open_database() as connection:
             deliveries = deliver_mobile_alert_pushes(
                 connection,
                 now_utc=now_utc,
@@ -1140,6 +1147,15 @@ def _handle_sqlite_count_report(args: argparse.Namespace) -> int:
         counts = sqlite_table_counts(connection, ONLINE_BACKFILL_TABLES)
     print(format_count_report(counts))
     return 0
+
+
+def _database_url_for_command(
+    explicit_db_path: Path | None,
+    settings,
+) -> str:
+    if explicit_db_path is not None:
+        return f"sqlite:///{explicit_db_path}"
+    return settings.database_url
 
 
 def _parse_api_compare_ignore_paths(values: list[str]) -> dict[str, set[str]]:

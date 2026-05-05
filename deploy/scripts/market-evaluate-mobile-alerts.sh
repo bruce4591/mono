@@ -2,7 +2,6 @@
 set -euo pipefail
 
 APP_DIR=${MARKET_APP_DIR:-/home/ubuntu/github/mono}
-DB_PATH=${MARKET_DB_PATH:-$APP_DIR/data/market.sqlite3}
 ENV_FILE=${MARKET_ENV_FILE:-$APP_DIR/.market.env}
 
 cd "$APP_DIR"
@@ -14,4 +13,10 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
-.venv/bin/market evaluate-mobile-alerts --db-path "$DB_PATH"
+db_args=()
+if [[ -z "${MARKET_DATABASE_URL:-}" ]]; then
+  DB_PATH=${MARKET_DB_PATH:-$APP_DIR/data/market.sqlite3}
+  db_args+=(--db-path "$DB_PATH")
+fi
+
+.venv/bin/market evaluate-mobile-alerts "${db_args[@]}"

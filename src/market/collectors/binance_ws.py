@@ -8,7 +8,7 @@ from typing import Callable
 
 from market.collectors.base import CollectorResult
 from market.crypto_gaps import fill_binance_1m_gaps
-from market.db import connect
+from market.db import connect_database_url
 from market.realtime import apply_binance_kline_event, parse_binance_kline_event
 
 BINANCE_WS_BASE_URL = "wss://stream.binance.com:9443"
@@ -46,7 +46,8 @@ class BinanceKlineWebSocketCollector:
     def __init__(
         self,
         *,
-        db_path: Path | str,
+        db_path: Path | str | None = None,
+        database_url: str | None = None,
         symbols: list[str],
         interval: str = "1m",
         max_streams_per_connection: int = 200,
@@ -61,7 +62,11 @@ class BinanceKlineWebSocketCollector:
         log_prefix: str = "binance ws",
         message_handler=None,
     ) -> None:
-        self.db_path = Path(db_path)
+        if database_url is None:
+            if db_path is None:
+                raise ValueError("db_path or database_url is required")
+            database_url = f"sqlite:///{Path(db_path)}"
+        self.database_url = database_url
         self.symbols = [symbol.upper() for symbol in symbols]
         self.interval = interval
         self.max_streams_per_connection = max_streams_per_connection
@@ -138,7 +143,7 @@ class BinanceKlineWebSocketCollector:
         try:
             payload = json.loads(message)
             bar_start_ts_utc = _extract_kline_start_ts(payload)
-            with connect(self.db_path) as connection:
+            with connect_database_url(self.database_url) as connection:
                 if self.gap_fill_on_reconnect and bar_start_ts_utc is not None:
                     self._fill_gap_before_bar(connection, bar_start_ts_utc)
                 handler = self.message_handler or apply_binance_kline_event

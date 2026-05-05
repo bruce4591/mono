@@ -7,8 +7,8 @@ Wants=network-online.target
 Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/github/mono
+EnvironmentFile=-/home/ubuntu/github/mono/.market.env
 Environment=MARKET_APP_DIR=/home/ubuntu/github/mono
-Environment=MARKET_DB_PATH=/home/ubuntu/github/mono/data/market.sqlite3
 Environment=MARKET_WS_TOP_USDT_LIMIT=60
 ExecStart=/home/ubuntu/github/mono/deploy/scripts/market-run-binance-kline-ws.sh
 Restart=always

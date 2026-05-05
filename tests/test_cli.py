@@ -11,6 +11,18 @@ from unittest.mock import patch
 
 from market.cli import main
 from market.collectors.base import CollectorResult
+from market.settings import Settings
+
+
+class _FakeConnectionContext:
+    def __init__(self, connection):
+        self.connection = connection
+
+    def __enter__(self):
+        return self.connection
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
 
 class CliTests(unittest.TestCase):
@@ -84,6 +96,48 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn("database: ok", stdout.getvalue())
+
+    def test_sync_watchlists_uses_database_url_when_db_path_is_omitted(self):
+        config_payload = {
+            "watchlist_name": "ETF_FOCUS20",
+            "entries": [],
+        }
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "etf_focus20.json"
+            config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+            fake_connection = object()
+            fake_context = _FakeConnectionContext(fake_connection)
+            stdout = io.StringIO()
+
+            with patch(
+                "market.cli.load_settings",
+                return_value=Settings(
+                    database_url="postgresql://market_app:secret@127.0.0.1:5432/market",
+                    db_path=None,
+                    log_level="INFO",
+                ),
+            ), patch(
+                "market.cli.connect_database_url",
+                return_value=fake_context,
+            ) as connect_database_url, patch(
+                "market.cli.sync_watchlist_from_file",
+                return_value=0,
+            ) as sync_watchlist:
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "sync-watchlists",
+                            "--path",
+                            str(config_path),
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        connect_database_url.assert_called_once_with(
+            "postgresql://market_app:secret@127.0.0.1:5432/market"
+        )
+        sync_watchlist.assert_called_once_with(fake_connection, config_path)
+        self.assertIn("watchlist synced: ETF_FOCUS20", stdout.getvalue())
 
     def test_sync_watchlists_imports_static_config(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -988,6 +1042,45 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(created[0]["symbols"], ["BTCUSDT"])
         self.assertFalse(created[0]["gap_fill_on_reconnect"])
+
+    def test_run_binance_kline_ws_uses_database_url_when_db_path_is_omitted(self):
+        created = []
+
+        class FakeCollector:
+            def __init__(self, **kwargs):
+                created.append(kwargs)
+
+            def run_forever(self):
+                return CollectorResult(
+                    source_name="binance_ws_kline",
+                    items_synced=0,
+                    metadata={},
+                )
+
+        with patch(
+            "market.cli.load_settings",
+            return_value=Settings(
+                database_url="postgresql://market_app:secret@127.0.0.1:5432/market",
+                db_path=None,
+                log_level="INFO",
+            ),
+        ), patch("market.cli.BinanceKlineWebSocketCollector", FakeCollector):
+            exit_code = main(
+                [
+                    "run-binance-kline-ws",
+                    "--symbol",
+                    "BTCUSDT",
+                    "--interval",
+                    "1m",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIsNone(created[0]["db_path"])
+        self.assertEqual(
+            created[0]["database_url"],
+            "postgresql://market_app:secret@127.0.0.1:5432/market",
+        )
 
     def test_fill_crypto_kline_gaps_uses_top_symbols_and_lookback_window(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -2,7 +2,6 @@
 set -euo pipefail
 
 APP_DIR=${MARKET_APP_DIR:-/home/ubuntu/github/mono}
-DB_PATH=${MARKET_DB_PATH:-$APP_DIR/data/market.sqlite3}
 ENV_FILE=${MARKET_ENV_FILE:-$APP_DIR/.market.env}
 
 cd "$APP_DIR"
@@ -12,6 +11,12 @@ if [[ -f "$ENV_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$ENV_FILE"
   set +a
+fi
+
+db_args=()
+if [[ -z "${MARKET_DATABASE_URL:-}" ]]; then
+  DB_PATH=${MARKET_DB_PATH:-$APP_DIR/data/market.sqlite3}
+  db_args+=(--db-path "$DB_PATH")
 fi
 
 AKSHARE_CONFIGS=(
@@ -28,7 +33,7 @@ ALPACA_CONFIGS=(
 
 for config in "${AKSHARE_CONFIGS[@]}"; do
   .venv/bin/market sync-akshare-focus \
-    --db-path "$DB_PATH" \
+    "${db_args[@]}" \
     --days 365 \
     --board-limit 30 \
     --request-timeout-seconds 30 \
@@ -41,7 +46,7 @@ for config in "${ALPACA_CONFIGS[@]}"; do
 done
 
 .venv/bin/market sync-alpaca-focus \
-  --db-path "$DB_PATH" \
+  "${db_args[@]}" \
   --days 365 \
   --board-limit 30 \
   --request-timeout-seconds 30 \

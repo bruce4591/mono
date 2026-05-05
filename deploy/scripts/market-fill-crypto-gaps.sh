@@ -2,13 +2,26 @@
 set -euo pipefail
 
 APP_DIR=${MARKET_APP_DIR:-/home/ubuntu/github/mono}
-DB_PATH=${MARKET_DB_PATH:-$APP_DIR/data/market.sqlite3}
+ENV_FILE=${MARKET_ENV_FILE:-$APP_DIR/.market.env}
 LOOKBACK_MINUTES=${MARKET_GAP_LOOKBACK_MINUTES:-180}
 TOP_USDT_LIMIT=${MARKET_GAP_TOP_USDT_LIMIT:-60}
 
 cd "$APP_DIR"
 
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
+db_args=()
+if [[ -z "${MARKET_DATABASE_URL:-}" ]]; then
+  DB_PATH=${MARKET_DB_PATH:-$APP_DIR/data/market.sqlite3}
+  db_args+=(--db-path "$DB_PATH")
+fi
+
 .venv/bin/market fill-crypto-kline-gaps \
-  --db-path "$DB_PATH" \
+  "${db_args[@]}" \
   --lookback-minutes "$LOOKBACK_MINUTES" \
   --top-usdt-limit "$TOP_USDT_LIMIT"
