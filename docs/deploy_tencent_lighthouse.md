@@ -205,7 +205,7 @@ sudo systemctl restart market-api.service
 7. Validate production reads:
 
 ```bash
-curl -fsS http://127.0.0.1:8000/api/status
+curl -fsS http://127.0.0.1:8000/api/health
 curl -fsS http://127.0.0.1:8000/api/boards/HK_STOCK_FOCUS20
 curl -fsS "http://127.0.0.1:8000/api/bars/daily?market=HK&symbol=00700"
 ```
