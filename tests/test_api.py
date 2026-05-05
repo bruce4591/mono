@@ -10,11 +10,15 @@ from unittest.mock import patch
 
 from market.api import (
     _make_handler,
+    _close_device_session,
+    _open_device_session,
+    _touch_device_session,
     get_alert_events_payload,
     get_alert_metrics_payload,
     get_alert_rules_payload,
     get_daily_bars_payload,
     format_mobile_alert_sse_events,
+    mobile_alert_sse_heartbeat,
     get_health_payload,
     get_instrument_payload,
     get_intraday_bars_payload,
@@ -407,6 +411,55 @@ class ApiTests(unittest.TestCase):
         self.assertIn("event: alert", body)
         self.assertIn("id: 123", body)
         self.assertIn('"mobile_alert_event_id": 123', body)
+
+    def test_mobile_alert_sse_heartbeat_is_comment_frame(self):
+        self.assertEqual(mobile_alert_sse_heartbeat(), b": keep-alive\n\n")
+
+    def test_device_session_lifecycle_marks_disconnect(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            with connect(db_path) as connection:
+                _request_api(
+                    db_path,
+                    "POST",
+                    "/api/mobile/devices",
+                    {
+                        "platform": "android",
+                        "push_token": "ExponentPushToken[test-token]",
+                    },
+                )
+                push_device_id = connection.execute(
+                    "SELECT push_device_id FROM push_device"
+                ).fetchone()["push_device_id"]
+                _open_device_session(
+                    connection,
+                    session_id="session-1",
+                    push_device_id=int(push_device_id),
+                    transport="sse",
+                    now_utc="2026-05-05T00:00:00Z",
+                )
+                _touch_device_session(
+                    connection,
+                    session_id="session-1",
+                    now_utc="2026-05-05T00:00:10Z",
+                )
+                _close_device_session(
+                    connection,
+                    session_id="session-1",
+                    now_utc="2026-05-05T00:00:20Z",
+                )
+                row = connection.execute(
+                    """
+                    SELECT transport, last_seen_at_utc, disconnected_at_utc
+                    FROM device_session
+                    WHERE session_id = 'session-1'
+                    """
+                ).fetchone()
+
+        self.assertEqual(row["transport"], "sse")
+        self.assertEqual(row["last_seen_at_utc"], "2026-05-05T00:00:20Z")
+        self.assertEqual(row["disconnected_at_utc"], "2026-05-05T00:00:20Z")
 
     def test_ack_mobile_alert_events_updates_device_checkpoint(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

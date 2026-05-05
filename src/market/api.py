@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
+import uuid
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
@@ -45,6 +47,9 @@ ALPACA_PRICE_REFRESH_BOARDS = {
     "US_STOCK_FOCUS20": ["US_STOCK_FOCUS20"],
     "ETF_FOCUS20": ["ETF_FOCUS20"],
 }
+SSE_POLL_SECONDS = 1.0
+SSE_HEARTBEAT_SECONDS = 20.0
+SSE_MAX_CONNECTION_SECONDS = 30 * 60
 
 
 @dataclass(frozen=True)
@@ -1146,6 +1151,10 @@ def format_mobile_alert_sse_events(events: list[dict[str, object]]) -> bytes:
     return "".join(chunks).encode("utf-8")
 
 
+def mobile_alert_sse_heartbeat() -> bytes:
+    return b": keep-alive\n\n"
+
+
 def patch_mobile_alert_rule(
     connection: sqlite3.Connection,
     rule_id: int,
@@ -1336,24 +1345,17 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
                 if push_token is None:
                     self._write_json({"error": "push_token required"}, HTTPStatus.BAD_REQUEST)
                     return
-                after_id_value = _first_query(query, "after_id")
-                after_id = int(after_id_value) if after_id_value is not None else 0
-                with connect(db_path) as connection:
-                    payload = get_mobile_alert_events_payload(
-                        connection,
-                        push_token=push_token,
-                        after_id=after_id,
-                        limit=100,
-                    )
-                body = format_mobile_alert_sse_events(
-                    payload["events"] if isinstance(payload["events"], list) else []
-                )
+                after_id = _optional_query_int(query, "after_id") or 0
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                 self.send_header("Cache-Control", "no-cache")
                 self.send_header("Connection", "keep-alive")
+                self.send_header("X-Accel-Buffering", "no")
                 self.end_headers()
-                self.wfile.write(body or b": keep-alive\n\n")
+                self._stream_mobile_alert_events(
+                    push_token=push_token,
+                    after_id=after_id,
+                )
                 return
 
             if parsed.path.startswith("/api/boards/"):
@@ -1453,6 +1455,67 @@ def _make_handler(db_path: Path) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
+        def _stream_mobile_alert_events(self, *, push_token: str, after_id: int) -> None:
+            session_id = uuid.uuid4().hex
+            started = time.monotonic()
+            last_heartbeat = 0.0
+            current_after_id = after_id
+            try:
+                with connect(db_path) as connection:
+                    push_device = _push_device_row_for_token(connection, push_token)
+                    if push_device is None:
+                        self.wfile.write(mobile_alert_sse_heartbeat())
+                        self.wfile.flush()
+                        return
+                    push_device_id = int(push_device["push_device_id"])
+                    _open_device_session(
+                        connection,
+                        session_id=session_id,
+                        push_device_id=push_device_id,
+                        transport="sse",
+                        now_utc=_now_utc(),
+                    )
+                while time.monotonic() - started < SSE_MAX_CONNECTION_SECONDS:
+                    with connect(db_path) as connection:
+                        payload = get_mobile_alert_events_payload(
+                            connection,
+                            push_token=push_token,
+                            after_id=current_after_id,
+                            limit=100,
+                        )
+                        events = payload["events"] if isinstance(payload["events"], list) else []
+                        if events:
+                            self.wfile.write(format_mobile_alert_sse_events(events))
+                            self.wfile.flush()
+                            current_after_id = max(
+                                int(event["mobile_alert_event_id"]) for event in events
+                            )
+                            _touch_device_session(
+                                connection,
+                                session_id=session_id,
+                                now_utc=_now_utc(),
+                            )
+                            last_heartbeat = time.monotonic()
+                        elif time.monotonic() - last_heartbeat >= SSE_HEARTBEAT_SECONDS:
+                            self.wfile.write(mobile_alert_sse_heartbeat())
+                            self.wfile.flush()
+                            _touch_device_session(
+                                connection,
+                                session_id=session_id,
+                                now_utc=_now_utc(),
+                            )
+                            last_heartbeat = time.monotonic()
+                    time.sleep(SSE_POLL_SECONDS)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                with connect(db_path) as connection:
+                    _close_device_session(
+                        connection,
+                        session_id=session_id,
+                        now_utc=_now_utc(),
+                    )
+
         def _read_json_object(self) -> dict[str, object]:
             length = self.headers.get("Content-Length")
             if length is None:
@@ -1515,6 +1578,66 @@ def _content_type(path: Path) -> str:
     if path.name == "manifest.webmanifest":
         return "application/manifest+json; charset=utf-8"
     return "application/octet-stream"
+
+
+def _open_device_session(
+    connection: sqlite3.Connection,
+    *,
+    session_id: str,
+    push_device_id: int,
+    transport: str,
+    now_utc: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO device_session (
+            session_id,
+            push_device_id,
+            transport,
+            connected_at_utc,
+            last_seen_at_utc,
+            disconnected_at_utc
+        )
+        VALUES (?, ?, ?, ?, ?, NULL)
+        ON CONFLICT(session_id) DO UPDATE SET
+            last_seen_at_utc = excluded.last_seen_at_utc,
+            disconnected_at_utc = NULL
+        """,
+        (session_id, push_device_id, transport, now_utc, now_utc),
+    )
+
+
+def _touch_device_session(
+    connection: sqlite3.Connection,
+    *,
+    session_id: str,
+    now_utc: str,
+) -> None:
+    connection.execute(
+        """
+        UPDATE device_session
+        SET last_seen_at_utc = ?
+        WHERE session_id = ?
+        """,
+        (now_utc, session_id),
+    )
+
+
+def _close_device_session(
+    connection: sqlite3.Connection,
+    *,
+    session_id: str,
+    now_utc: str,
+) -> None:
+    connection.execute(
+        """
+        UPDATE device_session
+        SET last_seen_at_utc = ?,
+            disconnected_at_utc = ?
+        WHERE session_id = ?
+        """,
+        (now_utc, now_utc, session_id),
+    )
 
 
 def _latest_snapshot_ts(connection: sqlite3.Connection, board_name: str) -> str | None:
