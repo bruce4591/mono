@@ -76,6 +76,47 @@ class AggregatorTests(unittest.TestCase):
         self.assertEqual(bars[0].bar_end_ts_utc, "2026-04-12T16:00:00Z")
         self.assertFalse(bars[0].is_closed_bar)
 
+    def test_aggregate_intraday_accepts_postgres_timestamptz_strings(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instrument_id = InstrumentRepository(connection).upsert(
+                    binance_symbol_to_instrument("BTCUSDT")
+                )
+                repository = IntradayBarRepository(connection)
+                for index in range(5):
+                    minute = 15 + index
+                    repository.upsert(
+                        IntradayBar(
+                            instrument_id=instrument_id,
+                            interval="1m",
+                            bar_start_ts_utc=f"2026-04-12 13:{minute:02d}:00+00:00",
+                            bar_end_ts_utc=f"2026-04-12 13:{minute + 1:02d}:00+00:00",
+                            trade_date_local="2026-04-12",
+                            open=100.0 + index,
+                            high=101.5 + index,
+                            low=99.5 + index,
+                            close=101.0 + index,
+                            volume_raw=1.0,
+                            turnover_raw=100.0,
+                            is_closed_bar=True,
+                            source="postgres_fixture",
+                        )
+                    )
+
+                result = aggregate_intraday_from_1m(
+                    connection,
+                    instrument_ids=[instrument_id],
+                    target_intervals=["5m"],
+                )
+                bars_5m = repository.list_for_instrument(instrument_id, "5m")
+
+        self.assertEqual(result.bars_written, 1)
+        self.assertEqual(bars_5m[0].bar_start_ts_utc, "2026-04-12T13:15:00Z")
+        self.assertTrue(bars_5m[0].is_closed_bar)
+
     def test_aggregate_intraday_from_1m_only_writes_after_latest_target_bar(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
