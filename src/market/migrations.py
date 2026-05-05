@@ -108,6 +108,20 @@ SQLITE_MIGRATIONS: tuple[Migration, ...] = (
             ON market_snapshot_history (instrument_id, snapshot_ts_utc DESC);
         """,
     ),
+    Migration(
+        migration_id="0003_board_refresh_state",
+        sql="""
+        CREATE TABLE IF NOT EXISTS board_refresh_state (
+            board_name TEXT PRIMARY KEY,
+            last_requested_at_utc TEXT,
+            last_started_at_utc TEXT,
+            last_finished_at_utc TEXT,
+            status TEXT NOT NULL DEFAULT 'idle',
+            last_error TEXT,
+            updated_at_utc TEXT NOT NULL
+        );
+        """,
+    ),
 )
 
 

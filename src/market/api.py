@@ -275,10 +275,26 @@ def schedule_board_prices_refresh_on_open(
         return False
     if not _reserve_board_refresh(board_name, time.monotonic(), min_interval_seconds):
         return False
+    path = Path(db_path)
+    reserved = False
+    try:
+        with connect(path) as connection:
+            reserved = _reserve_durable_board_refresh(
+                connection,
+                board_name=board_name,
+                now_utc=_now_utc(),
+                ttl_seconds=min_interval_seconds,
+            )
+    except Exception:
+        _finish_board_refresh(board_name)
+        return False
+    if not reserved:
+        _finish_board_refresh(board_name)
+        return False
 
     thread = threading.Thread(
         target=_run_board_prices_refresh,
-        args=(Path(db_path), board_name),
+        args=(path, board_name),
         daemon=True,
     )
     thread.start()
@@ -289,10 +305,92 @@ def _run_board_prices_refresh(db_path: Path, board_name: str) -> None:
     try:
         with connect(db_path) as connection:
             refresh_board_prices_on_open(connection, board_name)
-    except Exception:
+            _finish_durable_board_refresh(
+                connection,
+                board_name=board_name,
+                status="succeeded",
+                error=None,
+                now_utc=_now_utc(),
+            )
+    except Exception as exc:
+        try:
+            with connect(db_path) as connection:
+                _finish_durable_board_refresh(
+                    connection,
+                    board_name=board_name,
+                    status="failed",
+                    error=str(exc),
+                    now_utc=_now_utc(),
+                )
+        except Exception:
+            pass
         return
     finally:
         _finish_board_refresh(board_name)
+
+
+def _reserve_durable_board_refresh(
+    connection: sqlite3.Connection,
+    *,
+    board_name: str,
+    now_utc: str,
+    ttl_seconds: int,
+) -> bool:
+    row = connection.execute(
+        """
+        SELECT last_requested_at_utc, status
+        FROM board_refresh_state
+        WHERE board_name = ?
+        """,
+        (board_name,),
+    ).fetchone()
+    if row is not None and row["last_requested_at_utc"]:
+        previous = _parse_utc(str(row["last_requested_at_utc"]))
+        current = _parse_utc(now_utc)
+        if (current - previous).total_seconds() < ttl_seconds:
+            return False
+    connection.execute(
+        """
+        INSERT INTO board_refresh_state (
+            board_name,
+            last_requested_at_utc,
+            last_started_at_utc,
+            status,
+            updated_at_utc
+        )
+        VALUES (?, ?, ?, 'running', ?)
+        ON CONFLICT(board_name) DO UPDATE SET
+            last_requested_at_utc = excluded.last_requested_at_utc,
+            last_started_at_utc = excluded.last_started_at_utc,
+            status = 'running',
+            last_error = NULL,
+            updated_at_utc = excluded.updated_at_utc
+        """,
+        (board_name, now_utc, now_utc, now_utc),
+    )
+    return True
+
+
+def _finish_durable_board_refresh(
+    connection: sqlite3.Connection,
+    *,
+    board_name: str,
+    status: str,
+    error: str | None,
+    now_utc: str,
+) -> None:
+    connection.execute(
+        """
+        UPDATE board_refresh_state
+        SET
+            last_finished_at_utc = ?,
+            status = ?,
+            last_error = ?,
+            updated_at_utc = ?
+        WHERE board_name = ?
+        """,
+        (now_utc, status, error, now_utc, board_name),
+    )
 
 
 def _reserve_board_refresh(

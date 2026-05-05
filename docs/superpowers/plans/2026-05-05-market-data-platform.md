@@ -688,7 +688,7 @@ git commit -m "Write latest and history market snapshots"
 - Test: `tests/test_api.py`
 - Test: `tests/test_db_schema.py`
 
-- [ ] **Step 1: Write a failing schema test**
+- [x] **Step 1: Write a failing schema test**
 
 Add this to `tests/test_db_schema.py`:
 
@@ -708,7 +708,7 @@ def test_board_refresh_state_table_exists(self):
     self.assertIsNotNone(row)
 ```
 
-- [ ] **Step 2: Add the table and migration**
+- [x] **Step 2: Add the table and migration**
 
 Add this table to `src/market/schema.sql`:
 
@@ -743,7 +743,7 @@ Migration(
 ),
 ```
 
-- [ ] **Step 3: Add refresh reservation helpers**
+- [x] **Step 3: Add refresh reservation helpers**
 
 Add helper functions near the board refresh code in `src/market/api.py`:
 
@@ -801,11 +801,11 @@ def _parse_utc(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 ```
 
-- [ ] **Step 4: Replace the in-process one-minute reservation path**
+- [x] **Step 4: Replace the in-process one-minute reservation path**
 
 Update `schedule_board_prices_refresh_on_open` so it checks `board_refresh_state` before starting a refresh thread. Keep the existing in-process guard as a secondary protection during this task.
 
-- [ ] **Step 5: Add a durable TTL API test**
+- [x] **Step 5: Add a durable TTL API test**
 
 Add this to `tests/test_api.py`:
 
@@ -831,7 +831,7 @@ def test_board_open_refresh_uses_durable_refresh_state(self):
     self.assertFalse(second)
 ```
 
-- [ ] **Step 6: Run affected tests**
+- [x] **Step 6: Run affected tests**
 
 Run:
 
@@ -841,7 +841,7 @@ PYTHONPATH=src python3 -m unittest tests.test_db_schema tests.test_api -v
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/market/schema.sql src/market/migrations.py src/market/api.py tests/test_api.py tests/test_db_schema.py

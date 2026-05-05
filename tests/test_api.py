@@ -28,6 +28,7 @@ from market.api import (
     get_watchlists_payload,
     _finish_board_refresh,
     _reserve_board_refresh,
+    _reserve_durable_board_refresh,
     refresh_board_prices_on_open,
 )
 from market.binance import binance_symbol_to_instrument
@@ -71,6 +72,27 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(rows[0]["getui_cid"], "getui-cid-1")
         self.assertEqual(rows[0]["device_label"], "OnePlus 13T")
         self.assertEqual(rows[0]["enabled"], 1)
+
+    def test_board_open_refresh_uses_durable_refresh_state(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            with connect(db_path) as connection:
+                first = _reserve_durable_board_refresh(
+                    connection,
+                    board_name="HK_STOCK_FOCUS20",
+                    now_utc="2026-05-05T03:01:04+00:00",
+                    ttl_seconds=60,
+                )
+                second = _reserve_durable_board_refresh(
+                    connection,
+                    board_name="HK_STOCK_FOCUS20",
+                    now_utc="2026-05-05T03:01:30+00:00",
+                    ttl_seconds=60,
+                )
+
+        self.assertTrue(first)
+        self.assertFalse(second)
 
     def test_register_mobile_device_accepts_getui_only_device(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

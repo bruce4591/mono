@@ -175,6 +175,21 @@ class DatabaseSchemaTests(unittest.TestCase):
         self.assertEqual(float(latest["last_price"]), 468.2)
         self.assertEqual(float(history["last_price"]), 468.2)
 
+    def test_board_refresh_state_table_exists(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            with connect(db_path) as connection:
+                row = connection.execute(
+                    """
+                    SELECT name
+                    FROM sqlite_master
+                    WHERE type = 'table' AND name = 'board_refresh_state'
+                    """
+                ).fetchone()
+
+        self.assertIsNotNone(row)
+
 
 if __name__ == "__main__":
     unittest.main()

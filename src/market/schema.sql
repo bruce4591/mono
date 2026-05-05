@@ -136,6 +136,16 @@ CREATE TABLE IF NOT EXISTS source_health (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS board_refresh_state (
+    board_name TEXT PRIMARY KEY,
+    last_requested_at_utc TEXT,
+    last_started_at_utc TEXT,
+    last_finished_at_utc TEXT,
+    status TEXT NOT NULL DEFAULT 'idle',
+    last_error TEXT,
+    updated_at_utc TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS alert_rule (
     rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
