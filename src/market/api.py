@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -177,8 +177,8 @@ def get_board_payload(
     ).fetchall()
     return {
         "board_name": board_name,
-        "snapshot_ts_utc": resolved_snapshot,
-        "previous_snapshot_ts_utc": previous_snapshot,
+        "snapshot_ts_utc": _api_str(resolved_snapshot),
+        "previous_snapshot_ts_utc": _api_str(previous_snapshot),
         "items": [
             {
                 "rank": rank,
@@ -870,7 +870,7 @@ def _list_intraday_window(
 def _daily_bar_from_row(row: sqlite3.Row) -> DailyBar:
     return DailyBar(
         instrument_id=int(row["instrument_id"]),
-        trade_date=str(row["trade_date"]),
+        trade_date=_api_str(row["trade_date"]),
         open=_optional_float(row["open"]),
         high=_optional_float(row["high"]),
         low=_optional_float(row["low"]),
@@ -901,9 +901,9 @@ def _intraday_bar_from_row(row: sqlite3.Row) -> IntradayBar:
     return IntradayBar(
         instrument_id=int(row["instrument_id"]),
         interval=str(row["interval"]),
-        bar_start_ts_utc=str(row["bar_start_ts_utc"]),
-        bar_end_ts_utc=str(row["bar_end_ts_utc"]),
-        trade_date_local=str(row["trade_date_local"]),
+        bar_start_ts_utc=_api_str(row["bar_start_ts_utc"]),
+        bar_end_ts_utc=_api_str(row["bar_end_ts_utc"]),
+        trade_date_local=_api_str(row["trade_date_local"]),
         open=_optional_float(row["open"]),
         high=_optional_float(row["high"]),
         low=_optional_float(row["low"]),
@@ -1000,7 +1000,7 @@ def get_health_payload(connection: sqlite3.Connection) -> dict[str, object]:
         "latest_boards": [
             {
                 "board_name": str(row["board_name"]),
-                "snapshot_ts_utc": str(row["snapshot_ts_utc"]),
+                "snapshot_ts_utc": _api_str(row["snapshot_ts_utc"]),
                 "item_count": int(row["item_count"]),
             }
             for row in latest_boards
@@ -1040,7 +1040,7 @@ def get_jobs_payload(connection: sqlite3.Connection) -> dict[str, object]:
                 "last_started_at": _optional_str(row["last_started_at"]),
                 "last_finished_at": _optional_str(row["last_finished_at"]),
                 "last_error": _optional_str(row["last_error"]),
-                "updated_at": str(row["updated_at"]),
+                "updated_at": _api_str(row["updated_at"]),
             }
             for row in job_rows
         ],
@@ -2087,7 +2087,7 @@ def _latest_snapshot_ts(connection: sqlite3.Connection, board_name: str) -> str 
     ).fetchone()
     if row is None:
         return None
-    return str(row["snapshot_ts_utc"])
+    return _api_str(row["snapshot_ts_utc"])
 
 
 def _previous_snapshot_ts(
@@ -2106,7 +2106,7 @@ def _previous_snapshot_ts(
     ).fetchone()
     if row is None or row["snapshot_ts_utc"] is None:
         return None
-    return str(row["snapshot_ts_utc"])
+    return _api_str(row["snapshot_ts_utc"])
 
 
 def _latest_watchlist_snapshot_trade_date(
@@ -2135,7 +2135,7 @@ def _latest_watchlist_snapshot_trade_date(
     ).fetchone()
     if row is None or row["trade_date_local"] is None:
         return None
-    return str(row["trade_date_local"])
+    return _api_str(row["trade_date_local"])
 
 
 def _latest_snapshot(
@@ -2163,8 +2163,8 @@ def _latest_snapshot(
     if row is None:
         return None
     return {
-        "snapshot_ts_utc": str(row["snapshot_ts_utc"]),
-        "trade_date_local": str(row["trade_date_local"]),
+        "snapshot_ts_utc": _api_str(row["snapshot_ts_utc"]),
+        "trade_date_local": _api_str(row["trade_date_local"]),
         "last_price": _optional_float(row["last_price"]),
         "change_pct": _optional_float(row["change_pct"]),
         "volume_raw": _optional_float(row["volume_raw"]),
@@ -2273,6 +2273,16 @@ def _format_utc(value: datetime) -> str:
     return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _api_str(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return _format_utc(value)
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
 def _to_ms(value: datetime) -> int:
     return int(value.astimezone(UTC).timestamp() * 1000)
 
@@ -2301,7 +2311,7 @@ def _price_tick_size(extra_meta: object) -> str | None:
 def _optional_str(value: object) -> str | None:
     if value is None:
         return None
-    return str(value)
+    return _api_str(value)
 
 
 def _optional_int(value: object) -> int | None:
