@@ -140,6 +140,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_postgres_db.add_argument("--database-url", required=True)
 
+    backfill_postgres = subparsers.add_parser(
+        "backfill-postgres",
+        help="Backfill online tables from SQLite into PostgreSQL",
+    )
+    backfill_postgres.add_argument("--sqlite-db", required=True)
+    backfill_postgres.add_argument("--postgres-url", required=True)
+
     health_check = subparsers.add_parser(
         "health-check", help="Check whether the SQLite database is readable"
     )
@@ -423,6 +430,9 @@ def main(argv: list[str] | None = None) -> int:
         init_postgres_database(args.database_url)
         print("postgres database initialized")
         return 0
+
+    if args.command == "backfill-postgres":
+        return _handle_backfill_postgres(args)
 
     if args.command == "health-check":
         try:
@@ -1068,6 +1078,38 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    return 0
+
+
+def _handle_backfill_postgres(args: argparse.Namespace) -> int:
+    from market.backfill import (
+        ONLINE_BACKFILL_TABLES,
+        fetch_sqlite_rows,
+        insert_postgres_rows,
+        list_table_columns,
+    )
+
+    try:
+        import psycopg
+    except ImportError as exc:
+        raise RuntimeError("PostgreSQL support requires psycopg[binary]") from exc
+
+    with connect(Path(args.sqlite_db)) as sqlite_connection:
+        with psycopg.connect(args.postgres_url) as pg_connection:
+            for table_name in ONLINE_BACKFILL_TABLES:
+                columns = list_table_columns(sqlite_connection, table_name)
+                rows = fetch_sqlite_rows(
+                    sqlite_connection,
+                    table_name=table_name,
+                    columns=columns,
+                )
+                insert_postgres_rows(
+                    pg_connection,
+                    table_name=table_name,
+                    columns=columns,
+                    rows=rows,
+                )
+            pg_connection.commit()
     return 0
 
 

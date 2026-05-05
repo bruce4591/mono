@@ -1169,7 +1169,7 @@ git commit -m "Add PostgreSQL database initialization"
 - Test: `tests/test_backfill.py`
 - Test: `tests/test_cli.py`
 
-- [ ] **Step 1: Write a unit test for row ordering**
+- [x] **Step 1: Write a unit test for row ordering**
 
 Create `tests/test_backfill.py`:
 
@@ -1194,7 +1194,7 @@ class BackfillTests(unittest.TestCase):
         )
 ```
 
-- [ ] **Step 2: Create backfill helper**
+- [x] **Step 2: Create backfill helper**
 
 Create `src/market/backfill.py`:
 
@@ -1246,7 +1246,7 @@ def fetch_sqlite_rows(
     return [{column: row[column] for column in columns} for row in rows]
 ```
 
-- [ ] **Step 3: Add PostgreSQL insert helper**
+- [x] **Step 3: Add PostgreSQL insert helper**
 
 Add to `src/market/backfill.py`:
 
@@ -1274,7 +1274,7 @@ def insert_postgres_rows(
     return len(rows)
 ```
 
-- [ ] **Step 4: Add backfill command handler**
+- [x] **Step 4: Add backfill command handler**
 
 Modify `src/market/cli.py`:
 
@@ -1311,7 +1311,7 @@ def _handle_backfill_postgres(args: argparse.Namespace) -> int:
     return 0
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
@@ -1321,7 +1321,7 @@ PYTHONPATH=src python3 -m unittest tests.test_backfill tests.test_cli -v
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/market/backfill.py src/market/cli.py tests/test_backfill.py tests/test_cli.py
