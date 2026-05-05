@@ -943,7 +943,7 @@ git commit -m "Add database URL settings"
 - Create: `src/market/pg_schema.sql`
 - Test: `tests/test_db_schema.py`
 
-- [ ] **Step 1: Write a static PostgreSQL schema test**
+- [x] **Step 1: Write a static PostgreSQL schema test**
 
 Add to `tests/test_db_schema.py`:
 
@@ -960,7 +960,7 @@ def test_postgres_schema_contains_online_tables(self):
     self.assertIn("CREATE TABLE IF NOT EXISTS schema_migration", schema)
 ```
 
-- [ ] **Step 2: Create PostgreSQL schema**
+- [x] **Step 2: Create PostgreSQL schema**
 
 Create `src/market/pg_schema.sql`. Use the same logical tables as `schema.sql`, with PostgreSQL syntax:
 
@@ -1051,7 +1051,7 @@ Then copy the remaining online tables from `schema.sql` into PostgreSQL syntax:
 
 Use `BIGSERIAL` for autoincrement IDs, `BOOLEAN` for boolean fields, `TIMESTAMPTZ` for UTC timestamps, `JSONB` for metadata payloads, and `ON CONFLICT` compatible unique constraints.
 
-- [ ] **Step 3: Run schema static test**
+- [x] **Step 3: Run schema static test**
 
 Run:
 
@@ -1061,7 +1061,7 @@ PYTHONPATH=src python3 -m unittest tests.test_db_schema.TestDatabaseSchema.test_
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/market/pg_schema.sql tests/test_db_schema.py

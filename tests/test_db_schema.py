@@ -190,6 +190,21 @@ class DatabaseSchemaTests(unittest.TestCase):
 
         self.assertIsNotNone(row)
 
+    def test_postgres_schema_contains_online_tables(self):
+        schema = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "market"
+            / "pg_schema.sql"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("CREATE TABLE IF NOT EXISTS schema_migration", schema)
+        self.assertIn("CREATE TABLE IF NOT EXISTS instrument", schema)
+        self.assertIn("CREATE TABLE IF NOT EXISTS latest_market_snapshot", schema)
+        self.assertIn("CREATE TABLE IF NOT EXISTS market_snapshot_history", schema)
+        self.assertIn("CREATE TABLE IF NOT EXISTS board_refresh_state", schema)
+        self.assertIn("CREATE TABLE IF NOT EXISTS mobile_alert_delivery", schema)
+
 
 if __name__ == "__main__":
     unittest.main()
