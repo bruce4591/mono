@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import io
 import json
 import tempfile
@@ -1969,6 +1970,26 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"loadLatestSnapshot", asset.body)
         self.assertIn(b"setInterval(loadLatestSnapshot, 5000)", asset.body)
 
+    def test_static_asset_response_uses_http11_and_gzip_when_requested(self):
+        request = (
+            "GET /instrument.js HTTP/1.1\r\n"
+            "Host: testserver\r\n"
+            "Accept-Encoding: gzip\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+        ).encode("utf-8")
+        socket = _FakeSocket(request)
+        _make_handler(":memory:")(socket, ("127.0.0.1", 0), object())
+
+        raw_response = socket.response.getvalue()
+        header, _, response_body = raw_response.partition(b"\r\n\r\n")
+
+        self.assertTrue(header.startswith(b"HTTP/1.1 200 OK"), header)
+        self.assertIn(b"Content-Encoding: gzip", header)
+        self.assertIn(b"Vary: Accept-Encoding", header)
+        self.assertLess(len(response_body), 8_000)
+        self.assertIn(b"fetchInstrumentDetail", gzip.decompress(response_body))
+
     def test_get_static_asset_returns_board_rank_change_renderer(self):
         asset = get_static_asset("/app.js")
 
@@ -2128,6 +2149,7 @@ def _request_api(
         f"{method} {path} HTTP/1.1\r\n"
         "Host: testserver\r\n"
         "Content-Type: application/json\r\n"
+        "Connection: close\r\n"
         f"Content-Length: {len(body)}\r\n"
         "\r\n"
     ).encode("utf-8") + body

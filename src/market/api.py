@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 import sqlite3
 import threading
@@ -1654,6 +1655,8 @@ def _make_handler(
     open_connection = create_database_connector(str(database_url))
 
     class MarketApiHandler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
         def do_POST(self) -> None:
             if read_only_canary:
                 self._write_json(
@@ -1973,9 +1976,13 @@ def _make_handler(
             status: HTTPStatus = HTTPStatus.OK,
         ) -> None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            body, encoding = self._encode_response_body(body)
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
+            if encoding is not None:
+                self.send_header("Content-Encoding", encoding)
+                self.send_header("Vary", "Accept-Encoding")
             self.end_headers()
             self.wfile.write(body)
 
@@ -2062,11 +2069,20 @@ def _make_handler(
             content_type: str,
             status: HTTPStatus = HTTPStatus.OK,
         ) -> None:
+            body, encoding = self._encode_response_body(body)
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
+            if encoding is not None:
+                self.send_header("Content-Encoding", encoding)
+                self.send_header("Vary", "Accept-Encoding")
             self.end_headers()
             self.wfile.write(body)
+
+        def _encode_response_body(self, body: bytes) -> tuple[bytes, str | None]:
+            if len(body) < 1024 or "gzip" not in self.headers.get("Accept-Encoding", ""):
+                return body, None
+            return gzip.compress(body), "gzip"
 
     return MarketApiHandler
 
