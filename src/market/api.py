@@ -105,7 +105,6 @@ SSE_MAX_CONNECTION_SECONDS = 30 * 60
 class StaticAsset:
     body: bytes
     content_type: str
-    cache_control: str
 
 
 def get_board_payload(
@@ -1619,7 +1618,6 @@ def get_static_asset(path: str) -> StaticAsset | None:
     return StaticAsset(
         body=asset_path.read_bytes(),
         content_type=_content_type(asset_path),
-        cache_control=_cache_control(asset_path),
     )
 
 
@@ -1961,11 +1959,7 @@ def _make_handler(
 
             asset = get_static_asset(parsed.path)
             if asset is not None:
-                self._write_bytes(
-                    asset.body,
-                    asset.content_type,
-                    cache_control=asset.cache_control,
-                )
+                self._write_bytes(asset.body, asset.content_type)
                 return
 
             self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
@@ -2067,13 +2061,10 @@ def _make_handler(
             body: bytes,
             content_type: str,
             status: HTTPStatus = HTTPStatus.OK,
-            cache_control: str | None = None,
         ) -> None:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
-            if cache_control is not None:
-                self.send_header("Cache-Control", cache_control)
             self.end_headers()
             self.wfile.write(body)
 
@@ -2112,14 +2103,6 @@ def _content_type(path: Path) -> str:
     if path.name == "manifest.webmanifest":
         return "application/manifest+json; charset=utf-8"
     return "application/octet-stream"
-
-
-def _cache_control(path: Path) -> str:
-    if path.suffix == ".html":
-        return "no-store"
-    if path.parts[-2:] == ("vendor", "klinecharts.min.js"):
-        return "public, max-age=31536000, immutable"
-    return "no-cache"
 
 
 def _open_device_session(
