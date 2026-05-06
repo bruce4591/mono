@@ -2081,6 +2081,7 @@ def _asset_path(path: str) -> Path | None:
         "/app.js": "app.js",
         "/instrument.js": "instrument.js",
         "/status.js": "status.js",
+        "/vendor/klinecharts.min.js": "vendor/klinecharts.min.js",
         "/manifest.webmanifest": "manifest.webmanifest",
     }
     filename = allowed.get(path)
