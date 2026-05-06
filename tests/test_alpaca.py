@@ -8,6 +8,7 @@ from pathlib import Path
 
 from market.collectors.alpaca import (
     AlpacaCollector,
+    _instrument_by_id,
     parse_alpaca_daily_bar,
     parse_alpaca_latest_trade,
 )
@@ -15,6 +16,22 @@ from market.db import connect, init_database
 from market.models import MarketSnapshot
 from market.repositories import DailyBarRepository, InstrumentRepository, MarketSnapshotRepository
 from market.watchlists import sync_watchlist_from_file
+
+
+class _FakeResult:
+    def __init__(self, row):
+        self.row = row
+
+    def fetchone(self):
+        return self.row
+
+
+class _FakeInstrumentConnection:
+    def __init__(self, row):
+        self.row = row
+
+    def execute(self, sql, params=()):
+        return _FakeResult(self.row)
 
 
 class AlpacaTests(unittest.TestCase):
@@ -54,6 +71,27 @@ class AlpacaTests(unittest.TestCase):
 
         self.assertEqual(trade.price, 280.11)
         self.assertEqual(trade.trade_date_local, "2026-05-01")
+
+    def test_instrument_by_id_accepts_postgres_jsonb_dict_extra_meta(self):
+        connection = _FakeInstrumentConnection(
+            {
+                "instrument_id": 7,
+                "market": "US",
+                "symbol": "AAPL",
+                "display_name": "Apple",
+                "exchange": "NASDAQ",
+                "instrument_type": "stock",
+                "quote_currency": "USD",
+                "timezone": "America/New_York",
+                "is_active": True,
+                "extra_meta": {"provider": "alpaca"},
+            }
+        )
+
+        instrument = _instrument_by_id(connection, 7)
+
+        assert instrument is not None
+        self.assertEqual(instrument.extra_meta, {"provider": "alpaca"})
 
     def test_alpaca_collector_syncs_focus_watchlist_bars_and_snapshots(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

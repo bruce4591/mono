@@ -301,8 +301,6 @@ def _instrument_by_id(connection: sqlite3.Connection, instrument_id: int) -> Ins
     ).fetchone()
     if row is None:
         return None
-    import json
-
     return Instrument(
         instrument_id=int(row["instrument_id"]),
         market=str(row["market"]),
@@ -313,7 +311,7 @@ def _instrument_by_id(connection: sqlite3.Connection, instrument_id: int) -> Ins
         quote_currency=str(row["quote_currency"]),
         timezone=str(row["timezone"]),
         is_active=bool(row["is_active"]),
-        extra_meta=json.loads(str(row["extra_meta"])),
+        extra_meta=_json_object(row["extra_meta"]),
     )
 
 
@@ -329,6 +327,14 @@ def _instrument_by_market_symbol(
     if row is None:
         return None
     return _instrument_by_id(connection, int(row["instrument_id"]))
+
+
+def _json_object(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return dict(value)
+    import json
+
+    return json.loads(str(value))
 
 
 def _records_from_frame(frame) -> list[dict[str, object]]:

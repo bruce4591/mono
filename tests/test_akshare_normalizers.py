@@ -10,6 +10,7 @@ from unittest.mock import patch
 from market.collectors.akshare import (
     AKSHARE_DEFAULT_MIN_REQUEST_INTERVAL_SECONDS,
     AkshareCollector,
+    _instrument_by_id,
     fetch_akshare_daily_frame,
     parse_akshare_daily_frame,
 )
@@ -26,6 +27,22 @@ class FakeFrame:
         if orient != "records":
             raise ValueError("unexpected orient")
         return self.records
+
+
+class _FakeResult:
+    def __init__(self, row):
+        self.row = row
+
+    def fetchone(self):
+        return self.row
+
+
+class _FakeInstrumentConnection:
+    def __init__(self, row):
+        self.row = row
+
+    def execute(self, sql, params=()):
+        return _FakeResult(self.row)
 
 
 class AkshareNormalizerTests(unittest.TestCase):
@@ -153,6 +170,30 @@ class AkshareNormalizerTests(unittest.TestCase):
         self.assertEqual(bars[0].close, 3.61)
         self.assertEqual(bars[0].volume_raw, 47318.0)
         self.assertEqual(bars[0].turnover_raw, 3.61 * 47318)
+
+    def test_instrument_by_id_accepts_postgres_jsonb_dict_extra_meta(self):
+        connection = _FakeInstrumentConnection(
+            {
+                "instrument_id": 9,
+                "market": "CMDTY",
+                "symbol": "RB00Y",
+                "display_name": "NYMEX Gasoline",
+                "exchange": "EM",
+                "instrument_type": "commodity",
+                "quote_currency": "USD",
+                "timezone": "UTC",
+                "is_active": True,
+                "extra_meta": {"akshare_function": "futures_global_hist_em"},
+            }
+        )
+
+        instrument = _instrument_by_id(connection, 9)
+
+        assert instrument is not None
+        self.assertEqual(
+            instrument.extra_meta,
+            {"akshare_function": "futures_global_hist_em"},
+        )
 
     def test_akshare_collector_syncs_focus_watchlists_with_rate_limit(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
