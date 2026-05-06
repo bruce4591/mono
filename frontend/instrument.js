@@ -25,6 +25,7 @@ let activeTimezone = "UTC";
 let activePriceTickSize = null;
 let activePeriod = null;
 let isLoadingOlderBars = false;
+let renderRequestId = 0;
 
 const DEFAULT_VISIBLE_CANDLES = {
   "1m": 90,
@@ -139,6 +140,26 @@ function chartLibrary() {
   return window.klinecharts || window.KLineCharts;
 }
 
+async function waitForChartLibrary(timeoutMs = 8000) {
+  const existing = chartLibrary();
+  if (existing && typeof existing.init === "function") return existing;
+  const startedAt = Date.now();
+  return new Promise((resolve) => {
+    const timer = setInterval(() => {
+      const klinecharts = chartLibrary();
+      if (klinecharts && typeof klinecharts.init === "function") {
+        clearInterval(timer);
+        resolve(klinecharts);
+        return;
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        clearInterval(timer);
+        resolve(null);
+      }
+    }, 50);
+  });
+}
+
 function buildPeriods(daily, intradayPayloads) {
   const periods = [];
   intradayPayloads.forEach((intraday) => {
@@ -219,7 +240,8 @@ function mergeBars(existing, incoming) {
   });
 }
 
-function renderCandles(container, bars) {
+async function renderCandles(container, bars) {
+  const requestId = ++renderRequestId;
   const data = bars.map(toKLineData).filter((bar) => {
     return (
       Number.isFinite(bar.timestamp) &&
@@ -235,8 +257,10 @@ function renderCandles(container, bars) {
     return;
   }
 
-  const klinecharts = chartLibrary();
-  if (!klinecharts || typeof klinecharts.init !== "function") {
+  container.innerHTML = '<div class="empty">图表加载中</div>';
+  const klinecharts = await waitForChartLibrary();
+  if (requestId !== renderRequestId) return;
+  if (!klinecharts) {
     container.innerHTML = '<div class="error">图表库加载失败</div>';
     return;
   }
