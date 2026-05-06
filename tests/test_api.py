@@ -1862,6 +1862,7 @@ class ApiTests(unittest.TestCase):
 
         self.assertIsNotNone(asset)
         self.assertEqual(asset.content_type, "text/html; charset=utf-8")
+        self.assertEqual(asset.cache_control, "no-store")
         self.assertIn(b'<main class="shell">', asset.body)
         self.assertIn(b"ETF_FOCUS20", asset.body)
         self.assertIn(b'href="/status.html"', asset.body)
@@ -1924,6 +1925,7 @@ class ApiTests(unittest.TestCase):
 
         self.assertIsNotNone(asset)
         self.assertEqual(asset.content_type, "text/javascript; charset=utf-8")
+        self.assertEqual(asset.cache_control, "public, max-age=31536000, immutable")
         self.assertIn(b"KLineChart v9.8.12", asset.body)
         self.assertIn(b"klinecharts", asset.body)
         self.assertGreater(len(asset.body), 100_000)
