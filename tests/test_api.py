@@ -21,6 +21,7 @@ from market.api import (
     mobile_alert_sse_heartbeat,
     get_health_payload,
     get_instrument_payload,
+    get_instrument_detail_payload,
     get_intraday_bars_payload,
     get_jobs_payload,
     get_board_payload,
@@ -84,7 +85,8 @@ class ApiTests(unittest.TestCase):
         fake_context.__enter__ = Mock(return_value=fake_connection)
         fake_context.__exit__ = Mock(return_value=False)
 
-        with patch("market.api.connect_database_url", return_value=fake_context):
+        connector = Mock(return_value=fake_context)
+        with patch("market.api.create_database_connector", return_value=connector):
             with patch(
                 "market.api.register_mobile_device",
                 return_value={"push_device_id": 1},
@@ -100,6 +102,17 @@ class ApiTests(unittest.TestCase):
         status = int(header.split(b" ", 2)[1])
         self.assertEqual(status, 200, response_body)
         register_mobile_device.assert_called_once()
+
+    def test_postgres_handler_creates_database_connector_once(self):
+        with patch("market.api.create_database_connector") as create_connector:
+            handler = _make_handler(
+                "postgresql://market_app:secret@127.0.0.1:5432/market"
+            )
+
+        self.assertTrue(issubclass(handler, object))
+        create_connector.assert_called_once_with(
+            "postgresql://market_app:secret@127.0.0.1:5432/market"
+        )
 
     def test_register_mobile_device_upserts_push_token(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1114,6 +1127,59 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["items"][0]["interval"], "15m")
         self.assertTrue(payload["items"][-1]["is_closed_bar"])
 
+    def test_get_instrument_detail_payload_returns_instrument_daily_and_periods(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                payload = get_instrument_detail_payload(
+                    connection,
+                    "US",
+                    "SPY",
+                    daily_limit=5,
+                )
+
+        self.assertIsNotNone(payload)
+        assert payload is not None
+        self.assertEqual(payload["instrument"]["symbol"], "SPY")
+        self.assertEqual(payload["daily_bars"]["interval"], "1d")
+        self.assertEqual(len(payload["daily_bars"]["items"]), 5)
+        self.assertEqual(payload["intraday_bars"], [])
+        self.assertEqual(payload["available_periods"], ["1d"])
+
+    def test_instrument_detail_endpoint_returns_aggregated_chart_payload(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+
+            response_status, response_body = _request_api(
+                db_path,
+                "GET",
+                "/api/instrument-detail?market=CRYPTO&symbol=BTCUSDT&daily_limit=5&intraday_interval=15m&intraday_limit=6",
+                {},
+            )
+
+        self.assertEqual(response_status, 200)
+        payload = json.loads(response_body)
+        self.assertEqual(payload["instrument"]["symbol"], "BTCUSDT")
+        self.assertEqual(len(payload["daily_bars"]["items"]), 5)
+        self.assertEqual(len(payload["intraday_bars"]), 1)
+        self.assertEqual(payload["intraday_bars"][0]["interval"], "15m")
+        self.assertEqual(payload["available_periods"], ["15m", "1d"])
+
     def test_get_intraday_bars_payload_limits_latest_window(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -1877,8 +1943,11 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"snapshot.snapshot_ts_utc", asset.body)
         self.assertIn(b"snapshot.trade_date_local", asset.body)
         self.assertIn(b"snapshot.source", asset.body)
+        self.assertIn(b"fetchInstrumentDetail", asset.body)
+        self.assertIn(b"/api/instrument-detail?", asset.body)
+        self.assertIn(b"intraday_interval", asset.body)
         self.assertIn(b"fetchDailyBars", asset.body)
-        self.assertIn(
+        self.assertNotIn(
             b"fetchDailyBars(DEFAULT_VISIBLE_CANDLES[\"1d\"] || 120)",
             asset.body,
         )

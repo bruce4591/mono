@@ -329,26 +329,17 @@ async function loadInstrument() {
   title.textContent = `${market}:${symbol}`;
   const intradayIntervals =
     market === "CRYPTO" || market === "CRYPTO_FUTURES" ? ["1m", "5m", "15m", "8h"] : ["60m"];
-  const [instrumentResponse, dailyResponse, ...intradayResponses] = await Promise.all([
-    fetch(
-      `/api/instruments/${encodeURIComponent(market)}/${encodeURIComponent(symbol)}?include_funding=1`,
-    ),
-    fetchDailyBars(DEFAULT_VISIBLE_CANDLES["1d"] || 120),
-    ...intradayIntervals.map((interval) =>
-      fetchIntradayBars(interval, DEFAULT_VISIBLE_CANDLES[interval] || 96),
-    ),
-  ]);
+  const detailResponse = await fetchInstrumentDetail(intradayIntervals);
 
-  if (!instrumentResponse.ok) {
+  if (!detailResponse.ok) {
     title.textContent = "未找到标的";
     return;
   }
 
-  const instrument = await instrumentResponse.json();
-  const daily = await dailyResponse.json();
-  const intradayPayloads = await Promise.all(
-    intradayResponses.map((response) => response.json()),
-  );
+  const detail = await detailResponse.json();
+  const instrument = detail.instrument || {};
+  const daily = detail.daily_bars || { interval: "1d", items: [] };
+  const intradayPayloads = detail.intraday_bars || [];
   const snapshot = instrument.latest_snapshot || {};
   activeTimezone = instrument.timezone || "UTC";
   activePriceTickSize = instrument.extra_meta?.price_tick_size || null;
@@ -370,6 +361,22 @@ async function loadInstrument() {
     renderSelectedPeriod(period);
   }
   selectPeriod(selectedPeriod);
+}
+
+async function fetchInstrumentDetail(intradayIntervals) {
+  const query = new URLSearchParams({
+    market,
+    symbol,
+    daily_limit: String(DEFAULT_VISIBLE_CANDLES["1d"] || 120),
+    intraday_limit: String(Math.max(...intradayIntervals.map((interval) => DEFAULT_VISIBLE_CANDLES[interval] || 96), 0)),
+    include_funding: "1",
+  });
+  intradayIntervals.forEach((interval) => {
+    if (market === "CRYPTO" || market === "CRYPTO_FUTURES") {
+      query.append("intraday_interval", interval);
+    }
+  });
+  return fetch(`/api/instrument-detail?${query.toString()}`);
 }
 
 async function fetchIntradayBars(interval, limit, beforeTsUtc = null) {

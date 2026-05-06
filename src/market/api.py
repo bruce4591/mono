@@ -33,7 +33,7 @@ from market.crypto_gaps import (
     fill_binance_1m_gaps,
     fill_binance_futures_1m_gaps,
 )
-from market.db import connect, connect_database_url
+from market.db import connect, create_database_connector
 from market.models import DailyBar, Instrument, IntradayBar
 from market.repositories import (
     AlertEventRepository,
@@ -454,6 +454,69 @@ def get_instrument_payload(
         "extra_meta": instrument.extra_meta,
         "latest_snapshot": snapshot,
         "funding_rate": funding_rate,
+    }
+
+
+def get_instrument_detail_payload(
+    connection: sqlite3.Connection,
+    market: str,
+    symbol: str,
+    *,
+    daily_limit: int = 120,
+    intraday_intervals: list[str] | None = None,
+    intraday_limit: int = 96,
+    include_funding: bool = True,
+    allow_backfill: bool = True,
+) -> dict[str, object] | None:
+    instrument = get_instrument_payload(
+        connection,
+        market,
+        symbol,
+        include_funding=include_funding,
+        allow_metadata_refresh=allow_backfill,
+    )
+    if instrument is None:
+        return None
+
+    daily_bars = get_daily_bars_payload(
+        connection,
+        market,
+        symbol,
+        limit=daily_limit,
+        allow_backfill=allow_backfill,
+    )
+    resolved_intraday_intervals = (
+        intraday_intervals
+        if intraday_intervals is not None
+        else (["1m", "5m", "15m", "8h"] if market in {"CRYPTO", "CRYPTO_FUTURES"} else [])
+    )
+    intraday_bars = [
+        payload
+        for payload in (
+            get_intraday_bars_payload(
+                connection,
+                market,
+                symbol,
+                interval,
+                limit=intraday_limit,
+                allow_backfill=allow_backfill,
+            )
+            for interval in resolved_intraday_intervals
+        )
+        if payload["items"]
+    ]
+    available_periods = [
+        str(payload["interval"])
+        for payload in intraday_bars
+        if payload["items"]
+    ]
+    if daily_bars["items"]:
+        available_periods.append("1d")
+    return {
+        "instrument": instrument,
+        "daily_bars": daily_bars,
+        "intraday_bars": intraday_bars,
+        "available_periods": available_periods,
     }
 
 
@@ -1588,8 +1651,7 @@ def _make_handler(
         database_url = f"sqlite:///{database_url}"
     read_only_canary = read_only_canary
 
-    def open_connection():
-        return connect_database_url(database_url)
+    open_connection = create_database_connector(str(database_url))
 
     class MarketApiHandler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
@@ -1814,6 +1876,33 @@ def _make_handler(
                         symbol,
                         include_funding=include_funding,
                         allow_metadata_refresh=not read_only_canary,
+                    )
+                if payload is None:
+                    self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                    return
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/instrument-detail":
+                query = parse_qs(parsed.query)
+                market = _first_query(query, "market")
+                symbol = _first_query(query, "symbol")
+                if market is None or symbol is None:
+                    self._write_json({"error": "market and symbol required"}, HTTPStatus.BAD_REQUEST)
+                    return
+                daily_limit = _optional_query_int(query, "daily_limit") or 120
+                intraday_limit = _optional_query_int(query, "intraday_limit") or 96
+                intraday_intervals = query.get("intraday_interval")
+                with open_connection() as connection:
+                    payload = get_instrument_detail_payload(
+                        connection,
+                        market,
+                        symbol,
+                        daily_limit=daily_limit,
+                        intraday_intervals=intraday_intervals,
+                        intraday_limit=intraday_limit,
+                        include_funding=_first_query(query, "include_funding") != "0",
+                        allow_backfill=not read_only_canary,
                     )
                 if payload is None:
                     self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)

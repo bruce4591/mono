@@ -5,7 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from market.db import PostgresConnectionAdapter, connect, init_database
+from market.db import (
+    PostgresConnectionAdapter,
+    connect,
+    create_database_connector,
+    init_database,
+)
 
 
 class FakePostgresCursor:
@@ -113,6 +118,26 @@ class DatabaseSchemaTests(unittest.TestCase):
         )
         self.assertTrue(fake_connection.committed)
         self.assertTrue(fake_connection.closed)
+
+    def test_postgres_database_connector_reuses_pooled_connection(self):
+        fake_connection = FakePostgresConnection()
+
+        from unittest.mock import patch
+
+        with patch("market.db._connect_postgres", return_value=fake_connection) as connect_postgres:
+            connector = create_database_connector(
+                "postgresql://market_app:secret@127.0.0.1:5432/market",
+                pool_size=1,
+            )
+
+            with connector() as first:
+                first.execute("SELECT 1").fetchone()
+            with connector() as second:
+                second.execute("SELECT 1").fetchone()
+
+        self.assertEqual(connect_postgres.call_count, 1)
+        self.assertFalse(fake_connection.closed)
+        self.assertEqual(len(fake_connection.executed), 2)
 
     def test_schema_migrations_are_recorded(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

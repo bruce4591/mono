@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -52,11 +53,94 @@ class PostgresConnectionAdapter:
         self._connection.commit()
 
 
+class PooledPostgresConnectionAdapter(PostgresConnectionAdapter):
+    def __init__(self, connection: Any, pool: PostgresConnectionPool) -> None:
+        super().__init__(connection)
+        self._pool = pool
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        discard = False
+        try:
+            if exc_type is None:
+                self._connection.commit()
+            else:
+                self._connection.rollback()
+        except Exception:
+            discard = True
+            raise
+        finally:
+            self._pool.release(self._connection, discard=discard)
+
+
+class PostgresConnectionPool:
+    def __init__(self, database_url: str, *, max_size: int = 5) -> None:
+        if max_size < 1:
+            raise ValueError("PostgreSQL connection pool size must be at least 1")
+        self.database_url = database_url
+        self.max_size = max_size
+        self._available: list[Any] = []
+        self._created = 0
+        self._condition = threading.Condition()
+
+    def connection(self) -> PooledPostgresConnectionAdapter:
+        return PooledPostgresConnectionAdapter(self._acquire(), self)
+
+    def release(self, connection: Any, *, discard: bool = False) -> None:
+        with self._condition:
+            if discard or bool(getattr(connection, "closed", False)):
+                connection.close()
+                self._created -= 1
+            else:
+                self._available.append(connection)
+            self._condition.notify()
+
+    def close(self) -> None:
+        with self._condition:
+            available = list(self._available)
+            self._available.clear()
+            self._created -= len(available)
+            self._condition.notify_all()
+        for connection in available:
+            connection.close()
+
+    def _acquire(self) -> Any:
+        should_create = False
+        with self._condition:
+            while True:
+                if self._available:
+                    return self._available.pop()
+                if self._created < self.max_size:
+                    self._created += 1
+                    should_create = True
+                    break
+                self._condition.wait()
+        if should_create:
+            try:
+                return _connect_postgres(self.database_url)
+            except Exception:
+                with self._condition:
+                    self._created -= 1
+                    self._condition.notify()
+                raise
+        raise RuntimeError("unreachable PostgreSQL pool acquire state")
+
+
 def connect_database_url(database_url: str) -> sqlite3.Connection | PostgresConnectionAdapter:
     if database_url.startswith("sqlite:///"):
         return connect(database_url.removeprefix("sqlite:///"))
     if not database_url.startswith(("postgresql://", "postgres://")):
         raise ValueError(f"unsupported database URL: {database_url}")
+    return PostgresConnectionAdapter(_connect_postgres(database_url))
+
+
+def create_database_connector(database_url: str, *, pool_size: int = 5):
+    if database_url.startswith(("postgresql://", "postgres://")):
+        pool = PostgresConnectionPool(database_url, max_size=pool_size)
+        return pool.connection
+    return lambda: connect_database_url(database_url)
+
+
+def _connect_postgres(database_url: str) -> Any:
     try:
         import psycopg
         from psycopg.rows import dict_row
@@ -64,7 +148,7 @@ def connect_database_url(database_url: str) -> sqlite3.Connection | PostgresConn
         raise RuntimeError("PostgreSQL support requires psycopg[binary]") from exc
     connection = psycopg.connect(database_url, row_factory=dict_row)
     connection.execute("SET TIME ZONE 'UTC'")
-    return PostgresConnectionAdapter(connection)
+    return connection
 
 
 def _translate_sqlite_placeholders(sql: str) -> str:
