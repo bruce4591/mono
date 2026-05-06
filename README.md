@@ -24,6 +24,7 @@ Implemented foundation:
 - Unified collector contract with Binance behind a collector adapter
 - Mobile status page for boards, alerts, watchlists, jobs, and data sources
 - KLineCharts candlestick panel with MA, VOL, MACD, interval, volume, and turnover columns
+- Partitioned Parquet export for daily/intraday bars and DuckDB symbol-history reads
 - CLI commands for database initialization and health checks
 
 ## Local Commands
@@ -51,6 +52,14 @@ Check database health:
 
 ```bash
 .venv/bin/market health-check --db-path ./data/market.sqlite3
+```
+
+Export historical bars to a local Parquet lake:
+
+```bash
+.venv/bin/market export-parquet \
+  --db-path ./data/market.sqlite3 \
+  --lake-root ./data/market-lake
 ```
 
 Sync static watchlists:

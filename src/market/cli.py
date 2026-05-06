@@ -37,6 +37,7 @@ from market.crypto_gaps import fill_binance_1m_gaps
 from market.crypto_gaps import fill_binance_futures_1m_gaps
 from market.db import connect, connect_database_url, init_database, init_postgres_database
 from market.models import AlertRule, WatchlistEntry
+from market.parquet_export import export_bars_to_parquet
 from market.push import deliver_mobile_alert_pushes, send_expo_push_message
 from market.realtime import apply_binance_futures_kline_event, apply_binance_ticker_event
 from market.repositories import (
@@ -158,6 +159,13 @@ def build_parser() -> argparse.ArgumentParser:
         "health-check", help="Check whether the SQLite database is readable"
     )
     health_check.add_argument("--db-path", type=Path, default=None)
+
+    export_parquet = subparsers.add_parser(
+        "export-parquet",
+        help="Export daily and intraday bars into partitioned Parquet files",
+    )
+    export_parquet.add_argument("--db-path", type=Path, default=None)
+    export_parquet.add_argument("--lake-root", type=Path, required=True)
 
     compare_api_payloads_parser = subparsers.add_parser(
         "compare-api-payloads",
@@ -478,6 +486,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"database: error: {error}")
             return 1
         print("database: ok")
+        return 0
+
+    if args.command == "export-parquet":
+        with open_database() as connection:
+            result = export_bars_to_parquet(connection, lake_root=args.lake_root)
+        print(
+            "parquet exported: "
+            f"files={result.files_written} "
+            f"daily_rows={result.daily_rows} "
+            f"intraday_rows={result.intraday_rows}"
+        )
         return 0
 
     if args.command == "compare-api-payloads":

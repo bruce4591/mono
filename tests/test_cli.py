@@ -97,6 +97,30 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("database: ok", stdout.getvalue())
 
+    def test_export_parquet_command_is_registered(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            lake_root = Path(tmp_dir) / "lake"
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                main(["init-db", "--db-path", str(db_path)])
+                exit_code = main(
+                    [
+                        "export-parquet",
+                        "--db-path",
+                        str(db_path),
+                        "--lake-root",
+                        str(lake_root),
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn(
+            "parquet exported: files=0 daily_rows=0 intraday_rows=0",
+            stdout.getvalue(),
+        )
+
     def test_sync_watchlists_uses_database_url_when_db_path_is_omitted(self):
         config_payload = {
             "watchlist_name": "ETF_FOCUS20",
