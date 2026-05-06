@@ -15,4 +15,3 @@ GETUI_ANDROID_SDK_*.zip
 build/
 dist/
 .DS_Store
-apps/market-mobile/release/*.apk

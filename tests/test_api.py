@@ -1904,9 +1904,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b'id="loadMoreBars"', asset.body)
         self.assertIn(b'id="chartRangeHint"', asset.body)
         self.assertIn(b'id="chartTimezone"', asset.body)
-        self.assertIn(b'/vendor/klinecharts.min.js?v=9.8.12"', asset.body)
+        self.assertIn(b"klinecharts@9.8.12", asset.body)
         self.assertIn(b"KLineCharts", asset.body)
-        self.assertNotIn(b"https://cdn.jsdelivr.net", asset.body)
         self.assertIn(b'id="volume"', asset.body)
         self.assertIn(b'id="dataTime"', asset.body)
         self.assertIn(b'id="tradeDate"', asset.body)
@@ -1918,15 +1917,6 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b'/instrument.js?v=', asset.body)
         self.assertNotIn(b'id="dailyBars"', asset.body)
         self.assertNotIn(b'id="intradayBars"', asset.body)
-
-    def test_get_static_asset_returns_local_klinecharts_vendor_asset(self):
-        asset = get_static_asset("/vendor/klinecharts.min.js")
-
-        self.assertIsNotNone(asset)
-        self.assertEqual(asset.content_type, "text/javascript; charset=utf-8")
-        self.assertIn(b"KLineChart v9.8.12", asset.body)
-        self.assertIn(b"klinecharts", asset.body)
-        self.assertGreater(len(asset.body), 100_000)
 
     def test_get_static_asset_returns_klinecharts_indicator_setup(self):
         asset = get_static_asset("/instrument.js")
