@@ -958,7 +958,7 @@ git commit -m "Remove mobile WebView dependency"
 **Files:**
 - Modify only if failures require fixes.
 
-- [ ] **Step 1: Typecheck**
+- [x] **Step 1: Typecheck**
 
 ```bash
 cd apps/market-mobile
@@ -967,7 +967,7 @@ npm run typecheck
 
 Expected: exit code 0.
 
-- [ ] **Step 2: Android release build**
+- [x] **Step 2: Android release build**
 
 ```bash
 source /Users/dt.shi/work/android-local-build/env.sh
@@ -977,7 +977,7 @@ cd /Users/dt.shi/work/mono/apps/market-mobile/android
 
 Expected: `BUILD SUCCESSFUL`.
 
-- [ ] **Step 3: Install APK**
+- [x] **Step 3: Install APK**
 
 ```bash
 source /Users/dt.shi/work/android-local-build/env.sh
@@ -990,19 +990,19 @@ Expected: app installs on connected Android device.
 
 Verify on phone:
 
-- app first screen is native, not webpage
-- home board loads
-- HK detail opens from board
-- detail shows data time
-- K line renders without CDN/WebView
-- notification permission works
-- Getui CID registers
-- foreground SSE alert arrives
-- background Push arrives
-- notification tap opens native instrument page
-- returning to foreground pulls missed alerts without duplicates
+- [ ] app first screen is native, not webpage
+- [ ] home board loads
+- [ ] HK detail opens from board
+- [ ] detail shows data time
+- [ ] K line renders without CDN/WebView
+- [ ] notification permission works
+- [ ] Getui CID registers
+- [ ] foreground SSE alert arrives
+- [ ] background Push arrives
+- [ ] notification tap opens native instrument page
+- [ ] returning to foreground pulls missed alerts without duplicates
 
-- [ ] **Step 5: Commit fixes if needed**
+- [x] **Step 5: Commit fixes if needed**
 
 ```bash
 git add <fixed-files>
@@ -1014,13 +1014,13 @@ git commit -m "Stabilize native mobile Android build"
 **Files:**
 - Server deployment only.
 
-- [ ] **Step 1: Push branch**
+- [x] **Step 1: Push branch**
 
 ```bash
 git push origin codex/market-data-platform
 ```
 
-- [ ] **Step 2: Deploy on Tencent**
+- [x] **Step 2: Deploy on Tencent**
 
 ```bash
 ssh tencent-market 'cd /home/ubuntu/github/mono && git pull --ff-only origin codex/market-data-platform && .venv/bin/python -m pip install -e . && sudo systemctl restart market-api && sleep 2 && systemctl is-active market-api'
@@ -1032,7 +1032,7 @@ Expected:
 active
 ```
 
-- [ ] **Step 3: Smoke test API**
+- [x] **Step 3: Smoke test API**
 
 ```bash
 curl -sS http://150.109.22.77:8000/api/mobile/home
