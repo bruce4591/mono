@@ -2,7 +2,7 @@ import * as Notifications from "expo-notifications";
 import React, { useEffect, useRef, useState } from "react";
 import { AppState, StatusBar, StyleSheet, View } from "react-native";
 
-import { homeRoute, type AppRoute } from "./navigation";
+import { menuRoute, type AppRoute } from "./navigation";
 import {
   acknowledgeMobileAlertEvents,
   displayNewAlertEvents,
@@ -16,6 +16,7 @@ import { AlertEventsScreen } from "../screens/AlertEventsScreen";
 import { AlertRulesScreen } from "../screens/AlertRulesScreen";
 import { HomeScreen } from "../screens/HomeScreen";
 import { InstrumentDetailScreen } from "../screens/InstrumentDetailScreen";
+import { MenuScreen } from "../screens/MenuScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 
 export function AppRoot() {
@@ -25,7 +26,7 @@ export function AppRoot() {
   const [devicePushToken, setDevicePushToken] = useState<string | null>(null);
   const [getuiClientId, setGetuiClientId] = useState<string | null>(null);
   const [latestSeenAlertEventId, setLatestSeenAlertEventId] = useState(0);
-  const [route, setRoute] = useState<AppRoute>(homeRoute);
+  const [route, setRoute] = useState<AppRoute>(menuRoute);
 
   async function pullMissedAlertEvents() {
     const pushToken = devicePushTokenRef.current;
@@ -117,6 +118,7 @@ export function AppRoot() {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#071113" />
+      {route.name === "menu" ? <MenuScreen navigate={setRoute} /> : null}
       {route.name === "home" ? <HomeScreen navigate={setRoute} /> : null}
       {route.name === "instrument" ? (
         <InstrumentDetailScreen route={route} navigate={setRoute} />

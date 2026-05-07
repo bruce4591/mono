@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import type { AppRoute } from "../app/navigation";
+import { menuRoute, type AppRoute } from "../app/navigation";
 import { fetchMobileHome } from "../api/market";
 import type { MobileHomePayload } from "../api/types";
 import { getCached } from "../cache/queryCache";
@@ -54,6 +54,9 @@ export function HomeScreen({ navigate }: { navigate: (route: AppRoute) => void }
           </Text>
         </View>
         <View style={styles.headerActions}>
+          <Pressable onPress={() => navigate(menuRoute)}>
+            <Text style={styles.link}>菜单</Text>
+          </Pressable>
           <Pressable onPress={() => navigate({ name: "alertEvents" })}>
             <Text style={styles.link}>提醒</Text>
           </Pressable>
