@@ -108,6 +108,19 @@ class StaticAsset:
     content_type: str
 
 
+MOBILE_HOME_BOARDS = (
+    ("ETF_FOCUS20", "ETF", "US"),
+    ("HK_STOCK_FOCUS20", "HK", "HK"),
+    ("US_STOCK_FOCUS20", "US", "US"),
+    ("A_SHARE_FOCUS20", "A-SH", "A_SHARE"),
+    ("INDEX_FOCUS20", "IDX", "INDEX"),
+    ("COMMODITY_FOCUS20", "CMDTY", "CMDTY"),
+    ("CRYPTO_TURNOVER_TOP50", "Crypto", "CRYPTO"),
+    ("CRYPTO_FUTURES_TURNOVER_TOP50", "Futures", "CRYPTO_FUTURES"),
+    ("CRYPTO_FUTURES_TRADFI_TURNOVER_TOP50", "TradeFi", "CRYPTO_FUTURES"),
+)
+
+
 def get_board_payload(
     connection: sqlite3.Connection,
     board_name: str,
@@ -206,6 +219,49 @@ def get_board_payload(
             for rank in [int(row["rank"])]
             for previous_rank in [_optional_int(row["previous_rank"])]
         ],
+    }
+
+
+def get_mobile_home_payload(connection: sqlite3.Connection) -> dict[str, object]:
+    return {
+        "server_time": datetime.now(tz=UTC).isoformat(),
+        "boards": [
+            _mobile_board_payload(get_board_payload(connection, board_name), title, market)
+            for board_name, title, market in MOBILE_HOME_BOARDS
+        ],
+    }
+
+
+def _mobile_board_payload(
+    payload: dict[str, object],
+    title: str,
+    market: str,
+) -> dict[str, object]:
+    data_time = payload.get("snapshot_ts_utc")
+    items = []
+    for item in payload.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        items.append(
+            {
+                "market": item.get("market"),
+                "symbol": item.get("symbol"),
+                "name": item.get("display_name"),
+                "last_price": item.get("last_price"),
+                "change_pct": item.get("change_pct"),
+                "turnover": item.get("turnover_raw"),
+                "volume": item.get("volume_raw"),
+                "rank": item.get("rank"),
+                "rank_change": item.get("rank_change"),
+                "data_time": data_time,
+            }
+        )
+    return {
+        "key": payload.get("board_name"),
+        "title": title,
+        "market": market,
+        "data_time": data_time,
+        "items": items,
     }
 
 
@@ -518,6 +574,97 @@ def get_instrument_detail_payload(
         "daily_bars": daily_bars,
         "intraday_bars": intraday_bars,
         "available_periods": available_periods,
+    }
+
+
+def get_mobile_instrument_detail_payload(
+    connection: sqlite3.Connection,
+    *,
+    market: str,
+    symbol: str,
+    period: str = "1d",
+    daily_limit: int = 120,
+    intraday_limit: int = 96,
+    allow_backfill: bool = True,
+) -> dict[str, object] | None:
+    detail = get_instrument_detail_payload(
+        connection,
+        market,
+        symbol,
+        daily_limit=daily_limit,
+        intraday_intervals=[] if period == "1d" else [period],
+        intraday_limit=intraday_limit,
+        allow_backfill=allow_backfill,
+    )
+    if detail is None:
+        return None
+    instrument = detail["instrument"]
+    if not isinstance(instrument, dict):
+        return None
+    snapshot = instrument.get("latest_snapshot")
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+
+    if period == "1d":
+        bars_payload = detail["daily_bars"]
+        bar_items = bars_payload.get("items", []) if isinstance(bars_payload, dict) else []
+        bars = [_mobile_daily_bar_payload(item) for item in bar_items if isinstance(item, dict)]
+    else:
+        intraday_payloads = detail["intraday_bars"]
+        matching_payload = None
+        if isinstance(intraday_payloads, list):
+            matching_payload = next(
+                (
+                    payload
+                    for payload in intraday_payloads
+                    if isinstance(payload, dict) and payload.get("interval") == period
+                ),
+                None,
+            )
+        bar_items = matching_payload.get("items", []) if isinstance(matching_payload, dict) else []
+        bars = [_mobile_intraday_bar_payload(item) for item in bar_items if isinstance(item, dict)]
+
+    return {
+        "instrument": {
+            "market": instrument.get("market"),
+            "symbol": instrument.get("symbol"),
+            "name": instrument.get("display_name"),
+            "asset_class": instrument.get("instrument_type"),
+        },
+        "snapshot": {
+            "last_price": snapshot.get("last_price"),
+            "change_pct": snapshot.get("change_pct"),
+            "volume": snapshot.get("volume_raw"),
+            "turnover": snapshot.get("turnover_raw"),
+            "data_time": snapshot.get("snapshot_ts_utc"),
+            "source": snapshot.get("source"),
+        },
+        "periods": detail["available_periods"],
+        "bars": bars,
+    }
+
+
+def _mobile_daily_bar_payload(item: dict[str, object]) -> dict[str, object]:
+    return {
+        "time": item.get("trade_date"),
+        "open": item.get("open"),
+        "high": item.get("high"),
+        "low": item.get("low"),
+        "close": item.get("close"),
+        "volume": item.get("volume_raw"),
+        "turnover": item.get("turnover_raw"),
+    }
+
+
+def _mobile_intraday_bar_payload(item: dict[str, object]) -> dict[str, object]:
+    return {
+        "time": item.get("ts_utc"),
+        "open": item.get("open"),
+        "high": item.get("high"),
+        "low": item.get("low"),
+        "close": item.get("close"),
+        "volume": item.get("volume_raw"),
+        "turnover": item.get("turnover_raw"),
     }
 
 
@@ -1863,6 +2010,12 @@ def _make_handler(
                 self._write_json(payload)
                 return
 
+            if parsed.path == "/api/mobile/home":
+                with open_connection() as connection:
+                    payload = get_mobile_home_payload(connection)
+                self._write_json(payload)
+                return
+
             if parsed.path.startswith("/api/instruments/"):
                 parts = parsed.path.removeprefix("/api/instruments/").split("/", 1)
                 if len(parts) != 2:
@@ -1905,6 +2058,32 @@ def _make_handler(
                         intraday_intervals=intraday_intervals,
                         intraday_limit=intraday_limit,
                         include_funding=_first_query(query, "include_funding") != "0",
+                        allow_backfill=not read_only_canary,
+                    )
+                if payload is None:
+                    self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                    return
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/mobile/instrument-detail":
+                query = parse_qs(parsed.query)
+                market = _first_query(query, "market")
+                symbol = _first_query(query, "symbol")
+                if market is None or symbol is None:
+                    self._write_json({"error": "market and symbol required"}, HTTPStatus.BAD_REQUEST)
+                    return
+                period = _first_query(query, "period") or "1d"
+                daily_limit = _optional_query_int(query, "daily_limit") or 120
+                intraday_limit = _optional_query_int(query, "intraday_limit") or 96
+                with open_connection() as connection:
+                    payload = get_mobile_instrument_detail_payload(
+                        connection,
+                        market=market,
+                        symbol=symbol,
+                        period=period,
+                        daily_limit=daily_limit,
+                        intraday_limit=intraday_limit,
                         allow_backfill=not read_only_canary,
                     )
                 if payload is None:

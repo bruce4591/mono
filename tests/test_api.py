@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import market.api as api_module
 from market.api import (
     _make_handler,
     _close_device_session,
@@ -1006,6 +1007,55 @@ class ApiTests(unittest.TestCase):
         self.assertIsNone(payload["previous_snapshot_ts_utc"])
         self.assertEqual(payload["items"], [])
 
+    def test_get_mobile_home_payload_returns_boards(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                payload = api_module.get_mobile_home_payload(connection)
+
+        self.assertIn("server_time", payload)
+        self.assertIn("boards", payload)
+        self.assertGreaterEqual(len(payload["boards"]), 1)
+        first_board = payload["boards"][0]
+        self.assertIn("key", first_board)
+        self.assertIn("title", first_board)
+        self.assertIn("items", first_board)
+        if first_board["items"]:
+            first_item = first_board["items"][0]
+            self.assertIn("name", first_item)
+            self.assertIn("last_price", first_item)
+            self.assertIn("data_time", first_item)
+
+    def test_mobile_home_endpoint_returns_boards(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+
+            response_status, response_body = _request_api(
+                db_path,
+                "GET",
+                "/api/mobile/home",
+                {},
+            )
+
+        self.assertEqual(response_status, 200, response_body)
+        payload = json.loads(response_body)
+        self.assertIn("server_time", payload)
+        self.assertIn("boards", payload)
+
     def test_get_instrument_payload_returns_instrument_and_latest_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -1154,6 +1204,33 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["intraday_bars"], [])
         self.assertEqual(payload["available_periods"], ["1d"])
 
+    def test_get_mobile_instrument_detail_payload_returns_snapshot_and_bars(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                payload = api_module.get_mobile_instrument_detail_payload(
+                    connection,
+                    market="US",
+                    symbol="SPY",
+                    period="1d",
+                    daily_limit=5,
+                )
+
+        self.assertEqual(payload["instrument"]["symbol"], "SPY")
+        self.assertIn("snapshot", payload)
+        self.assertIn("periods", payload)
+        self.assertEqual(payload["periods"], ["1d"])
+        self.assertEqual(len(payload["bars"]), 5)
+        self.assertIn("time", payload["bars"][0])
+        self.assertIn("turnover", payload["bars"][0])
+
     def test_instrument_detail_endpoint_returns_aggregated_chart_payload(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -1180,6 +1257,32 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(len(payload["intraday_bars"]), 1)
         self.assertEqual(payload["intraday_bars"][0]["interval"], "15m")
         self.assertEqual(payload["available_periods"], ["15m", "1d"])
+
+    def test_mobile_instrument_detail_endpoint_returns_native_shape(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+
+            response_status, response_body = _request_api(
+                db_path,
+                "GET",
+                "/api/mobile/instrument-detail?market=US&symbol=SPY&period=1d&daily_limit=5",
+                {},
+            )
+
+        self.assertEqual(response_status, 200, response_body)
+        payload = json.loads(response_body)
+        self.assertEqual(payload["instrument"]["symbol"], "SPY")
+        self.assertIn("snapshot", payload)
+        self.assertEqual(payload["periods"], ["1d"])
+        self.assertEqual(len(payload["bars"]), 5)
 
     def test_get_intraday_bars_payload_limits_latest_window(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
