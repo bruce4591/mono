@@ -1,5 +1,5 @@
 import { fetchJson } from "./client";
-import type { MobileAlertEventsPayload, MobileAlertRulesPayload } from "./types";
+import type { MobileAlertEventsPayload, MobileAlertRule, MobileAlertRulesPayload } from "./types";
 
 export function fetchMobileAlertEventsPayload({
   pushToken,
@@ -41,4 +41,17 @@ export function fetchMobileAlertRulesPayload({
 }): Promise<MobileAlertRulesPayload> {
   const params = new URLSearchParams({ push_token: pushToken });
   return fetchJson<MobileAlertRulesPayload>(`/api/mobile/alert-rules?${params}`);
+}
+
+export function patchMobileAlertRulePayload({
+  ruleId,
+  enabled
+}: {
+  ruleId: number;
+  enabled: boolean;
+}): Promise<MobileAlertRule> {
+  return fetchJson<MobileAlertRule>(`/api/mobile/alert-rules/${ruleId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ enabled })
+  });
 }

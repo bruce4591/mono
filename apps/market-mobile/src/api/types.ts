@@ -55,8 +55,14 @@ export type MobileInstrumentDetailPayload = {
 
 export type MobileAlertEvent = {
   mobile_alert_event_id: number;
+  market: string;
+  symbol: string;
   title: string;
   body: string;
+  triggered_at_utc: string;
+  observed_value: number;
+  threshold: number;
+  delivery_status: string;
   data?: Record<string, unknown>;
 };
 
@@ -66,15 +72,20 @@ export type MobileAlertEventsPayload = {
 
 export type MobileAlertRule = {
   mobile_alert_rule_id: number;
-  name: string;
+  push_device_id: number;
   enabled: boolean;
-  market: string | null;
-  symbol: string | null;
-  metric: string;
-  operator: string;
-  threshold: number | null;
+  market: string;
+  symbol: string;
+  condition_type: string;
+  source_type: string;
+  metric_key: string | null;
+  operator: string | null;
+  indicator_id: number | null;
+  created_by: string;
+  threshold: number;
   cooldown_seconds: number | null;
-  last_triggered_at: string | null;
+  created_at_utc: string;
+  updated_at_utc: string;
 };
 
 export type MobileAlertRulesPayload = {

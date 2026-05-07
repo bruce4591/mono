@@ -22,6 +22,7 @@ export function AppRoot() {
   const devicePushTokenRef = useRef<string | null>(null);
   const latestSeenAlertEventIdRef = useRef(0);
   const seenAlertEventIdsRef = useRef(new Set<number>());
+  const [devicePushToken, setDevicePushToken] = useState<string | null>(null);
   const [route, setRoute] = useState<AppRoute>(homeRoute);
 
   async function pullMissedAlertEvents() {
@@ -57,7 +58,9 @@ export function AppRoot() {
       ]);
       if (!cancelled) {
         await registerDeviceForPush({ pushToken, getuiCid });
-        devicePushTokenRef.current = pushToken || (getuiCid ? `getui:${getuiCid}` : null);
+        const nextToken = pushToken || (getuiCid ? `getui:${getuiCid}` : null);
+        devicePushTokenRef.current = nextToken;
+        setDevicePushToken(nextToken);
         await pullMissedAlertEvents();
       }
     }
@@ -113,8 +116,12 @@ export function AppRoot() {
       {route.name === "instrument" ? (
         <InstrumentDetailScreen route={route} navigate={setRoute} />
       ) : null}
-      {route.name === "alertEvents" ? <AlertEventsScreen navigate={setRoute} /> : null}
-      {route.name === "alertRules" ? <AlertRulesScreen navigate={setRoute} /> : null}
+      {route.name === "alertEvents" ? (
+        <AlertEventsScreen navigate={setRoute} pushToken={devicePushToken} />
+      ) : null}
+      {route.name === "alertRules" ? (
+        <AlertRulesScreen navigate={setRoute} pushToken={devicePushToken} />
+      ) : null}
       {route.name === "settings" ? <SettingsScreen navigate={setRoute} /> : null}
     </View>
   );
