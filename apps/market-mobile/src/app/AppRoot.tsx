@@ -23,6 +23,8 @@ export function AppRoot() {
   const latestSeenAlertEventIdRef = useRef(0);
   const seenAlertEventIdsRef = useRef(new Set<number>());
   const [devicePushToken, setDevicePushToken] = useState<string | null>(null);
+  const [getuiClientId, setGetuiClientId] = useState<string | null>(null);
+  const [latestSeenAlertEventId, setLatestSeenAlertEventId] = useState(0);
   const [route, setRoute] = useState<AppRoute>(homeRoute);
 
   async function pullMissedAlertEvents() {
@@ -39,6 +41,7 @@ export function AppRoot() {
       seenEventIds: seenAlertEventIdsRef.current
     });
     latestSeenAlertEventIdRef.current = Math.max(latestSeenAlertEventIdRef.current, maxEventId);
+    setLatestSeenAlertEventId(latestSeenAlertEventIdRef.current);
     if (maxEventId > 0) {
       await acknowledgeMobileAlertEvents({
         pushToken,
@@ -61,6 +64,7 @@ export function AppRoot() {
         const nextToken = pushToken || (getuiCid ? `getui:${getuiCid}` : null);
         devicePushTokenRef.current = nextToken;
         setDevicePushToken(nextToken);
+        setGetuiClientId(getuiCid);
         await pullMissedAlertEvents();
       }
     }
@@ -87,6 +91,7 @@ export function AppRoot() {
         getAfterId: () => latestSeenAlertEventIdRef.current,
         setAfterId: (eventId) => {
           latestSeenAlertEventIdRef.current = eventId;
+          setLatestSeenAlertEventId(eventId);
         },
         seenEventIds: seenAlertEventIdsRef.current
       }),
@@ -122,7 +127,14 @@ export function AppRoot() {
       {route.name === "alertRules" ? (
         <AlertRulesScreen navigate={setRoute} pushToken={devicePushToken} />
       ) : null}
-      {route.name === "settings" ? <SettingsScreen navigate={setRoute} /> : null}
+      {route.name === "settings" ? (
+        <SettingsScreen
+          navigate={setRoute}
+          pushToken={devicePushToken}
+          getuiClientId={getuiClientId}
+          latestSeenAlertEventId={latestSeenAlertEventId}
+        />
+      ) : null}
     </View>
   );
 }
