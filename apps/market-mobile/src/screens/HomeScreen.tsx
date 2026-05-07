@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { AppRoute } from "../app/navigation";
 import { fetchMobileHome } from "../api/market";
@@ -7,6 +7,7 @@ import type { MobileHomePayload } from "../api/types";
 import { getCached } from "../cache/queryCache";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
+import { MarketList } from "../components/MarketList";
 
 export function HomeScreen({ navigate }: { navigate: (route: AppRoute) => void }) {
   const [payload, setPayload] = useState<MobileHomePayload | null>(null);
@@ -45,29 +46,29 @@ export function HomeScreen({ navigate }: { navigate: (route: AppRoute) => void }
 
   return (
     <View style={styles.root}>
-      <Text style={styles.title}>Market</Text>
-      <Text style={styles.subtitle}>原生排行榜页面</Text>
-      <Text style={styles.meta}>
-        {payload ? `榜单 ${payload.boards.length} 个` : "榜单 --"}
-      </Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <View style={styles.actions}>
-        <Pressable onPress={() => navigate({ name: "instrument", market: "HK", symbol: "09988" })}>
-          <Text style={styles.link}>打开 HK 09988</Text>
-        </Pressable>
-        <Pressable onPress={() => void loadHome(true)}>
-          <Text style={styles.link}>刷新</Text>
-        </Pressable>
-        <Pressable onPress={() => navigate({ name: "alertEvents" })}>
-          <Text style={styles.link}>提醒事件</Text>
-        </Pressable>
-        <Pressable onPress={() => navigate({ name: "alertRules" })}>
-          <Text style={styles.link}>提醒规则</Text>
-        </Pressable>
-        <Pressable onPress={() => navigate({ name: "settings" })}>
-          <Text style={styles.link}>设置</Text>
-        </Pressable>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>Market</Text>
+          <Text style={styles.subtitle}>
+            {payload ? `榜单 ${payload.boards.length} 个` : "榜单 --"}
+          </Text>
+        </View>
+        <View style={styles.headerActions}>
+          <Pressable onPress={() => navigate({ name: "alertEvents" })}>
+            <Text style={styles.link}>提醒</Text>
+          </Pressable>
+          <Pressable onPress={() => navigate({ name: "settings" })}>
+            <Text style={styles.link}>设置</Text>
+          </Pressable>
+        </View>
       </View>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Pressable style={styles.refreshButton} onPress={() => void loadHome(true)}>
+        <Text style={styles.refreshText}>{loading ? "刷新中" : "刷新"}</Text>
+      </Pressable>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <MarketList boards={payload?.boards ?? []} navigate={navigate} />
+      </ScrollView>
     </View>
   );
 }
@@ -75,9 +76,15 @@ export function HomeScreen({ navigate }: { navigate: (route: AppRoute) => void }
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: "#071113"
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingTop: 48,
-    backgroundColor: "#071113"
+    paddingBottom: 14
   },
   title: {
     color: "#f8fafc",
@@ -89,22 +96,38 @@ const styles = StyleSheet.create({
     color: "#9fb2b7",
     fontSize: 15
   },
-  meta: {
-    marginTop: 16,
-    color: "#d6e2e4",
-    fontSize: 14
+  headerActions: {
+    flexDirection: "row",
+    gap: 16
   },
   error: {
-    marginTop: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
     color: "#fca5a5",
     fontSize: 13
-  },
-  actions: {
-    gap: 14,
-    marginTop: 24
   },
   link: {
     color: "#5eead4",
     fontSize: 16
+  },
+  refreshButton: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    alignSelf: "flex-start",
+    borderRadius: 8,
+    backgroundColor: "#123638",
+    paddingHorizontal: 14,
+    paddingVertical: 8
+  },
+  refreshText: {
+    color: "#dff8f5",
+    fontSize: 14,
+    fontWeight: "600"
+  },
+  scroll: {
+    flex: 1
+  },
+  scrollContent: {
+    paddingHorizontal: 16
   }
 });
