@@ -1,9 +1,17 @@
 import * as Notifications from "expo-notifications";
-import React, { useEffect, useState } from "react";
-import { StatusBar, StyleSheet, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { AppState, StatusBar, StyleSheet, View } from "react-native";
 
 import { homeRoute, type AppRoute } from "./navigation";
+import {
+  acknowledgeMobileAlertEvents,
+  displayNewAlertEvents,
+  fetchMobileAlertEvents
+} from "../alertEvents";
 import { routeFromNotificationData } from "../alerts/notificationRouter";
+import { initializeGetuiPush, waitForGetuiClientId } from "../getui";
+import { getExpoPushToken, registerDeviceForPush } from "../notifications";
+import { startOnlineAlerts } from "../onlineAlerts";
 import { AlertEventsScreen } from "../screens/AlertEventsScreen";
 import { AlertRulesScreen } from "../screens/AlertRulesScreen";
 import { HomeScreen } from "../screens/HomeScreen";
@@ -11,7 +19,76 @@ import { InstrumentDetailScreen } from "../screens/InstrumentDetailScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 
 export function AppRoot() {
+  const devicePushTokenRef = useRef<string | null>(null);
+  const latestSeenAlertEventIdRef = useRef(0);
+  const seenAlertEventIdsRef = useRef(new Set<number>());
   const [route, setRoute] = useState<AppRoute>(homeRoute);
+
+  async function pullMissedAlertEvents() {
+    const pushToken = devicePushTokenRef.current;
+    if (!pushToken) {
+      return;
+    }
+    const events = await fetchMobileAlertEvents({
+      pushToken,
+      afterId: latestSeenAlertEventIdRef.current
+    });
+    const maxEventId = await displayNewAlertEvents({
+      events,
+      seenEventIds: seenAlertEventIdsRef.current
+    });
+    latestSeenAlertEventIdRef.current = Math.max(latestSeenAlertEventIdRef.current, maxEventId);
+    if (maxEventId > 0) {
+      await acknowledgeMobileAlertEvents({
+        pushToken,
+        lastSeenEventId: latestSeenAlertEventIdRef.current,
+        lastAckEventId: latestSeenAlertEventIdRef.current
+      });
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    async function registerPushChannels() {
+      await initializeGetuiPush();
+      const [pushToken, getuiCid] = await Promise.all([
+        getExpoPushToken(),
+        waitForGetuiClientId()
+      ]);
+      if (!cancelled) {
+        await registerDeviceForPush({ pushToken, getuiCid });
+        devicePushTokenRef.current = pushToken || (getuiCid ? `getui:${getuiCid}` : null);
+        await pullMissedAlertEvents();
+      }
+    }
+
+    registerPushChannels().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        pullMissedAlertEvents().catch(() => undefined);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(
+    () =>
+      startOnlineAlerts({
+        getPushToken: () => devicePushTokenRef.current,
+        getAfterId: () => latestSeenAlertEventIdRef.current,
+        setAfterId: (eventId) => {
+          latestSeenAlertEventIdRef.current = eventId;
+        },
+        seenEventIds: seenAlertEventIdsRef.current
+      }),
+    []
+  );
 
   useEffect(() => {
     const openNotification = (response: Notifications.NotificationResponse) => {
