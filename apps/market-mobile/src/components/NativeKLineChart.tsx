@@ -1,19 +1,20 @@
-import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useRef } from "react";
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
 import type { MobileBar } from "../api/types";
 import { EmptyState } from "./EmptyState";
 
-const PRICE_CHART_HEIGHT = 250;
-const VOLUME_CHART_HEIGHT = 64;
-const MACD_CHART_HEIGHT = 82;
-const RSI_CHART_HEIGHT = 96;
-const CANDLE_WIDTH = 7;
-const CANDLE_GAP = 4;
-const LEFT_PADDING = 4;
-const RIGHT_PADDING = 54;
-const MAX_VISIBLE_BARS = 100;
+const PRICE_CHART_HEIGHT = 270;
+const VOLUME_CHART_HEIGHT = 58;
+const MACD_CHART_HEIGHT = 74;
+const RSI_CHART_HEIGHT = 82;
+const X_AXIS_HEIGHT = 28;
+const CANDLE_WIDTH = 6;
+const CANDLE_GAP = 3;
+const LEFT_PADDING = 8;
+const RIGHT_PADDING = 58;
+const MAX_VISIBLE_BARS = 78;
 const UP_COLOR = "#0ecb81";
 const DOWN_COLOR = "#f6465d";
 const GRID_COLOR = "#eeeeee";
@@ -22,6 +23,8 @@ const MA7_COLOR = "#fcd535";
 const MA25_COLOR = "#c084fc";
 
 export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
+  const scrollRef = useRef<ScrollView>(null);
+  const { width } = useWindowDimensions();
   const visibleBars = bars.slice(-MAX_VISIBLE_BARS).filter(isValidBar);
   if (visibleBars.length === 0) {
     return <EmptyState title="暂无 K 线" message="当前周期没有可展示的数据" />;
@@ -35,7 +38,10 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
   const range = Math.max(high - low, 0.000001);
   const maxVolume = Math.max(...visibleBars.map((bar) => bar.volume ?? 0), 0.000001);
   const slotWidth = CANDLE_WIDTH + CANDLE_GAP;
-  const plotWidth = visibleBars.length * slotWidth + LEFT_PADDING + RIGHT_PADDING;
+  const viewportWidth = Math.max(width, 320);
+  const dataWidth = visibleBars.length * slotWidth + LEFT_PADDING;
+  const plotWidth = Math.max(viewportWidth, dataWidth + RIGHT_PADDING);
+  const axisX = plotWidth - RIGHT_PADDING + 5;
   const latest = visibleBars[visibleBars.length - 1];
   const previous = visibleBars.length > 1 ? visibleBars[visibleBars.length - 2] : null;
   const latestChange = previous ? latest.close - previous.close : latest.close - latest.open;
@@ -71,6 +77,7 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
   const rsi28Path = buildScaledLinePath(rsi28, 0, 100, RSI_CHART_HEIGHT, slotWidth);
   const priceMarks = [high, (high + low) / 2, low];
   const latestMacd = macd.histogram[macd.histogram.length - 1];
+  const xLabels = buildXAxisLabels(visibleBars, dataWidth);
 
   return (
     <View style={styles.root}>
@@ -102,7 +109,12 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
         </Text>
         <Text style={styles.legendText}>VOL {formatMetric(latest.volume ?? null)}</Text>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentOffset={{ x: plotWidth, y: 0 }}>
+      <ScrollView
+        horizontal
+        ref={scrollRef}
+        showsHorizontalScrollIndicator={false}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+      >
         <View style={styles.chartPanel}>
           <Svg width={plotWidth} height={PRICE_CHART_HEIGHT}>
             {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
@@ -158,15 +170,37 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
               return (
                 <SvgText
                   key={`mark:${index}`}
-                  x={plotWidth - RIGHT_PADDING + 6}
+                  x={axisX}
                   y={clamp(y + 4, 12, PRICE_CHART_HEIGHT - 4)}
                   fill={AXIS_COLOR}
-                  fontSize="11"
+                  fontSize="10"
                 >
                   {formatPrice(mark)}
                 </SvgText>
               );
             })}
+          </Svg>
+          <Svg width={plotWidth} height={X_AXIS_HEIGHT}>
+            <Line
+              x1={0}
+              y1={0}
+              x2={plotWidth}
+              y2={0}
+              stroke={GRID_COLOR}
+              strokeWidth={StyleSheet.hairlineWidth}
+            />
+            {xLabels.map((label) => (
+              <SvgText
+                key={`${label.text}:${label.x}`}
+                x={label.x}
+                y={18}
+                fill={AXIS_COLOR}
+                fontSize="10"
+                textAnchor={label.anchor}
+              >
+                {label.text}
+              </SvgText>
+            ))}
           </Svg>
           <Svg width={plotWidth} height={VOLUME_CHART_HEIGHT} style={styles.volumeSvg}>
             <Line
@@ -194,7 +228,7 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
             })}
             {volumeMa5Path ? <Path d={volumeMa5Path} stroke={MA7_COLOR} strokeWidth={1.2} fill="none" /> : null}
             {volumeMa10Path ? <Path d={volumeMa10Path} stroke={MA25_COLOR} strokeWidth={1.2} fill="none" /> : null}
-            <SvgText x={plotWidth - RIGHT_PADDING + 6} y={12} fill={AXIS_COLOR} fontSize="11">
+            <SvgText x={axisX} y={12} fill={AXIS_COLOR} fontSize="10">
               {formatMetric(maxVolume)}
             </SvgText>
           </Svg>
@@ -232,10 +266,10 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
             })}
             {macdDifPath ? <Path d={macdDifPath} stroke={MA7_COLOR} strokeWidth={1.3} fill="none" /> : null}
             {macdDeaPath ? <Path d={macdDeaPath} stroke={MA25_COLOR} strokeWidth={1.3} fill="none" /> : null}
-            <SvgText x={plotWidth - RIGHT_PADDING + 6} y={16} fill={AXIS_COLOR} fontSize="11">
+            <SvgText x={axisX} y={16} fill={AXIS_COLOR} fontSize="10">
               {formatIndicator(macdMax)}
             </SvgText>
-            <SvgText x={plotWidth - RIGHT_PADDING + 6} y={MACD_CHART_HEIGHT - 6} fill={AXIS_COLOR} fontSize="11">
+            <SvgText x={axisX} y={MACD_CHART_HEIGHT - 6} fill={AXIS_COLOR} fontSize="10">
               0.0000
             </SvgText>
           </Svg>
@@ -264,10 +298,10 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
             {rsi7Path ? <Path d={rsi7Path} stroke={MA7_COLOR} strokeWidth={1.3} fill="none" /> : null}
             {rsi14Path ? <Path d={rsi14Path} stroke="#ec4899" strokeWidth={1.3} fill="none" /> : null}
             {rsi28Path ? <Path d={rsi28Path} stroke={MA25_COLOR} strokeWidth={1.3} fill="none" /> : null}
-            <SvgText x={plotWidth - RIGHT_PADDING + 6} y={18} fill={AXIS_COLOR} fontSize="11">
+            <SvgText x={axisX} y={18} fill={AXIS_COLOR} fontSize="10">
               70.0
             </SvgText>
-            <SvgText x={plotWidth - RIGHT_PADDING + 6} y={RSI_CHART_HEIGHT - 8} fill={AXIS_COLOR} fontSize="11">
+            <SvgText x={axisX} y={RSI_CHART_HEIGHT - 8} fill={AXIS_COLOR} fontSize="10">
               30.0
             </SvgText>
           </Svg>
@@ -404,6 +438,32 @@ function buildLinePath(
   return segments.join(" ");
 }
 
+function buildXAxisLabels(
+  bars: MobileBar[],
+  dataWidth: number
+): Array<{ text: string; x: number; anchor: "start" | "middle" | "end" }> {
+  if (bars.length === 0) return [];
+  const middleIndex = Math.floor(bars.length / 2);
+  const lastIndex = bars.length - 1;
+  return [
+    {
+      text: formatAxisTime(bars[0].time),
+      x: LEFT_PADDING,
+      anchor: "start"
+    },
+    {
+      text: formatAxisTime(bars[middleIndex].time),
+      x: xForIndex(middleIndex, CANDLE_WIDTH + CANDLE_GAP),
+      anchor: "middle"
+    },
+    {
+      text: formatAxisTime(bars[lastIndex].time),
+      x: Math.max(LEFT_PADDING, dataWidth - CANDLE_WIDTH),
+      anchor: "end"
+    }
+  ];
+}
+
 function buildScaledLinePath(
   values: Array<number | null>,
   min: number,
@@ -460,6 +520,11 @@ function formatMetric(value: number | null): string {
   return value.toFixed(2);
 }
 
+function formatAxisTime(value: string): string {
+  if (value.length >= 10) return value.slice(5, 10);
+  return value;
+}
+
 function formatIndicator(value: number | null): string {
   if (value === null || !Number.isFinite(value)) return "--";
   const abs = Math.abs(value);
@@ -481,12 +546,12 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#111111",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800"
   },
   latestText: {
     color: "#777777",
-    fontSize: 12
+    fontSize: 11
   },
   ohlcRow: {
     flexDirection: "row",
@@ -496,7 +561,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     color: "#777777",
-    fontSize: 12
+    fontSize: 11
   },
   infoValue: {
     color: "#111111",
@@ -518,7 +583,7 @@ const styles = StyleSheet.create({
   },
   legendText: {
     color: "#777777",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700"
   },
   chartPanel: {
@@ -536,7 +601,7 @@ const styles = StyleSheet.create({
     marginTop: 6
   },
   indicatorText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700"
   }
 });
