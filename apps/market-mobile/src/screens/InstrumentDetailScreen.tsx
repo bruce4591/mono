@@ -97,20 +97,17 @@ export function InstrumentDetailScreen({
         style={styles.periodScroll}
         contentContainerStyle={styles.periods}
       >
-        {PERIOD_TABS.map((item) => {
-          const available = item.value === period || payload?.periods.includes(item.value) || item.value === "1d";
+        {PERIOD_TABS.filter((item) => item.value === period || payload?.periods.includes(item.value)).map((item) => {
           return (
             <Pressable
               key={item.value}
               style={styles.periodPressable}
-              disabled={!available}
               onPress={() => setPeriod(item.value)}
             >
               <Text
                 style={[
                   styles.periodText,
-                  item.value === period ? styles.periodTextActive : null,
-                  !available ? styles.periodTextDisabled : null
+                  item.value === period ? styles.periodTextActive : null
                 ]}
               >
                 {item.label}
@@ -119,9 +116,9 @@ export function InstrumentDetailScreen({
           );
         })}
       </ScrollView>
-      <ScrollView style={styles.chartScroll} contentContainerStyle={styles.chartContent}>
+      <View style={styles.chartArea}>
         <NativeKLineChart bars={payload?.bars ?? []} />
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -164,22 +161,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#ffffff"
   },
   topBar: {
-    minHeight: 96,
+    minHeight: 78,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
-    paddingTop: 34,
+    paddingTop: 24,
     backgroundColor: "#ffffff"
   },
   iconButton: {
-    width: 30,
-    height: 36,
+    width: 28,
+    height: 32,
     justifyContent: "center"
   },
   iconText: {
     color: "#111827",
-    fontSize: 38,
-    lineHeight: 38
+    fontSize: 34,
+    lineHeight: 34
   },
   titleBlock: {
     flex: 1,
@@ -193,7 +190,7 @@ const styles = StyleSheet.create({
   },
   symbol: {
     color: "#030712",
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "900"
   },
   badge: {
@@ -207,9 +204,9 @@ const styles = StyleSheet.create({
     paddingVertical: 3
   },
   name: {
-    marginTop: 5,
+    marginTop: 3,
     color: "#737373",
-    fontSize: 13
+    fontSize: 12
   },
   refreshButton: {
     minHeight: 32,
@@ -224,7 +221,7 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   },
   statsRow: {
-    minHeight: 48,
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -238,12 +235,12 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     color: "#737373",
-    fontSize: 12
+    fontSize: 11
   },
   metricValue: {
-    marginTop: 3,
+    marginTop: 2,
     color: "#111111",
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "700"
   },
   error: {
@@ -252,42 +249,35 @@ const styles = StyleSheet.create({
     fontSize: 13
   },
   periodScroll: {
-    minHeight: 44,
-    maxHeight: 44,
+    minHeight: 36,
+    maxHeight: 36,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#f1f1f1",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#eeeeee"
   },
   periods: {
-    minHeight: 44,
+    minHeight: 36,
     flexDirection: "row",
     alignItems: "center",
-    gap: 22,
+    gap: 20,
     paddingHorizontal: 14,
     paddingRight: 24
   },
   periodPressable: {
-    minHeight: 36,
+    minHeight: 32,
     justifyContent: "center"
   },
   periodText: {
     color: "#777777",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800"
   },
   periodTextActive: {
     color: "#111111"
   },
-  periodTextDisabled: {
-    color: "#c9c9c9"
-  },
-  chartScroll: {
+  chartArea: {
     flex: 1,
     backgroundColor: "#ffffff"
-  },
-  chartContent: {
-    paddingHorizontal: 0,
-    paddingBottom: 18
   }
 });

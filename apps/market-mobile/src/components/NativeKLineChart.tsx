@@ -13,11 +13,11 @@ import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import type { MobileBar } from "../api/types";
 import { EmptyState } from "./EmptyState";
 
-const PRICE_CHART_HEIGHT = 310;
-const VOLUME_CHART_HEIGHT = 66;
-const MACD_CHART_HEIGHT = 82;
-const RSI_CHART_HEIGHT = 88;
-const X_AXIS_HEIGHT = 28;
+const PRICE_CHART_HEIGHT = 238;
+const VOLUME_CHART_HEIGHT = 48;
+const MACD_CHART_HEIGHT = 58;
+const RSI_CHART_HEIGHT = 62;
+const X_AXIS_HEIGHT = 22;
 const CANDLE_WIDTH = 6;
 const CANDLE_GAP = 3;
 const LEFT_PADDING = 8;
@@ -25,8 +25,8 @@ const RIGHT_PADDING = 64;
 const MAX_VISIBLE_BARS = 78;
 const UP_COLOR = "#0ecb81";
 const DOWN_COLOR = "#f6465d";
-const GRID_COLOR = "#eeeeee";
-const AXIS_COLOR = "#777777";
+const GRID_COLOR = "#dddddd";
+const AXIS_COLOR = "#3f3f46";
 const MA7_COLOR = "#fcd535";
 const MA25_COLOR = "#c084fc";
 
@@ -197,7 +197,8 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
                   x={axisX}
                   y={clamp(y + 4, 12, PRICE_CHART_HEIGHT - 4)}
                   fill={AXIS_COLOR}
-                  fontSize="10"
+                  fontSize="11"
+                  fontWeight="700"
                 >
                   {formatPrice(mark)}
                 </SvgText>
@@ -220,6 +221,7 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
                 y={18}
                 fill={AXIS_COLOR}
                 fontSize="10"
+                fontWeight="700"
                 textAnchor={label.anchor}
               >
                 {label.text}
@@ -252,7 +254,7 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
             })}
             {volumeMa5Path ? <Path d={volumeMa5Path} stroke={MA7_COLOR} strokeWidth={1.2} fill="none" /> : null}
             {volumeMa10Path ? <Path d={volumeMa10Path} stroke={MA25_COLOR} strokeWidth={1.2} fill="none" /> : null}
-            <SvgText x={axisX} y={12} fill={AXIS_COLOR} fontSize="10">
+            <SvgText x={axisX} y={12} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
               {formatMetric(maxVolume)}
             </SvgText>
           </Svg>
@@ -290,10 +292,10 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
             })}
             {macdDifPath ? <Path d={macdDifPath} stroke={MA7_COLOR} strokeWidth={1.3} fill="none" /> : null}
             {macdDeaPath ? <Path d={macdDeaPath} stroke={MA25_COLOR} strokeWidth={1.3} fill="none" /> : null}
-            <SvgText x={axisX} y={16} fill={AXIS_COLOR} fontSize="10">
+            <SvgText x={axisX} y={16} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
               {formatIndicator(macdMax)}
             </SvgText>
-            <SvgText x={axisX} y={MACD_CHART_HEIGHT - 6} fill={AXIS_COLOR} fontSize="10">
+            <SvgText x={axisX} y={MACD_CHART_HEIGHT - 6} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
               0.0000
             </SvgText>
           </Svg>
@@ -322,10 +324,10 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
             {rsi7Path ? <Path d={rsi7Path} stroke={MA7_COLOR} strokeWidth={1.3} fill="none" /> : null}
             {rsi14Path ? <Path d={rsi14Path} stroke="#ec4899" strokeWidth={1.3} fill="none" /> : null}
             {rsi28Path ? <Path d={rsi28Path} stroke={MA25_COLOR} strokeWidth={1.3} fill="none" /> : null}
-            <SvgText x={axisX} y={18} fill={AXIS_COLOR} fontSize="10">
+            <SvgText x={axisX} y={18} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
               70.0
             </SvgText>
-            <SvgText x={axisX} y={RSI_CHART_HEIGHT - 8} fill={AXIS_COLOR} fontSize="10">
+            <SvgText x={axisX} y={RSI_CHART_HEIGHT - 8} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
               30.0
             </SvgText>
           </Svg>
@@ -585,33 +587,33 @@ function formatIndicator(value: number | null): string {
 
 const styles = StyleSheet.create({
   root: {
-    minHeight: PRICE_CHART_HEIGHT + VOLUME_CHART_HEIGHT + MACD_CHART_HEIGHT + RSI_CHART_HEIGHT + 178,
-    marginTop: 8
+    flex: 1,
+    marginTop: 4
   },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
-    marginBottom: 8
+    marginBottom: 4
   },
   title: {
     color: "#111111",
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "800"
   },
   latestText: {
     color: "#777777",
-    fontSize: 11
+    fontSize: 10
   },
   ohlcRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8
+    gap: 7,
+    marginBottom: 4
   },
   infoText: {
     color: "#777777",
-    fontSize: 11
+    fontSize: 10
   },
   infoValue: {
     color: "#111111",
@@ -628,30 +630,30 @@ const styles = StyleSheet.create({
   legendRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 8
+    gap: 9,
+    marginBottom: 4
   },
   legendText: {
     color: "#777777",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700"
   },
   chartPanel: {
     backgroundColor: "#ffffff"
   },
   volumeSvg: {
-    marginTop: 8
+    marginTop: 2
   },
   indicatorLegend: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
-    minHeight: 24,
+    gap: 8,
+    minHeight: 18,
     alignItems: "center",
-    marginTop: 6
+    marginTop: 3
   },
   indicatorText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700"
   }
 });
