@@ -11,8 +11,10 @@ import { NativeKLineChart } from "../components/NativeKLineChart";
 
 const PERIOD_TABS = [
   { label: "分时", value: "1m" },
-  { label: "15分", value: "15m" },
   { label: "5分", value: "5m" },
+  { label: "15分", value: "15m" },
+  { label: "1小时", value: "1h" },
+  { label: "4小时", value: "4h" },
   { label: "8小时", value: "8h" },
   { label: "1天", value: "1d" }
 ];
@@ -89,18 +91,26 @@ export function InstrumentDetailScreen({
         <Metric label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <View style={styles.periods}>
-        {PERIOD_TABS.filter((item) => payload?.periods.includes(item.value) || item.value === period).map((item) => {
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.periodScroll}
+        contentContainerStyle={styles.periods}
+      >
+        {PERIOD_TABS.map((item) => {
+          const available = item.value === period || payload?.periods.includes(item.value) || item.value === "1d";
           return (
             <Pressable
               key={item.value}
               style={styles.periodPressable}
+              disabled={!available}
               onPress={() => setPeriod(item.value)}
             >
               <Text
                 style={[
                   styles.periodText,
-                  item.value === period ? styles.periodTextActive : null
+                  item.value === period ? styles.periodTextActive : null,
+                  !available ? styles.periodTextDisabled : null
                 ]}
               >
                 {item.label}
@@ -108,7 +118,7 @@ export function InstrumentDetailScreen({
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
       <ScrollView style={styles.chartScroll} contentContainerStyle={styles.chartContent}>
         <NativeKLineChart bars={payload?.bars ?? []} />
       </ScrollView>
@@ -241,16 +251,21 @@ const styles = StyleSheet.create({
     color: "#dc2626",
     fontSize: 13
   },
+  periodScroll: {
+    minHeight: 44,
+    maxHeight: 44,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#f1f1f1",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#eeeeee"
+  },
   periods: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 22,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#f1f1f1",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#eeeeee",
-    paddingHorizontal: 14
+    paddingHorizontal: 14,
+    paddingRight: 24
   },
   periodPressable: {
     minHeight: 36,
@@ -263,6 +278,9 @@ const styles = StyleSheet.create({
   },
   periodTextActive: {
     color: "#111111"
+  },
+  periodTextDisabled: {
+    color: "#c9c9c9"
   },
   chartScroll: {
     flex: 1,

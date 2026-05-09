@@ -1,19 +1,27 @@
-import React, { useRef } from "react";
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View
+} from "react-native";
 import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
 import type { MobileBar } from "../api/types";
 import { EmptyState } from "./EmptyState";
 
-const PRICE_CHART_HEIGHT = 270;
-const VOLUME_CHART_HEIGHT = 58;
-const MACD_CHART_HEIGHT = 74;
-const RSI_CHART_HEIGHT = 82;
+const PRICE_CHART_HEIGHT = 310;
+const VOLUME_CHART_HEIGHT = 66;
+const MACD_CHART_HEIGHT = 82;
+const RSI_CHART_HEIGHT = 88;
 const X_AXIS_HEIGHT = 28;
 const CANDLE_WIDTH = 6;
 const CANDLE_GAP = 3;
 const LEFT_PADDING = 8;
-const RIGHT_PADDING = 58;
+const RIGHT_PADDING = 64;
 const MAX_VISIBLE_BARS = 78;
 const UP_COLOR = "#0ecb81";
 const DOWN_COLOR = "#f6465d";
@@ -25,23 +33,30 @@ const MA25_COLOR = "#c084fc";
 export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
   const scrollRef = useRef<ScrollView>(null);
   const { width } = useWindowDimensions();
+  const [scrollX, setScrollX] = useState(0);
   const visibleBars = bars.slice(-MAX_VISIBLE_BARS).filter(isValidBar);
-  if (visibleBars.length === 0) {
-    return <EmptyState title="暂无 K 线" message="当前周期没有可展示的数据" />;
-  }
-
-  const rawHigh = Math.max(...visibleBars.map((bar) => bar.high));
-  const rawLow = Math.min(...visibleBars.map((bar) => bar.low));
-  const pricePadding = Math.max((rawHigh - rawLow) * 0.08, Math.abs(rawHigh) * 0.001, 0.000001);
-  const high = rawHigh + pricePadding;
-  const low = rawLow - pricePadding;
-  const range = Math.max(high - low, 0.000001);
-  const maxVolume = Math.max(...visibleBars.map((bar) => bar.volume ?? 0), 0.000001);
   const slotWidth = CANDLE_WIDTH + CANDLE_GAP;
   const viewportWidth = Math.max(width, 320);
   const dataWidth = visibleBars.length * slotWidth + LEFT_PADDING;
   const plotWidth = Math.max(viewportWidth, dataWidth + RIGHT_PADDING);
-  const axisX = plotWidth - RIGHT_PADDING + 5;
+  const maxScrollX = Math.max(plotWidth - viewportWidth, 0);
+  const effectiveScrollX = clamp(scrollX, 0, maxScrollX);
+  const axisX = effectiveScrollX + viewportWidth - RIGHT_PADDING + 6;
+  const visibleWindow = useMemo(() => {
+    return getVisibleWindow(visibleBars, effectiveScrollX, viewportWidth, slotWidth);
+  }, [effectiveScrollX, slotWidth, viewportWidth, visibleBars]);
+
+  if (visibleBars.length === 0 || visibleWindow.length === 0) {
+    return <EmptyState title="暂无 K 线" message="当前周期没有可展示的数据" />;
+  }
+
+  const rawHigh = Math.max(...visibleWindow.map((bar) => bar.high));
+  const rawLow = Math.min(...visibleWindow.map((bar) => bar.low));
+  const pricePadding = Math.max((rawHigh - rawLow) * 0.12, Math.abs(rawHigh) * 0.001, 0.000001);
+  const high = rawHigh + pricePadding;
+  const low = rawLow - pricePadding;
+  const range = Math.max(high - low, 0.000001);
+  const maxVolume = Math.max(...visibleWindow.map((bar) => bar.volume ?? 0), 0.000001);
   const latest = visibleBars[visibleBars.length - 1];
   const previous = visibleBars.length > 1 ? visibleBars[visibleBars.length - 2] : null;
   const latestChange = previous ? latest.close - previous.close : latest.close - latest.open;
@@ -75,9 +90,13 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
   const rsi7Path = buildScaledLinePath(rsi7, 0, 100, RSI_CHART_HEIGHT, slotWidth);
   const rsi14Path = buildScaledLinePath(rsi14, 0, 100, RSI_CHART_HEIGHT, slotWidth);
   const rsi28Path = buildScaledLinePath(rsi28, 0, 100, RSI_CHART_HEIGHT, slotWidth);
-  const priceMarks = [high, (high + low) / 2, low];
+  const priceMarks = buildPriceMarks(high, low);
   const latestMacd = macd.histogram[macd.histogram.length - 1];
-  const xLabels = buildXAxisLabels(visibleBars, dataWidth);
+  const xLabels = buildXAxisLabels(visibleWindow, effectiveScrollX, viewportWidth);
+
+  function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    setScrollX(event.nativeEvent.contentOffset.x);
+  }
 
   return (
     <View style={styles.root}>
@@ -113,7 +132,12 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
         horizontal
         ref={scrollRef}
         showsHorizontalScrollIndicator={false}
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+        scrollEventThrottle={32}
+        onScroll={handleScroll}
+        onContentSizeChange={() => {
+          scrollRef.current?.scrollToEnd({ animated: false });
+          setScrollX(maxScrollX);
+        }}
       >
         <View style={styles.chartPanel}>
           <Svg width={plotWidth} height={PRICE_CHART_HEIGHT}>
@@ -433,32 +457,55 @@ function buildLinePath(
   values.forEach((value, index) => {
     if (value === null) return;
     const command = segments.length === 0 ? "M" : "L";
-    segments.push(`${command}${xForIndex(index, slotWidth).toFixed(2)},${yForPrice(value, high, range).toFixed(2)}`);
+    const y = clamp(yForPrice(value, high, range), 0, PRICE_CHART_HEIGHT);
+    segments.push(`${command}${xForIndex(index, slotWidth).toFixed(2)},${y.toFixed(2)}`);
   });
   return segments.join(" ");
 }
 
+function getVisibleWindow(
+  bars: MobileBar[],
+  scrollX: number,
+  viewportWidth: number,
+  slotWidth: number
+): MobileBar[] {
+  const left = Math.max(scrollX - LEFT_PADDING, 0);
+  const right = Math.max(scrollX + viewportWidth - RIGHT_PADDING, left);
+  const startIndex = clamp(Math.floor(left / slotWidth) - 2, 0, Math.max(bars.length - 1, 0));
+  const endIndex = clamp(Math.ceil(right / slotWidth) + 2, startIndex + 1, bars.length);
+  return bars.slice(startIndex, endIndex);
+}
+
+function buildPriceMarks(high: number, low: number): number[] {
+  const range = Math.max(high - low, 0.000001);
+  return [high, high - range * 0.25, high - range * 0.5, high - range * 0.75, low];
+}
+
 function buildXAxisLabels(
   bars: MobileBar[],
-  dataWidth: number
+  scrollX: number,
+  viewportWidth: number
 ): Array<{ text: string; x: number; anchor: "start" | "middle" | "end" }> {
   if (bars.length === 0) return [];
   const middleIndex = Math.floor(bars.length / 2);
   const lastIndex = bars.length - 1;
+  const leftX = scrollX + LEFT_PADDING;
+  const centerX = scrollX + (viewportWidth - RIGHT_PADDING) / 2;
+  const rightX = scrollX + viewportWidth - RIGHT_PADDING - 4;
   return [
     {
       text: formatAxisTime(bars[0].time),
-      x: LEFT_PADDING,
+      x: leftX,
       anchor: "start"
     },
     {
       text: formatAxisTime(bars[middleIndex].time),
-      x: xForIndex(middleIndex, CANDLE_WIDTH + CANDLE_GAP),
+      x: centerX,
       anchor: "middle"
     },
     {
       text: formatAxisTime(bars[lastIndex].time),
-      x: Math.max(LEFT_PADDING, dataWidth - CANDLE_WIDTH),
+      x: rightX,
       anchor: "end"
     }
   ];
@@ -506,8 +553,11 @@ function formatOptionalPrice(value: number | null): string {
 }
 
 function formatPrice(value: number): string {
+  const abs = Math.abs(value);
+  if (abs > 0 && abs < 0.0001) return value.toFixed(8);
+  if (abs > 0 && abs < 1) return value.toFixed(6);
   return value.toLocaleString(undefined, {
-    maximumFractionDigits: value >= 100 ? 2 : 4
+    maximumFractionDigits: abs >= 100 ? 2 : 4
   });
 }
 
