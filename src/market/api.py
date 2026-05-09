@@ -587,6 +587,7 @@ def get_mobile_instrument_detail_payload(
     intraday_limit: int = 96,
     allow_backfill: bool = True,
 ) -> dict[str, object] | None:
+    intraday_periods = ["1m", "5m", "15m", "8h"] if market in {"CRYPTO", "CRYPTO_FUTURES"} else []
     detail = get_instrument_detail_payload(
         connection,
         market,
@@ -598,6 +599,15 @@ def get_mobile_instrument_detail_payload(
     )
     if detail is None:
         return None
+    period_detail = get_instrument_detail_payload(
+        connection,
+        market,
+        symbol,
+        daily_limit=1,
+        intraday_intervals=intraday_periods,
+        intraday_limit=1,
+        allow_backfill=False,
+    )
     instrument = detail["instrument"]
     if not isinstance(instrument, dict):
         return None
@@ -624,6 +634,14 @@ def get_mobile_instrument_detail_payload(
         bar_items = matching_payload.get("items", []) if isinstance(matching_payload, dict) else []
         bars = [_mobile_intraday_bar_payload(item) for item in bar_items if isinstance(item, dict)]
 
+    available_periods = (
+        period_detail.get("available_periods", [])
+        if isinstance(period_detail, dict)
+        else detail["available_periods"]
+    )
+    if bars and period not in available_periods:
+        available_periods = [*available_periods, period]
+
     return {
         "instrument": {
             "market": instrument.get("market"),
@@ -639,7 +657,7 @@ def get_mobile_instrument_detail_payload(
             "data_time": snapshot.get("snapshot_ts_utc"),
             "source": snapshot.get("source"),
         },
-        "periods": detail["available_periods"],
+        "periods": available_periods,
         "bars": bars,
     }
 
@@ -658,7 +676,7 @@ def _mobile_daily_bar_payload(item: dict[str, object]) -> dict[str, object]:
 
 def _mobile_intraday_bar_payload(item: dict[str, object]) -> dict[str, object]:
     return {
-        "time": item.get("ts_utc"),
+        "time": item.get("bar_start_ts_utc") or item.get("ts_utc"),
         "open": item.get("open"),
         "high": item.get("high"),
         "low": item.get("low"),

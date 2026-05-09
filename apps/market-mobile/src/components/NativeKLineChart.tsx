@@ -22,7 +22,7 @@ const CANDLE_WIDTH = 6;
 const CANDLE_GAP = 3;
 const LEFT_PADDING = 8;
 const RIGHT_PADDING = 64;
-const MAX_VISIBLE_BARS = 78;
+const MAX_VISIBLE_BARS = 120;
 const UP_COLOR = "#0ecb81";
 const DOWN_COLOR = "#f6465d";
 const GRID_COLOR = "#dddddd";
@@ -101,7 +101,6 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
   return (
     <View style={styles.root}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>K线</Text>
         <Text style={styles.latestText}>{latest.time}</Text>
       </View>
       <View style={styles.ohlcRow}>
@@ -131,6 +130,7 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
       <ScrollView
         horizontal
         ref={scrollRef}
+        bounces={false}
         showsHorizontalScrollIndicator={false}
         scrollEventThrottle={32}
         onScroll={handleScroll}
@@ -592,14 +592,10 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     alignItems: "baseline",
-    marginBottom: 4
-  },
-  title: {
-    color: "#111111",
-    fontSize: 13,
-    fontWeight: "800"
+    marginBottom: 3,
+    minHeight: 14
   },
   latestText: {
     color: "#777777",

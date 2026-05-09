@@ -1284,6 +1284,56 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(payload["periods"], ["1d"])
         self.assertEqual(len(payload["bars"]), 5)
 
+    def test_mobile_instrument_detail_endpoint_returns_available_intraday_periods_for_daily_request(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+
+            response_status, response_body = _request_api(
+                db_path,
+                "GET",
+                "/api/mobile/instrument-detail?market=CRYPTO&symbol=BTCUSDT&period=1d&daily_limit=5",
+                {},
+            )
+
+        self.assertEqual(response_status, 200, response_body)
+        payload = json.loads(response_body)
+        self.assertEqual(payload["instrument"]["symbol"], "BTCUSDT")
+        self.assertIn("15m", payload["periods"])
+        self.assertIn("1d", payload["periods"])
+        self.assertEqual(len(payload["bars"]), 5)
+
+    def test_mobile_instrument_detail_endpoint_returns_intraday_bar_time(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+
+            response_status, response_body = _request_api(
+                db_path,
+                "GET",
+                "/api/mobile/instrument-detail?market=CRYPTO&symbol=BTCUSDT&period=15m&intraday_limit=2",
+                {},
+            )
+
+        self.assertEqual(response_status, 200, response_body)
+        payload = json.loads(response_body)
+        self.assertEqual(payload["instrument"]["symbol"], "BTCUSDT")
+        self.assertEqual(payload["bars"][0]["time"], "2026-04-24T15:00:00Z")
+
     def test_get_intraday_bars_payload_limits_latest_window(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
