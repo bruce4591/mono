@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { menuRoute, type AppRoute } from "../app/navigation";
+import { homeRoute, type AppRoute } from "../app/navigation";
 import { fetchMobileAlertEventsPayload } from "../api/alerts";
 import type { MobileAlertEvent } from "../api/types";
 import { EmptyState } from "../components/EmptyState";
@@ -40,8 +40,8 @@ export function AlertEventsScreen({
   if (!pushToken) {
     return (
       <View style={styles.root}>
-        <Pressable onPress={() => navigate(menuRoute)}>
-          <Text style={styles.back}>返回菜单</Text>
+        <Pressable onPress={() => navigate(homeRoute)}>
+          <Text style={styles.back}>返回行情</Text>
         </Pressable>
         <EmptyState title="等待设备注册" message="推送 token 注册完成后会显示提醒事件" />
       </View>
@@ -59,8 +59,8 @@ export function AlertEventsScreen({
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => navigate(menuRoute)}>
-          <Text style={styles.back}>返回菜单</Text>
+        <Pressable onPress={() => navigate(homeRoute)}>
+          <Text style={styles.back}>返回行情</Text>
         </Pressable>
         <Pressable onPress={() => void loadEvents()}>
           <Text style={styles.refresh}>{loading ? "刷新中" : "刷新"}</Text>

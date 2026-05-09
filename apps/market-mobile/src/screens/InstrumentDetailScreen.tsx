@@ -5,11 +5,17 @@ import { homeRoute, type AppRoute, type InstrumentRoute } from "../app/navigatio
 import { fetchMobileInstrumentDetail } from "../api/market";
 import type { MobileInstrumentDetailPayload } from "../api/types";
 import { getCached } from "../cache/queryCache";
-import { DataTimeBadge } from "../components/DataTimeBadge";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { NativeKLineChart } from "../components/NativeKLineChart";
-import { PriceChange } from "../components/PriceChange";
+
+const PERIOD_TABS = [
+  { label: "分时", value: "1m" },
+  { label: "15分", value: "15m" },
+  { label: "1小时", value: "1h" },
+  { label: "4小时", value: "4h" },
+  { label: "1天", value: "1d" }
+];
 
 export function InstrumentDetailScreen({
   route,
@@ -59,47 +65,85 @@ export function InstrumentDetailScreen({
   }
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
+    <View style={styles.root}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => navigate(homeRoute)}>
-          <Text style={styles.back}>返回</Text>
+        <Pressable style={styles.iconButton} onPress={() => navigate(homeRoute)}>
+          <Text style={styles.iconText}>‹</Text>
         </Pressable>
-        <Pressable onPress={() => void loadDetail(true)}>
-          <Text style={styles.refresh}>{loading ? "刷新中" : "刷新"}</Text>
-        </Pressable>
+        <View style={styles.titleBlock}>
+          <View style={styles.symbolRow}>
+            <Text style={styles.symbol}>{route.symbol}</Text>
+            <Text style={styles.badge}>{route.market}</Text>
+          </View>
+          <Text style={styles.name} numberOfLines={1}>
+            {payload?.instrument.name || `${route.market} ${route.symbol}`}
+          </Text>
+        </View>
+        <View style={styles.topActions}>
+          <Text style={styles.actionIcon}>☆</Text>
+          <Text style={styles.actionIcon}>铃</Text>
+        </View>
       </View>
-      <Text style={styles.title}>
-        {payload?.instrument.name || `${route.market} ${route.symbol}`}
-      </Text>
-      <Text style={styles.subtitle}>
-        {route.market} {route.symbol}
-      </Text>
-      <View style={styles.priceRow}>
-        <Text style={styles.price}>{formatNumber(payload?.snapshot.last_price ?? null)}</Text>
-        <PriceChange value={payload?.snapshot.change_pct ?? null} />
-      </View>
-      <View style={styles.metaGrid}>
-        <Metric label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
-        <Metric label="成交量" value={formatMarketMetric(payload?.snapshot.volume ?? null)} />
-        <Metric label="来源" value={payload?.snapshot.source || "--"} />
-      </View>
-      <DataTimeBadge value={payload?.snapshot.data_time ?? null} />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <View style={styles.periods}>
-        {(payload?.periods.length ? payload.periods : [period]).map((item) => (
-          <Pressable
-            key={item}
-            style={[styles.periodButton, item === period ? styles.periodButtonActive : null]}
-            onPress={() => setPeriod(item)}
-          >
-            <Text style={[styles.periodText, item === period ? styles.periodTextActive : null]}>
-              {item}
-            </Text>
-          </Pressable>
+      <View style={styles.sectionTabs}>
+        {["价格", "信息", "交易数据", "代币检测", "广场", "交易-X"].map((item, index) => (
+          <Text key={item} style={[styles.sectionTab, index === 0 ? styles.sectionTabActive : null]}>
+            {item}
+          </Text>
         ))}
       </View>
-      <NativeKLineChart bars={payload?.bars ?? []} />
-    </ScrollView>
+      <View style={styles.statsRow}>
+        <Metric label="标记价格" value={formatNumber(payload?.snapshot.last_price ?? null)} />
+        <Metric label="涨跌幅" value={formatPercent(payload?.snapshot.change_pct ?? null)} />
+        <Metric label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
+      </View>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <View style={styles.periods}>
+        {PERIOD_TABS.map((item) => {
+          const available = payload?.periods.includes(item.value) || item.value === "1d";
+          return (
+            <Pressable
+              key={item.value}
+              disabled={!available}
+              style={styles.periodPressable}
+              onPress={() => setPeriod(item.value)}
+            >
+              <Text
+                style={[
+                  styles.periodText,
+                  item.value === period ? styles.periodTextActive : null,
+                  !available ? styles.periodTextDisabled : null
+                ]}
+              >
+                {item.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+        <Text style={styles.periodMore}>更多⌄</Text>
+        <Text style={styles.toolIcon}>⌗</Text>
+        <Text style={styles.toolIcon}>◫</Text>
+      </View>
+      <ScrollView style={styles.chartScroll} contentContainerStyle={styles.chartContent}>
+        <NativeKLineChart bars={payload?.bars ?? []} />
+      </ScrollView>
+      <View style={styles.bottomBar}>
+        <Pressable style={styles.bottomTool}>
+          <Text style={styles.bottomIcon}>•••</Text>
+          <Text style={styles.bottomLabel}>更多</Text>
+        </Pressable>
+        <Pressable style={styles.bottomTool}>
+          <Text style={styles.bottomIcon}>▦</Text>
+          <Text style={styles.bottomLabel}>工具</Text>
+        </Pressable>
+        <Pressable style={styles.bottomTool}>
+          <Text style={styles.bottomIcon}>◎</Text>
+          <Text style={styles.bottomLabel}>现货</Text>
+        </Pressable>
+        <Pressable style={styles.tradeButton} onPress={() => void loadDetail(true)}>
+          <Text style={styles.tradeButtonText}>{loading ? "刷新中" : "交易"}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -112,16 +156,23 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatPercent(value: number | null): string {
+  if (value === null) return "--";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
 function formatNumber(value: number | null): string {
   if (value === null) return "--";
   return value.toLocaleString(undefined, {
-    maximumFractionDigits: value >= 100 ? 2 : 4
+    maximumFractionDigits: value >= 100 ? 2 : 8
   });
 }
 
 function formatMarketMetric(value: number | null): string {
   if (value === null) return "--";
   const abs = Math.abs(value);
+  if (abs >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(1)}T`;
+  if (abs >= 100_000_000) return `${(value / 100_000_000).toFixed(2)}亿`;
   if (abs >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
   if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
   if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
@@ -131,101 +182,190 @@ function formatMarketMetric(value: number | null): string {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#071113"
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 48,
-    paddingBottom: 36
+    backgroundColor: "#ffffff"
   },
   topBar: {
+    minHeight: 112,
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center"
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingTop: 42,
+    backgroundColor: "#ffffff"
   },
-  back: {
-    color: "#5eead4",
+  iconButton: {
+    width: 36,
+    height: 36,
+    justifyContent: "center"
+  },
+  iconText: {
+    color: "#111827",
+    fontSize: 42,
+    lineHeight: 42
+  },
+  titleBlock: {
+    flex: 1,
+    minWidth: 0,
+    paddingLeft: 8
+  },
+  symbolRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  symbol: {
+    color: "#030712",
+    fontSize: 25,
+    fontWeight: "900"
+  },
+  badge: {
+    overflow: "hidden",
+    borderRadius: 5,
+    backgroundColor: "#f1f1f1",
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: "700",
+    paddingHorizontal: 7,
+    paddingVertical: 3
+  },
+  name: {
+    marginTop: 5,
+    color: "#737373",
     fontSize: 15
   },
-  title: {
-    marginTop: 20,
-    color: "#f8fafc",
-    fontSize: 24,
-    fontWeight: "700"
-  },
-  subtitle: {
-    marginTop: 8,
-    color: "#9fb2b7",
-    fontSize: 15
-  },
-  priceRow: {
+  topActions: {
     flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "space-between",
-    marginTop: 20
+    gap: 22
   },
-  price: {
-    color: "#f8fafc",
-    fontSize: 34,
+  actionIcon: {
+    color: "#030712",
+    fontSize: 28,
     fontWeight: "800"
   },
-  metaGrid: {
+  sectionTabs: {
+    minHeight: 46,
     flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
-    marginBottom: 10
+    alignItems: "flex-end",
+    gap: 26,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#eeeeee",
+    paddingHorizontal: 18
+  },
+  sectionTab: {
+    color: "#777777",
+    fontSize: 18,
+    fontWeight: "800",
+    paddingBottom: 12
+  },
+  sectionTabActive: {
+    color: "#111111",
+    borderBottomWidth: 4,
+    borderBottomColor: "#fcd535"
+  },
+  statsRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 18
   },
   metric: {
-    flex: 1,
-    minHeight: 54,
-    justifyContent: "center",
-    borderRadius: 8,
-    backgroundColor: "#0d2023",
-    paddingHorizontal: 10
+    flex: 1
   },
   metricLabel: {
-    color: "#8ea4aa",
+    color: "#737373",
     fontSize: 12
   },
   metricValue: {
-    marginTop: 5,
-    color: "#d6e2e4",
-    fontSize: 14,
+    marginTop: 3,
+    color: "#111111",
+    fontSize: 15,
     fontWeight: "700"
   },
   error: {
-    marginTop: 12,
-    color: "#fca5a5",
+    paddingHorizontal: 18,
+    color: "#dc2626",
     fontSize: 13
   },
-  refresh: {
-    color: "#5eead4",
-    fontSize: 16
-  },
   periods: {
+    minHeight: 52,
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 22
-  },
-  periodButton: {
-    minWidth: 48,
-    minHeight: 34,
     alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 8,
-    backgroundColor: "#102528",
-    paddingHorizontal: 12
+    gap: 20,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#f1f1f1",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#eeeeee",
+    paddingHorizontal: 18
   },
-  periodButtonActive: {
-    backgroundColor: "#5eead4"
+  periodPressable: {
+    minHeight: 36,
+    justifyContent: "center"
   },
   periodText: {
-    color: "#b9cdd2",
-    fontSize: 14,
-    fontWeight: "700"
+    color: "#777777",
+    fontSize: 16,
+    fontWeight: "800"
   },
   periodTextActive: {
-    color: "#071113"
+    color: "#111111"
+  },
+  periodTextDisabled: {
+    color: "#c7c7c7"
+  },
+  periodMore: {
+    color: "#777777",
+    fontSize: 16,
+    fontWeight: "800"
+  },
+  toolIcon: {
+    color: "#111111",
+    fontSize: 20,
+    fontWeight: "900"
+  },
+  chartScroll: {
+    flex: 1,
+    backgroundColor: "#ffffff"
+  },
+  chartContent: {
+    paddingHorizontal: 0,
+    paddingBottom: 18
+  },
+  bottomBar: {
+    minHeight: 82,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#eeeeee",
+    paddingHorizontal: 18,
+    paddingBottom: 10,
+    backgroundColor: "#ffffff"
+  },
+  bottomTool: {
+    width: 42,
+    alignItems: "center"
+  },
+  bottomIcon: {
+    color: "#111111",
+    fontSize: 20,
+    fontWeight: "900"
+  },
+  bottomLabel: {
+    marginTop: 3,
+    color: "#111111",
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  tradeButton: {
+    flex: 1,
+    minHeight: 54,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: "#fcd535"
+  },
+  tradeButtonText: {
+    color: "#111111",
+    fontSize: 20,
+    fontWeight: "900"
   }
 });

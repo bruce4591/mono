@@ -1,7 +1,7 @@
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { menuRoute, type AppRoute } from "../app/navigation";
+import { homeRoute, type AppRoute } from "../app/navigation";
 import { API_BASE_URL } from "../config";
 import { ONEPLUS_13T_BACKGROUND_CHECKLIST } from "../oneplusGuidance";
 
@@ -18,8 +18,8 @@ export function SettingsScreen({
 }) {
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Pressable onPress={() => navigate(menuRoute)}>
-        <Text style={styles.back}>返回菜单</Text>
+      <Pressable onPress={() => navigate(homeRoute)}>
+        <Text style={styles.back}>返回行情</Text>
       </Pressable>
       <Text style={styles.title}>设置</Text>
       <Section title="连接">

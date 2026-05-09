@@ -1,55 +1,82 @@
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
 import type { MobileBar } from "../api/types";
 import { EmptyState } from "./EmptyState";
 
-const PRICE_CHART_HEIGHT = 210;
-const VOLUME_CHART_HEIGHT = 56;
-const CANDLE_WIDTH = 8;
-const CANDLE_GAP = 5;
-const MAX_VISIBLE_BARS = 90;
+const PRICE_CHART_HEIGHT = 250;
+const VOLUME_CHART_HEIGHT = 64;
+const MACD_CHART_HEIGHT = 82;
+const RSI_CHART_HEIGHT = 96;
+const CANDLE_WIDTH = 7;
+const CANDLE_GAP = 4;
+const LEFT_PADDING = 4;
+const RIGHT_PADDING = 54;
+const MAX_VISIBLE_BARS = 100;
 const UP_COLOR = "#0ecb81";
 const DOWN_COLOR = "#f6465d";
+const GRID_COLOR = "#eeeeee";
+const AXIS_COLOR = "#777777";
 const MA7_COLOR = "#fcd535";
 const MA25_COLOR = "#c084fc";
 
 export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
-  const visibleBars = bars.slice(-MAX_VISIBLE_BARS).filter((bar) => {
-    return (
-      Number.isFinite(bar.open) &&
-      Number.isFinite(bar.high) &&
-      Number.isFinite(bar.low) &&
-      Number.isFinite(bar.close)
-    );
-  });
+  const visibleBars = bars.slice(-MAX_VISIBLE_BARS).filter(isValidBar);
   if (visibleBars.length === 0) {
     return <EmptyState title="暂无 K 线" message="当前周期没有可展示的数据" />;
   }
 
-  const high = Math.max(...visibleBars.map((bar) => bar.high));
-  const low = Math.min(...visibleBars.map((bar) => bar.low));
-  const pricePadding = Math.max((high - low) * 0.08, Math.abs(high) * 0.001, 0.000001);
-  const paddedHigh = high + pricePadding;
-  const paddedLow = low - pricePadding;
-  const range = Math.max(paddedHigh - paddedLow, 0.000001);
+  const rawHigh = Math.max(...visibleBars.map((bar) => bar.high));
+  const rawLow = Math.min(...visibleBars.map((bar) => bar.low));
+  const pricePadding = Math.max((rawHigh - rawLow) * 0.08, Math.abs(rawHigh) * 0.001, 0.000001);
+  const high = rawHigh + pricePadding;
+  const low = rawLow - pricePadding;
+  const range = Math.max(high - low, 0.000001);
   const maxVolume = Math.max(...visibleBars.map((bar) => bar.volume ?? 0), 0.000001);
+  const slotWidth = CANDLE_WIDTH + CANDLE_GAP;
+  const plotWidth = visibleBars.length * slotWidth + LEFT_PADDING + RIGHT_PADDING;
   const latest = visibleBars[visibleBars.length - 1];
   const previous = visibleBars.length > 1 ? visibleBars[visibleBars.length - 2] : null;
   const latestChange = previous ? latest.close - previous.close : latest.close - latest.open;
   const latestChangePct = previous && previous.close !== 0 ? (latestChange / previous.close) * 100 : null;
   const ma7 = movingAverage(visibleBars, 7);
   const ma25 = movingAverage(visibleBars, 25);
-  const latestMa7 = ma7[ma7.length - 1];
-  const latestMa25 = ma25[ma25.length - 1];
+  const volumeMa5 = movingAverageByValue(
+    visibleBars.map((bar) => bar.volume ?? 0),
+    5
+  );
+  const volumeMa10 = movingAverageByValue(
+    visibleBars.map((bar) => bar.volume ?? 0),
+    10
+  );
+  const macd = buildMacd(visibleBars.map((bar) => bar.close));
+  const rsi7 = buildRsi(visibleBars.map((bar) => bar.close), 7);
+  const rsi14 = buildRsi(visibleBars.map((bar) => bar.close), 14);
+  const rsi28 = buildRsi(visibleBars.map((bar) => bar.close), 28);
+  const ma7Path = buildLinePath(ma7, high, range, slotWidth);
+  const ma25Path = buildLinePath(ma25, high, range, slotWidth);
+  const volumeMa5Path = buildScaledLinePath(volumeMa5, 0, maxVolume, VOLUME_CHART_HEIGHT, slotWidth);
+  const volumeMa10Path = buildScaledLinePath(volumeMa10, 0, maxVolume, VOLUME_CHART_HEIGHT, slotWidth);
+  const macdMax = Math.max(
+    ...macd.histogram.map((value) => Math.abs(value)),
+    ...macd.dif.map((value) => Math.abs(value)),
+    ...macd.dea.map((value) => Math.abs(value)),
+    0.000001
+  );
+  const macdDifPath = buildCenteredLinePath(macd.dif, macdMax, MACD_CHART_HEIGHT, slotWidth);
+  const macdDeaPath = buildCenteredLinePath(macd.dea, macdMax, MACD_CHART_HEIGHT, slotWidth);
+  const rsi7Path = buildScaledLinePath(rsi7, 0, 100, RSI_CHART_HEIGHT, slotWidth);
+  const rsi14Path = buildScaledLinePath(rsi14, 0, 100, RSI_CHART_HEIGHT, slotWidth);
+  const rsi28Path = buildScaledLinePath(rsi28, 0, 100, RSI_CHART_HEIGHT, slotWidth);
+  const priceMarks = [high, (high + low) / 2, low];
+  const latestMacd = macd.histogram[macd.histogram.length - 1];
 
   return (
     <View style={styles.root}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>K线</Text>
-        <Text style={styles.latestText}>
-          {latest.time}
-        </Text>
+        <Text style={styles.latestText}>{latest.time}</Text>
       </View>
       <View style={styles.ohlcRow}>
         <Info label="开" value={formatPrice(latest.open)} />
@@ -58,110 +85,210 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
         <Info label="收" value={formatPrice(latest.close)} />
         <Info
           label="涨跌"
-          value={latestChangePct === null ? "--" : `${latestChangePct >= 0 ? "+" : ""}${latestChangePct.toFixed(2)}%`}
+          value={
+            latestChangePct === null
+              ? "--"
+              : `${latestChangePct >= 0 ? "+" : ""}${latestChangePct.toFixed(2)}%`
+          }
           tone={latestChange >= 0 ? "up" : "down"}
         />
       </View>
       <View style={styles.legendRow}>
         <Text style={[styles.legendText, { color: MA7_COLOR }]}>
-          MA7 {latestMa7 ? formatPrice(latestMa7) : "--"}
+          MA7 {formatOptionalPrice(ma7[ma7.length - 1])}
         </Text>
         <Text style={[styles.legendText, { color: MA25_COLOR }]}>
-          MA25 {latestMa25 ? formatPrice(latestMa25) : "--"}
+          MA25 {formatOptionalPrice(ma25[ma25.length - 1])}
         </Text>
-        <Text style={styles.legendText}>Vol {formatMetric(latest.volume ?? null)}</Text>
+        <Text style={styles.legendText}>VOL {formatMetric(latest.volume ?? null)}</Text>
       </View>
-      <View style={styles.axisRow}>
-        <Text style={styles.axisText}>{formatPrice(paddedHigh)}</Text>
-        <Text style={styles.axisText}>{formatPrice((paddedHigh + paddedLow) / 2)}</Text>
-        <Text style={styles.axisText}>{formatPrice(paddedLow)}</Text>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View>
-          <View style={styles.priceChart}>
-            <View style={[styles.gridLine, { top: 0 }]} />
-            <View style={[styles.gridLine, { top: PRICE_CHART_HEIGHT / 2 }]} />
-            <View style={[styles.gridLine, { bottom: 0 }]} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentOffset={{ x: plotWidth, y: 0 }}>
+        <View style={styles.chartPanel}>
+          <Svg width={plotWidth} height={PRICE_CHART_HEIGHT}>
+            {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+              const y = ratio * PRICE_CHART_HEIGHT;
+              return (
+                <Line
+                  key={`grid:${ratio}`}
+                  x1={0}
+                  y1={y}
+                  x2={plotWidth}
+                  y2={y}
+                  stroke={GRID_COLOR}
+                  strokeWidth={StyleSheet.hairlineWidth}
+                />
+              );
+            })}
             {visibleBars.map((bar, index) => {
+              const x = LEFT_PADDING + index * slotWidth;
+              const centerX = x + CANDLE_WIDTH / 2;
               const rising = bar.close >= bar.open;
               const color = rising ? UP_COLOR : DOWN_COLOR;
-              const wickTop = yForPrice(bar.high, paddedHigh, range);
-              const wickBottom = yForPrice(bar.low, paddedHigh, range);
-              const bodyTop = yForPrice(Math.max(bar.open, bar.close), paddedHigh, range);
-              const bodyBottom = yForPrice(Math.min(bar.open, bar.close), paddedHigh, range);
-              const bodyHeight = Math.max(bodyBottom - bodyTop, 2);
-              const ma7Value = ma7[index];
-              const ma25Value = ma25[index];
+              const wickY1 = yForPrice(bar.high, high, range);
+              const wickY2 = yForPrice(bar.low, high, range);
+              const bodyY = yForPrice(Math.max(bar.open, bar.close), high, range);
+              const bodyBottom = yForPrice(Math.min(bar.open, bar.close), high, range);
+              const bodyHeight = Math.max(bodyBottom - bodyY, 2);
               return (
-                <View key={`${bar.time}:${index}`} style={styles.slot}>
-                  {ma7Value ? (
-                    <View
-                      style={[
-                        styles.maDot,
-                        {
-                          top: clamp(yForPrice(ma7Value, paddedHigh, range), 0, PRICE_CHART_HEIGHT - 2),
-                          backgroundColor: MA7_COLOR
-                        }
-                      ]}
-                    />
-                  ) : null}
-                  {ma25Value ? (
-                    <View
-                      style={[
-                        styles.maDot,
-                        {
-                          top: clamp(yForPrice(ma25Value, paddedHigh, range), 0, PRICE_CHART_HEIGHT - 2),
-                          backgroundColor: MA25_COLOR
-                        }
-                      ]}
-                    />
-                  ) : null}
-                  <View
-                    style={[
-                      styles.wick,
-                      {
-                        top: wickTop,
-                        height: Math.max(wickBottom - wickTop, 1),
-                        backgroundColor: color
-                      }
-                    ]}
+                <React.Fragment key={`${bar.time}:${index}`}>
+                  <Line
+                    x1={centerX}
+                    y1={wickY1}
+                    x2={centerX}
+                    y2={wickY2}
+                    stroke={color}
+                    strokeWidth={1.2}
                   />
-                  <View
-                    style={[
-                      styles.body,
-                      {
-                        top: bodyTop,
-                        height: bodyHeight,
-                        borderColor: color,
-                        backgroundColor: rising ? color : "#0b0f14"
-                      }
-                    ]}
+                  <Rect
+                    x={x}
+                    y={bodyY}
+                    width={CANDLE_WIDTH}
+                    height={bodyHeight}
+                    stroke={color}
+                    strokeWidth={1}
+                    fill={rising ? color : "#ffffff"}
                   />
-                </View>
+                </React.Fragment>
               );
             })}
-          </View>
-          <View style={styles.volumeChart}>
+            {ma7Path ? <Path d={ma7Path} stroke={MA7_COLOR} strokeWidth={1.4} fill="none" /> : null}
+            {ma25Path ? <Path d={ma25Path} stroke={MA25_COLOR} strokeWidth={1.4} fill="none" /> : null}
+            {priceMarks.map((mark, index) => {
+              const y = yForPrice(mark, high, range);
+              return (
+                <SvgText
+                  key={`mark:${index}`}
+                  x={plotWidth - RIGHT_PADDING + 6}
+                  y={clamp(y + 4, 12, PRICE_CHART_HEIGHT - 4)}
+                  fill={AXIS_COLOR}
+                  fontSize="11"
+                >
+                  {formatPrice(mark)}
+                </SvgText>
+              );
+            })}
+          </Svg>
+          <Svg width={plotWidth} height={VOLUME_CHART_HEIGHT} style={styles.volumeSvg}>
+            <Line
+              x1={0}
+              y1={0}
+              x2={plotWidth}
+              y2={0}
+              stroke={GRID_COLOR}
+              strokeWidth={StyleSheet.hairlineWidth}
+            />
             {visibleBars.map((bar, index) => {
+              const x = LEFT_PADDING + index * slotWidth;
               const rising = bar.close >= bar.open;
-              const volumeHeight = Math.max(((bar.volume ?? 0) / maxVolume) * VOLUME_CHART_HEIGHT, 1);
+              const height = Math.max(((bar.volume ?? 0) / maxVolume) * (VOLUME_CHART_HEIGHT - 8), 1);
               return (
-                <View key={`volume:${bar.time}:${index}`} style={styles.volumeSlot}>
-                  <View
-                    style={[
-                      styles.volumeBar,
-                      {
-                        height: volumeHeight,
-                        backgroundColor: rising ? "rgba(14, 203, 129, 0.42)" : "rgba(246, 70, 93, 0.42)"
-                      }
-                    ]}
-                  />
-                </View>
+                <Rect
+                  key={`volume:${bar.time}:${index}`}
+                  x={x}
+                  y={VOLUME_CHART_HEIGHT - height}
+                  width={CANDLE_WIDTH}
+                  height={height}
+                  fill={rising ? "rgba(14, 203, 129, 0.42)" : "rgba(246, 70, 93, 0.42)"}
+                />
               );
             })}
-          </View>
+            {volumeMa5Path ? <Path d={volumeMa5Path} stroke={MA7_COLOR} strokeWidth={1.2} fill="none" /> : null}
+            {volumeMa10Path ? <Path d={volumeMa10Path} stroke={MA25_COLOR} strokeWidth={1.2} fill="none" /> : null}
+            <SvgText x={plotWidth - RIGHT_PADDING + 6} y={12} fill={AXIS_COLOR} fontSize="11">
+              {formatMetric(maxVolume)}
+            </SvgText>
+          </Svg>
+          <IndicatorLegend
+            items={[
+              { label: `DIF: ${formatIndicator(macd.dif[macd.dif.length - 1])}`, color: MA7_COLOR },
+              { label: `DEA: ${formatIndicator(macd.dea[macd.dea.length - 1])}`, color: MA25_COLOR },
+              { label: `MACD: ${formatIndicator(latestMacd)}`, color: MA7_COLOR }
+            ]}
+          />
+          <Svg width={plotWidth} height={MACD_CHART_HEIGHT}>
+            <Line
+              x1={0}
+              y1={MACD_CHART_HEIGHT / 2}
+              x2={plotWidth}
+              y2={MACD_CHART_HEIGHT / 2}
+              stroke={GRID_COLOR}
+              strokeWidth={StyleSheet.hairlineWidth}
+            />
+            {macd.histogram.map((value, index) => {
+              const x = LEFT_PADDING + index * slotWidth;
+              const zeroY = MACD_CHART_HEIGHT / 2;
+              const barHeight = Math.abs(value / macdMax) * (MACD_CHART_HEIGHT / 2 - 4);
+              const positive = value >= 0;
+              return (
+                <Rect
+                  key={`macd:${index}`}
+                  x={x}
+                  y={positive ? zeroY - barHeight : zeroY}
+                  width={CANDLE_WIDTH}
+                  height={Math.max(barHeight, 1)}
+                  fill={positive ? "rgba(14, 203, 129, 0.62)" : "rgba(246, 70, 93, 0.62)"}
+                />
+              );
+            })}
+            {macdDifPath ? <Path d={macdDifPath} stroke={MA7_COLOR} strokeWidth={1.3} fill="none" /> : null}
+            {macdDeaPath ? <Path d={macdDeaPath} stroke={MA25_COLOR} strokeWidth={1.3} fill="none" /> : null}
+            <SvgText x={plotWidth - RIGHT_PADDING + 6} y={16} fill={AXIS_COLOR} fontSize="11">
+              {formatIndicator(macdMax)}
+            </SvgText>
+            <SvgText x={plotWidth - RIGHT_PADDING + 6} y={MACD_CHART_HEIGHT - 6} fill={AXIS_COLOR} fontSize="11">
+              0.0000
+            </SvgText>
+          </Svg>
+          <IndicatorLegend
+            items={[
+              { label: `RSI(7): ${formatIndicator(rsi7[rsi7.length - 1])}`, color: MA7_COLOR },
+              { label: `RSI(14): ${formatIndicator(rsi14[rsi14.length - 1])}`, color: "#ec4899" },
+              { label: `RSI(28): ${formatIndicator(rsi28[rsi28.length - 1])}`, color: MA25_COLOR }
+            ]}
+          />
+          <Svg width={plotWidth} height={RSI_CHART_HEIGHT}>
+            {[30, 70].map((mark) => {
+              const y = RSI_CHART_HEIGHT - (mark / 100) * RSI_CHART_HEIGHT;
+              return (
+                <Line
+                  key={`rsi-line:${mark}`}
+                  x1={0}
+                  y1={y}
+                  x2={plotWidth}
+                  y2={y}
+                  stroke={GRID_COLOR}
+                  strokeWidth={StyleSheet.hairlineWidth}
+                />
+              );
+            })}
+            {rsi7Path ? <Path d={rsi7Path} stroke={MA7_COLOR} strokeWidth={1.3} fill="none" /> : null}
+            {rsi14Path ? <Path d={rsi14Path} stroke="#ec4899" strokeWidth={1.3} fill="none" /> : null}
+            {rsi28Path ? <Path d={rsi28Path} stroke={MA25_COLOR} strokeWidth={1.3} fill="none" /> : null}
+            <SvgText x={plotWidth - RIGHT_PADDING + 6} y={18} fill={AXIS_COLOR} fontSize="11">
+              70.0
+            </SvgText>
+            <SvgText x={plotWidth - RIGHT_PADDING + 6} y={RSI_CHART_HEIGHT - 8} fill={AXIS_COLOR} fontSize="11">
+              30.0
+            </SvgText>
+          </Svg>
         </View>
       </ScrollView>
+    </View>
+  );
+}
+
+function IndicatorLegend({
+  items
+}: {
+  items: Array<{ label: string; color: string }>;
+}) {
+  return (
+    <View style={styles.indicatorLegend}>
+      {items.map((item) => (
+        <Text key={item.label} style={[styles.indicatorText, { color: item.color }]}>
+          {item.label}
+        </Text>
+      ))}
     </View>
   );
 }
@@ -177,8 +304,20 @@ function Info({
 }) {
   return (
     <Text style={styles.infoText}>
-      {label} <Text style={tone === "up" ? styles.upText : tone === "down" ? styles.downText : styles.infoValue}>{value}</Text>
+      {label}{" "}
+      <Text style={tone === "up" ? styles.upText : tone === "down" ? styles.downText : styles.infoValue}>
+        {value}
+      </Text>
     </Text>
+  );
+}
+
+function isValidBar(bar: MobileBar): boolean {
+  return (
+    Number.isFinite(bar.open) &&
+    Number.isFinite(bar.high) &&
+    Number.isFinite(bar.low) &&
+    Number.isFinite(bar.close)
   );
 }
 
@@ -186,12 +325,23 @@ function yForPrice(price: number, high: number, range: number): number {
   return ((high - price) / range) * PRICE_CHART_HEIGHT;
 }
 
+function xForIndex(index: number, slotWidth: number): number {
+  return LEFT_PADDING + index * slotWidth + CANDLE_WIDTH / 2;
+}
+
 function movingAverage(bars: MobileBar[], period: number): Array<number | null> {
+  return movingAverageByValue(
+    bars.map((bar) => bar.close),
+    period
+  );
+}
+
+function movingAverageByValue(values: number[], period: number): Array<number | null> {
   let sum = 0;
-  return bars.map((bar, index) => {
-    sum += bar.close;
+  return values.map((value, index) => {
+    sum += value;
     if (index >= period) {
-      sum -= bars[index - period].close;
+      sum -= values[index - period];
     }
     if (index < period - 1) {
       return null;
@@ -200,8 +350,99 @@ function movingAverage(bars: MobileBar[], period: number): Array<number | null> 
   });
 }
 
+function buildMacd(values: number[]) {
+  const ema12 = exponentialMovingAverage(values, 12);
+  const ema26 = exponentialMovingAverage(values, 26);
+  const dif = values.map((_, index) => ema12[index] - ema26[index]);
+  const dea = exponentialMovingAverage(dif, 9);
+  const histogram = dif.map((value, index) => (value - dea[index]) * 2);
+  return { dif, dea, histogram };
+}
+
+function exponentialMovingAverage(values: number[], period: number): number[] {
+  const multiplier = 2 / (period + 1);
+  let previous = values[0] ?? 0;
+  return values.map((value, index) => {
+    if (index === 0) return value;
+    previous = value * multiplier + previous * (1 - multiplier);
+    return previous;
+  });
+}
+
+function buildRsi(values: number[], period: number): Array<number | null> {
+  let gainSum = 0;
+  let lossSum = 0;
+  return values.map((value, index) => {
+    if (index === 0) return null;
+    const change = value - values[index - 1];
+    gainSum += Math.max(change, 0);
+    lossSum += Math.max(-change, 0);
+    if (index > period) {
+      const oldChange = values[index - period] - values[index - period - 1];
+      gainSum -= Math.max(oldChange, 0);
+      lossSum -= Math.max(-oldChange, 0);
+    }
+    if (index < period) return null;
+    if (lossSum === 0) return 100;
+    const rs = gainSum / lossSum;
+    return 100 - 100 / (1 + rs);
+  });
+}
+
+function buildLinePath(
+  values: Array<number | null>,
+  high: number,
+  range: number,
+  slotWidth: number
+): string {
+  const segments: string[] = [];
+  values.forEach((value, index) => {
+    if (value === null) return;
+    const command = segments.length === 0 ? "M" : "L";
+    segments.push(`${command}${xForIndex(index, slotWidth).toFixed(2)},${yForPrice(value, high, range).toFixed(2)}`);
+  });
+  return segments.join(" ");
+}
+
+function buildScaledLinePath(
+  values: Array<number | null>,
+  min: number,
+  max: number,
+  height: number,
+  slotWidth: number
+): string {
+  const range = Math.max(max - min, 0.000001);
+  const segments: string[] = [];
+  values.forEach((value, index) => {
+    if (value === null) return;
+    const x = xForIndex(index, slotWidth);
+    const y = height - ((value - min) / range) * height;
+    segments.push(`${segments.length === 0 ? "M" : "L"}${x.toFixed(2)},${clamp(y, 0, height).toFixed(2)}`);
+  });
+  return segments.join(" ");
+}
+
+function buildCenteredLinePath(
+  values: number[],
+  maxAbs: number,
+  height: number,
+  slotWidth: number
+): string {
+  const segments: string[] = [];
+  values.forEach((value, index) => {
+    const x = xForIndex(index, slotWidth);
+    const y = height / 2 - (value / maxAbs) * (height / 2 - 4);
+    segments.push(`${segments.length === 0 ? "M" : "L"}${x.toFixed(2)},${clamp(y, 0, height).toFixed(2)}`);
+  });
+  return segments.join(" ");
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function formatOptionalPrice(value: number | null): string {
+  return value === null ? "--" : formatPrice(value);
 }
 
 function formatPrice(value: number): string {
@@ -219,10 +460,18 @@ function formatMetric(value: number | null): string {
   return value.toFixed(2);
 }
 
+function formatIndicator(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "--";
+  const abs = Math.abs(value);
+  if (abs >= 1000) return value.toFixed(2);
+  if (abs >= 1) return value.toFixed(4);
+  return value.toFixed(8);
+}
+
 const styles = StyleSheet.create({
   root: {
-    minHeight: PRICE_CHART_HEIGHT + VOLUME_CHART_HEIGHT + 116,
-    marginTop: 18
+    minHeight: PRICE_CHART_HEIGHT + VOLUME_CHART_HEIGHT + MACD_CHART_HEIGHT + RSI_CHART_HEIGHT + 178,
+    marginTop: 8
   },
   headerRow: {
     flexDirection: "row",
@@ -231,12 +480,12 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   title: {
-    color: "#f8fafc",
+    color: "#111111",
     fontSize: 16,
     fontWeight: "800"
   },
   latestText: {
-    color: "#8ea4aa",
+    color: "#777777",
     fontSize: 12
   },
   ohlcRow: {
@@ -246,11 +495,11 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   infoText: {
-    color: "#8ea4aa",
+    color: "#777777",
     fontSize: 12
   },
   infoValue: {
-    color: "#d6e2e4",
+    color: "#111111",
     fontWeight: "700"
   },
   upText: {
@@ -268,79 +517,26 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   legendText: {
-    color: "#8ea4aa",
+    color: "#777777",
     fontSize: 12,
     fontWeight: "700"
   },
-  axisRow: {
+  chartPanel: {
+    backgroundColor: "#ffffff"
+  },
+  volumeSvg: {
+    marginTop: 8
+  },
+  indicatorLegend: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    minHeight: 20
+    flexWrap: "wrap",
+    gap: 10,
+    minHeight: 24,
+    alignItems: "center",
+    marginTop: 6
   },
-  axisText: {
-    color: "#8ea4aa",
-    fontSize: 12
-  },
-  priceChart: {
-    position: "relative",
-    height: PRICE_CHART_HEIGHT,
-    flexDirection: "row",
-    alignItems: "stretch",
-    backgroundColor: "#0b0f14",
-    borderColor: "#173438"
-  },
-  gridLine: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "#173438"
-  },
-  slot: {
-    position: "relative",
-    width: CANDLE_WIDTH,
-    height: PRICE_CHART_HEIGHT,
-    marginRight: CANDLE_GAP
-  },
-  wick: {
-    position: "absolute",
-    left: CANDLE_WIDTH / 2 - 1,
-    width: 2
-  },
-  body: {
-    position: "absolute",
-    left: 0,
-    width: CANDLE_WIDTH,
-    borderWidth: 1,
-    borderRadius: 2
-  },
-  maDot: {
-    position: "absolute",
-    left: CANDLE_WIDTH / 2 - 1,
-    zIndex: 2,
-    width: 2,
-    height: 2,
-    borderRadius: 1
-  },
-  volumeChart: {
-    height: VOLUME_CHART_HEIGHT,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    marginTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#173438"
-  },
-  volumeSlot: {
-    position: "relative",
-    width: CANDLE_WIDTH,
-    height: VOLUME_CHART_HEIGHT,
-    marginRight: CANDLE_GAP
-  },
-  volumeBar: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    width: CANDLE_WIDTH,
-    borderRadius: 1
+  indicatorText: {
+    fontSize: 12,
+    fontWeight: "700"
   }
 });

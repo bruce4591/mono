@@ -1,6 +1,6 @@
 {
   "name": "market-mobile",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
@@ -14,7 +14,8 @@
     "expo": "~55.0.0",
     "expo-notifications": "~55.0.22",
     "react": "19.2.0",
-    "react-native": "0.83.6"
+    "react-native": "0.83.6",
+    "react-native-svg": "15.15.3"
   },
   "devDependencies": {
     "@types/react": "~19.2.0",
