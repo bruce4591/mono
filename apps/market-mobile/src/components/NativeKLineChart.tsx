@@ -66,7 +66,6 @@ export function NativeKLineChart({
   const plotWidth = Math.max(viewportWidth, dataWidth + RIGHT_PADDING);
   const maxScrollX = Math.max(plotWidth - viewportWidth, 0);
   const effectiveScrollX = clamp(scrollX, 0, maxScrollX);
-  const axisX = effectiveScrollX + viewportWidth - RIGHT_PADDING + 6;
   const visibleWindow = useMemo(() => {
     return getVisibleWindow(visibleBars, effectiveScrollX, viewportWidth, slotWidth);
   }, [effectiveScrollX, slotWidth, viewportWidth, visibleBars]);
@@ -80,6 +79,7 @@ export function NativeKLineChart({
     selectedIndex >= 0
       ? xForIndex(selectedIndex, slotWidth)
       : xForIndex(Math.max(visibleBars.length - 1, 0), slotWidth);
+  const selectedValueIndex = selectedIndex >= 0 ? selectedIndex : Math.max(visibleBars.length - 1, 0);
 
   useEffect(() => {
     setSelectedTime(null);
@@ -137,7 +137,6 @@ export function NativeKLineChart({
   const rsi14Path = buildScaledLinePath(rsi14, 0, 100, RSI_CHART_HEIGHT, slotWidth);
   const rsi28Path = buildScaledLinePath(rsi28, 0, 100, RSI_CHART_HEIGHT, slotWidth);
   const priceMarks = buildPriceMarks(high, low);
-  const latestMacd = macd.histogram[macd.histogram.length - 1];
   const xLabels = buildXAxisLabels(visibleWindow, effectiveScrollX, viewportWidth, period);
 
   function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
@@ -163,16 +162,12 @@ export function NativeKLineChart({
 
   return (
     <View style={styles.root}>
-      <View style={styles.headerRow}>
-        <Text style={styles.latestText}>{formatSelectedTime(chartBar.time, period)}</Text>
-      </View>
       <View style={styles.legendRow}>
         {movingAverages.map((item) => (
           <Text key={`ma:${item.period}`} style={[styles.legendText, { color: item.color }]}>
-            MA{item.period} {formatOptionalPrice(item.values[item.values.length - 1])}
+            MA{item.period} {formatOptionalPrice(item.values[selectedValueIndex] ?? null)}
           </Text>
         ))}
-        <Text style={styles.legendText}>VOL {formatMetric(chartBar.volume ?? null)}</Text>
       </View>
       <View style={styles.chartViewport}>
         <ScrollView
@@ -276,6 +271,13 @@ export function NativeKLineChart({
               </SvgText>
             ))}
           </Svg>
+          <IndicatorLegend
+            items={[
+              { label: `VOL: ${formatMetric(chartBar.volume ?? null)}`, color: AXIS_COLOR },
+              { label: `MA5: ${formatMetric(volumeMa5[selectedValueIndex] ?? null)}`, color: MA_COLORS[5] },
+              { label: `MA10: ${formatMetric(volumeMa10[selectedValueIndex] ?? null)}`, color: MA_COLORS[11] }
+            ]}
+          />
           <Svg width={plotWidth} height={VOLUME_CHART_HEIGHT} style={styles.volumeSvg}>
             <Line
               x1={0}
@@ -302,15 +304,12 @@ export function NativeKLineChart({
             })}
             {volumeMa5Path ? <Path d={volumeMa5Path} stroke={MA_COLORS[5]} strokeWidth={1.2} fill="none" /> : null}
             {volumeMa10Path ? <Path d={volumeMa10Path} stroke={MA_COLORS[11]} strokeWidth={1.2} fill="none" /> : null}
-            <SvgText x={axisX} y={12} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
-              {formatMetric(maxVolume)}
-            </SvgText>
           </Svg>
           <IndicatorLegend
             items={[
-              { label: `DIF: ${formatIndicator(macd.dif[macd.dif.length - 1])}`, color: MA_COLORS[5] },
-              { label: `DEA: ${formatIndicator(macd.dea[macd.dea.length - 1])}`, color: MA_COLORS[22] },
-              { label: `MACD: ${formatIndicator(latestMacd)}`, color: MA_COLORS[5] }
+              { label: `DIF: ${formatIndicator(macd.dif[selectedValueIndex] ?? null)}`, color: MA_COLORS[5] },
+              { label: `DEA: ${formatIndicator(macd.dea[selectedValueIndex] ?? null)}`, color: MA_COLORS[22] },
+              { label: `MACD: ${formatIndicator(macd.histogram[selectedValueIndex] ?? null)}`, color: MA_COLORS[5] }
             ]}
           />
           <Svg width={plotWidth} height={MACD_CHART_HEIGHT}>
@@ -340,18 +339,12 @@ export function NativeKLineChart({
             })}
             {macdDifPath ? <Path d={macdDifPath} stroke={MA_COLORS[5]} strokeWidth={1.3} fill="none" /> : null}
             {macdDeaPath ? <Path d={macdDeaPath} stroke={MA_COLORS[22]} strokeWidth={1.3} fill="none" /> : null}
-            <SvgText x={axisX} y={16} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
-              {formatIndicator(macdMax)}
-            </SvgText>
-            <SvgText x={axisX} y={MACD_CHART_HEIGHT - 6} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
-              0.0000
-            </SvgText>
           </Svg>
           <IndicatorLegend
             items={[
-              { label: `RSI(7): ${formatIndicator(rsi7[rsi7.length - 1])}`, color: MA_COLORS[5] },
-              { label: `RSI(14): ${formatIndicator(rsi14[rsi14.length - 1])}`, color: "#ec4899" },
-              { label: `RSI(28): ${formatIndicator(rsi28[rsi28.length - 1])}`, color: MA_COLORS[22] }
+              { label: `RSI(7): ${formatIndicator(rsi7[selectedValueIndex] ?? null)}`, color: MA_COLORS[5] },
+              { label: `RSI(14): ${formatIndicator(rsi14[selectedValueIndex] ?? null)}`, color: "#ec4899" },
+              { label: `RSI(28): ${formatIndicator(rsi28[selectedValueIndex] ?? null)}`, color: MA_COLORS[22] }
             ]}
           />
           <Svg width={plotWidth} height={RSI_CHART_HEIGHT}>
@@ -372,12 +365,6 @@ export function NativeKLineChart({
             {rsi7Path ? <Path d={rsi7Path} stroke={MA_COLORS[5]} strokeWidth={1.3} fill="none" /> : null}
             {rsi14Path ? <Path d={rsi14Path} stroke="#ec4899" strokeWidth={1.3} fill="none" /> : null}
             {rsi28Path ? <Path d={rsi28Path} stroke={MA_COLORS[22]} strokeWidth={1.3} fill="none" /> : null}
-            <SvgText x={axisX} y={18} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
-              70.0
-            </SvgText>
-            <SvgText x={axisX} y={RSI_CHART_HEIGHT - 8} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
-              30.0
-            </SvgText>
           </Svg>
           </View>
         </ScrollView>
@@ -637,17 +624,7 @@ function formatAxisTime(value: string, period: string): string {
   return `${parsed.hour}:${parsed.minute}`;
 }
 
-function formatSelectedTime(value: string, period: string): string {
-  const parsed = parseTimeParts(value);
-  if (parsed === null) return value;
-  if (period === "1d") {
-    return `${parsed.year}-${parsed.month}-${parsed.day}`;
-  }
-  return `${parsed.month}-${parsed.day} ${parsed.hour}:${parsed.minute}`;
-}
-
 function parseTimeParts(value: string): {
-  year: string;
   month: string;
   day: string;
   hour: string;
@@ -657,7 +634,6 @@ function parseTimeParts(value: string): {
   const date = new Date(normalized);
   if (Number.isNaN(date.getTime())) return null;
   return {
-    year: String(date.getUTCFullYear()),
     month: String(date.getUTCMonth() + 1).padStart(2, "0"),
     day: String(date.getUTCDate()).padStart(2, "0"),
     hour: String(date.getUTCHours()).padStart(2, "0"),
@@ -676,18 +652,7 @@ function formatIndicator(value: number | null): string {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    marginTop: 4
-  },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "baseline",
-    marginBottom: 3,
-    minHeight: 14
-  },
-  latestText: {
-    color: "#777777",
-    fontSize: 10
+    marginTop: 3
   },
   legendRow: {
     flexDirection: "row",

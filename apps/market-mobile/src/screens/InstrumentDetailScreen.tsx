@@ -106,6 +106,7 @@ export function InstrumentDetailScreen({
 
   const latestBar = payload?.bars[payload.bars.length - 1] ?? null;
   const displayBar = selectedBar ?? latestBar;
+  const displayTime = displayBar ? formatSelectedTime(displayBar.time, period) : "--";
 
   return (
     <View style={styles.root}>
@@ -128,43 +129,50 @@ export function InstrumentDetailScreen({
       </View>
       <View style={styles.marketPanel}>
         <View style={styles.snapshotGrid}>
-          <Metric label="标记价格" value={formatNumber(payload?.snapshot.last_price ?? null)} />
-          <Metric label="涨跌幅" value={formatPercent(payload?.snapshot.change_pct ?? null)} />
-          <Metric label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
+          <Metric inline label="标记价格" value={formatNumber(payload?.snapshot.last_price ?? null)} />
+          <View style={styles.snapshotSecondRow}>
+            <Metric inline compactLabel label="涨跌幅" value={formatPercent(payload?.snapshot.change_pct ?? null)} />
+            <Metric inline compactLabel label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
+          </View>
         </View>
         <View style={styles.ohlcGrid}>
-          <Metric compact label="开" value={formatNumber(displayBar?.open ?? null)} />
-          <Metric compact label="高" value={formatNumber(displayBar?.high ?? null)} />
-          <Metric compact label="低" value={formatNumber(displayBar?.low ?? null)} />
-          <Metric compact label="收" value={formatNumber(displayBar?.close ?? null)} />
+          <Metric compact inline label="开" value={formatNumber(displayBar?.open ?? null)} />
+          <Metric compact inline label="高" value={formatNumber(displayBar?.high ?? null)} />
+          <Metric compact inline label="低" value={formatNumber(displayBar?.low ?? null)} />
+          <Metric compact inline label="收" value={formatNumber(displayBar?.close ?? null)} />
         </View>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.periodScroll}
-        contentContainerStyle={styles.periods}
-      >
-        {PERIOD_TABS.filter((item) => item.value === period || payload?.periods.includes(item.value)).map((item) => {
-          return (
-            <Pressable
-              key={item.value}
-              style={styles.periodPressable}
-              onPress={() => selectPeriod(item.value)}
-            >
-              <Text
-                style={[
-                  styles.periodText,
-                  item.value === period ? styles.periodTextActive : null
-                ]}
+      <View style={styles.periodBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.periodScroll}
+          contentContainerStyle={styles.periods}
+        >
+          {PERIOD_TABS.filter((item) => item.value === period || payload?.periods.includes(item.value)).map((item) => {
+            return (
+              <Pressable
+                key={item.value}
+                style={styles.periodPressable}
+                onPress={() => selectPeriod(item.value)}
               >
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+                <Text
+                  style={[
+                    styles.periodText,
+                    item.value === period ? styles.periodTextActive : null
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+        <Text style={styles.selectedTime} numberOfLines={1}>
+          {displayTime}
+        </Text>
+      </View>
       <View style={styles.chartArea}>
         <NativeKLineChart
           bars={payload?.bars ?? []}
@@ -178,11 +186,34 @@ export function InstrumentDetailScreen({
   );
 }
 
-function Metric({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
+function Metric({
+  label,
+  value,
+  compact = false,
+  inline = false,
+  compactLabel = false
+}: {
+  label: string;
+  value: string;
+  compact?: boolean;
+  inline?: boolean;
+  compactLabel?: boolean;
+}) {
   return (
-    <View style={compact ? styles.metricCompact : styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={compact ? styles.metricValueCompact : styles.metricValue} numberOfLines={1}>
+    <View style={[compact ? styles.metricCompact : styles.metric, inline ? styles.metricInline : null]}>
+      <Text
+        style={[
+          styles.metricLabel,
+          inline ? styles.metricLabelInline : null,
+          compactLabel ? styles.metricLabelCompactInline : null
+        ]}
+      >
+        {label}
+      </Text>
+      <Text
+        style={compact ? styles.metricValueCompact : styles.metricValue}
+        numberOfLines={1}
+      >
         {value}
       </Text>
     </View>
@@ -210,6 +241,34 @@ function formatMarketMetric(value: number | null): string {
   if (abs >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
   if (abs >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
   return value.toFixed(2);
+}
+
+function formatSelectedTime(value: string, period: string): string {
+  const parsed = parseTimeParts(value);
+  if (parsed === null) return value;
+  if (period === "1d") {
+    return `${parsed.year}-${parsed.month}-${parsed.day}`;
+  }
+  return `${parsed.month}-${parsed.day} ${parsed.hour}:${parsed.minute}`;
+}
+
+function parseTimeParts(value: string): {
+  year: string;
+  month: string;
+  day: string;
+  hour: string;
+  minute: string;
+} | null {
+  const normalized = value.includes("T") ? value : `${value}T00:00:00Z`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    year: String(date.getUTCFullYear()),
+    month: String(date.getUTCMonth() + 1).padStart(2, "0"),
+    day: String(date.getUTCDate()).padStart(2, "0"),
+    hour: String(date.getUTCHours()).padStart(2, "0"),
+    minute: String(date.getUTCMinutes()).padStart(2, "0")
+  };
 }
 
 const styles = StyleSheet.create({
@@ -278,27 +337,33 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   },
   marketPanel: {
-    minHeight: 58,
+    minHeight: 62,
     flexDirection: "row",
+    alignItems: "stretch",
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#eeeeee",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#eeeeee",
     paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingVertical: 6,
     gap: 12
   },
   snapshotGrid: {
-    flex: 1.25,
+    flex: 1.18,
+    justifyContent: "space-between",
+    gap: 5
+  },
+  snapshotSecondRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8
+    gap: 10
   },
   ohlcGrid: {
     flex: 1,
     flexDirection: "row",
     flexWrap: "wrap",
-    rowGap: 4,
+    alignContent: "space-between",
+    rowGap: 6,
     columnGap: 8
   },
   metric: {
@@ -307,18 +372,29 @@ const styles = StyleSheet.create({
   metricCompact: {
     width: "46%"
   },
+  metricInline: {
+    minHeight: 17,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
+  },
   metricLabel: {
     color: "#737373",
     fontSize: 11
   },
+  metricLabelInline: {
+    width: 48
+  },
+  metricLabelCompactInline: {
+    width: 36
+  },
   metricValue: {
-    marginTop: 2,
     color: "#111111",
     fontSize: 13,
     fontWeight: "700"
   },
   metricValueCompact: {
-    marginTop: 2,
+    flex: 1,
     color: "#111111",
     fontSize: 11,
     fontWeight: "800"
@@ -328,13 +404,21 @@ const styles = StyleSheet.create({
     color: "#dc2626",
     fontSize: 13
   },
-  periodScroll: {
+  periodBar: {
     minHeight: 36,
     maxHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#f1f1f1",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#eeeeee"
+    borderBottomColor: "#eeeeee",
+    paddingRight: 12
+  },
+  periodScroll: {
+    flex: 1,
+    minHeight: 36,
+    maxHeight: 36
   },
   periods: {
     minHeight: 36,
@@ -343,6 +427,11 @@ const styles = StyleSheet.create({
     gap: 20,
     paddingHorizontal: 14,
     paddingRight: 24
+  },
+  selectedTime: {
+    color: "#525252",
+    fontSize: 11,
+    fontWeight: "800"
   },
   periodPressable: {
     minHeight: 32,
