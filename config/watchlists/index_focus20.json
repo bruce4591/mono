@@ -41,7 +41,7 @@
       "timezone": "Europe/London",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "英国富时100指数"
+        "akshare_symbol": "英国富时100"
       },
       "sort_order": 4
     },
@@ -55,7 +55,7 @@
       "timezone": "Europe/Berlin",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "德国DAX 30种股价指数"
+        "akshare_symbol": "德国DAX30"
       },
       "sort_order": 5
     },
@@ -69,7 +69,7 @@
       "timezone": "Europe/Paris",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "法CAC40指数"
+        "akshare_symbol": "法国CAC40"
       },
       "sort_order": 6
     },
@@ -83,7 +83,7 @@
       "timezone": "Europe/Zurich",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "瑞士股票指数"
+        "akshare_symbol": "瑞士SMI"
       },
       "sort_order": 7
     },
@@ -97,7 +97,7 @@
       "timezone": "Europe/Amsterdam",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "荷兰AEX综合指数"
+        "akshare_symbol": "荷兰AEX"
       },
       "sort_order": 8
     },
@@ -111,7 +111,7 @@
       "timezone": "Europe/Madrid",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "西班牙IBEX指数"
+        "akshare_symbol": "西班牙IBEX35"
       },
       "sort_order": 9
     },
@@ -125,7 +125,7 @@
       "timezone": "Europe/Brussels",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "欧洲Stoxx50指数"
+        "akshare_symbol": "欧洲斯托克50"
       },
       "sort_order": 10
     },
@@ -139,7 +139,7 @@
       "timezone": "America/Toronto",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "加拿大S&P/TSX综合指数"
+        "akshare_symbol": "加拿大S&P/TSX"
       },
       "sort_order": 11
     },
@@ -153,7 +153,7 @@
       "timezone": "America/Mexico_City",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "墨西哥BOLSA指数"
+        "akshare_symbol": "墨西哥BOLSA"
       },
       "sort_order": 12
     },
@@ -167,7 +167,7 @@
       "timezone": "America/Sao_Paulo",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "巴西BOVESPA股票指数"
+        "akshare_symbol": "巴西BOVESPA"
       },
       "sort_order": 13
     },
@@ -181,7 +181,7 @@
       "timezone": "Asia/Taipei",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "中国台湾加权指数"
+        "akshare_symbol": "台湾加权"
       },
       "sort_order": 14
     },
@@ -195,7 +195,7 @@
       "timezone": "Asia/Tokyo",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "日经225指数"
+        "akshare_symbol": "日经225"
       },
       "sort_order": 15
     },
@@ -209,7 +209,7 @@
       "timezone": "Asia/Seoul",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "首尔综合指数"
+        "akshare_symbol": "韩国KOSPI"
       },
       "sort_order": 16
     },
@@ -223,7 +223,7 @@
       "timezone": "Asia/Jakarta",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "印度尼西亚雅加达综合指数"
+        "akshare_symbol": "印尼雅加达综合"
       },
       "sort_order": 17
     },
@@ -237,7 +237,7 @@
       "timezone": "Asia/Kolkata",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "印度孟买SENSEX指数"
+        "akshare_symbol": "印度孟买SENSEX"
       },
       "sort_order": 18
     },
@@ -251,7 +251,7 @@
       "timezone": "Australia/Sydney",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "澳大利亚标准普尔200指数"
+        "akshare_symbol": "澳大利亚标普200"
       },
       "sort_order": 19
     },
@@ -265,7 +265,7 @@
       "timezone": "Pacific/Auckland",
       "extra_meta": {
         "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "新西兰NZSE 50指数"
+        "akshare_symbol": "新西兰50"
       },
       "sort_order": 20
     }
