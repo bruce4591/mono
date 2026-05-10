@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { homeRoute, type AppRoute, type InstrumentRoute } from "../app/navigation";
@@ -17,6 +17,10 @@ const PERIOD_TABS = [
   { label: "1天", value: "1d" }
 ];
 
+const INITIAL_HISTORY_LIMIT = 120;
+const HISTORY_LIMIT_STEP = 120;
+const MAX_HISTORY_LIMIT = 500;
+
 export function InstrumentDetailScreen({
   route,
   navigate
@@ -28,19 +32,23 @@ export function InstrumentDetailScreen({
   const [payload, setPayload] = useState<MobileInstrumentDetailPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [historyLimit, setHistoryLimit] = useState(INITIAL_HISTORY_LIMIT);
+  const historyRequestInFlightRef = useRef(false);
 
   async function loadDetail(force = false) {
     setLoading(true);
     setError(null);
     try {
       const nextPayload = await getCached({
-        key: `instrument:${route.market}:${route.symbol}:${period}`,
+        key: `instrument:${route.market}:${route.symbol}:${period}:${historyLimit}`,
         ttlMs: 60_000,
         load: () =>
           fetchMobileInstrumentDetail({
             market: route.market,
             symbol: route.symbol,
-            period
+            period,
+            dailyLimit: period === "1d" ? historyLimit : undefined,
+            intradayLimit: period === "1d" ? undefined : historyLimit
           }),
         force
       });
@@ -54,7 +62,36 @@ export function InstrumentDetailScreen({
 
   useEffect(() => {
     void loadDetail();
-  }, [route.market, route.symbol, period]);
+  }, [route.market, route.symbol, period, historyLimit]);
+
+  useEffect(() => {
+    setHistoryLimit(INITIAL_HISTORY_LIMIT);
+  }, [route.market, route.symbol]);
+
+  useEffect(() => {
+    if (!loading) {
+      historyRequestInFlightRef.current = false;
+    }
+  }, [loading, historyLimit]);
+
+  function selectPeriod(nextPeriod: string) {
+    if (nextPeriod === period) return;
+    setHistoryLimit(INITIAL_HISTORY_LIMIT);
+    setPeriod(nextPeriod);
+  }
+
+  function loadMoreHistory() {
+    if (
+      historyRequestInFlightRef.current ||
+      loading ||
+      (payload?.bars.length ?? 0) < historyLimit ||
+      historyLimit >= MAX_HISTORY_LIMIT
+    ) {
+      return;
+    }
+    historyRequestInFlightRef.current = true;
+    setHistoryLimit((value) => Math.min(value + HISTORY_LIMIT_STEP, MAX_HISTORY_LIMIT));
+  }
 
   if (loading && !payload) {
     return <LoadingState label="加载详情" />;
@@ -100,7 +137,7 @@ export function InstrumentDetailScreen({
             <Pressable
               key={item.value}
               style={styles.periodPressable}
-              onPress={() => setPeriod(item.value)}
+              onPress={() => selectPeriod(item.value)}
             >
               <Text
                 style={[
@@ -115,7 +152,11 @@ export function InstrumentDetailScreen({
         })}
       </ScrollView>
       <View style={styles.chartArea}>
-        <NativeKLineChart bars={payload?.bars ?? []} />
+        <NativeKLineChart
+          bars={payload?.bars ?? []}
+          resetKey={`${route.market}:${route.symbol}:${period}`}
+          onReachStart={loadMoreHistory}
+        />
       </View>
     </View>
   );

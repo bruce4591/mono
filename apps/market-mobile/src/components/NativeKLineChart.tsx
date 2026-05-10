@@ -22,19 +22,38 @@ const CANDLE_WIDTH = 6;
 const CANDLE_GAP = 3;
 const LEFT_PADDING = 8;
 const RIGHT_PADDING = 64;
-const MAX_VISIBLE_BARS = 120;
 const UP_COLOR = "#0ecb81";
 const DOWN_COLOR = "#f6465d";
 const GRID_COLOR = "#dddddd";
 const AXIS_COLOR = "#3f3f46";
-const MA7_COLOR = "#fcd535";
-const MA25_COLOR = "#c084fc";
+const MA_PERIODS = [5, 11, 22, 60, 120] as const;
+const MA_COLORS: Record<(typeof MA_PERIODS)[number], string> = {
+  5: "#f0b90b",
+  11: "#ec4899",
+  22: "#8b5cf6",
+  60: "#22c55e",
+  120: "#a16207"
+};
 
-export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
+export function NativeKLineChart({
+  bars,
+  resetKey,
+  onReachStart
+}: {
+  bars: MobileBar[];
+  resetKey?: string;
+  onReachStart?: () => void;
+}) {
   const scrollRef = useRef<ScrollView>(null);
+  const autoScrolledRef = useRef(false);
+  const resetKeyRef = useRef(resetKey);
   const { width } = useWindowDimensions();
   const [scrollX, setScrollX] = useState(0);
-  const visibleBars = bars.slice(-MAX_VISIBLE_BARS).filter(isValidBar);
+  if (resetKeyRef.current !== resetKey) {
+    resetKeyRef.current = resetKey;
+    autoScrolledRef.current = false;
+  }
+  const visibleBars = bars.filter(isValidBar);
   const slotWidth = CANDLE_WIDTH + CANDLE_GAP;
   const viewportWidth = Math.max(width, 320);
   const dataWidth = visibleBars.length * slotWidth + LEFT_PADDING;
@@ -61,8 +80,11 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
   const previous = visibleBars.length > 1 ? visibleBars[visibleBars.length - 2] : null;
   const latestChange = previous ? latest.close - previous.close : latest.close - latest.open;
   const latestChangePct = previous && previous.close !== 0 ? (latestChange / previous.close) * 100 : null;
-  const ma7 = movingAverage(visibleBars, 7);
-  const ma25 = movingAverage(visibleBars, 25);
+  const movingAverages = MA_PERIODS.map((periodValue) => ({
+    period: periodValue,
+    color: MA_COLORS[periodValue],
+    values: movingAverage(visibleBars, periodValue)
+  }));
   const volumeMa5 = movingAverageByValue(
     visibleBars.map((bar) => bar.volume ?? 0),
     5
@@ -75,8 +97,11 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
   const rsi7 = buildRsi(visibleBars.map((bar) => bar.close), 7);
   const rsi14 = buildRsi(visibleBars.map((bar) => bar.close), 14);
   const rsi28 = buildRsi(visibleBars.map((bar) => bar.close), 28);
-  const ma7Path = buildLinePath(ma7, high, range, slotWidth);
-  const ma25Path = buildLinePath(ma25, high, range, slotWidth);
+  const movingAveragePaths = movingAverages.map((item) => ({
+    period: item.period,
+    color: item.color,
+    path: buildLinePath(item.values, high, range, slotWidth)
+  }));
   const volumeMa5Path = buildScaledLinePath(volumeMa5, 0, maxVolume, VOLUME_CHART_HEIGHT, slotWidth);
   const volumeMa10Path = buildScaledLinePath(volumeMa10, 0, maxVolume, VOLUME_CHART_HEIGHT, slotWidth);
   const macdMax = Math.max(
@@ -95,7 +120,11 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
   const xLabels = buildXAxisLabels(visibleWindow, effectiveScrollX, viewportWidth);
 
   function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
-    setScrollX(event.nativeEvent.contentOffset.x);
+    const nextScrollX = event.nativeEvent.contentOffset.x;
+    setScrollX(nextScrollX);
+    if (nextScrollX <= 16) {
+      onReachStart?.();
+    }
   }
 
   return (
@@ -119,28 +148,30 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
         />
       </View>
       <View style={styles.legendRow}>
-        <Text style={[styles.legendText, { color: MA7_COLOR }]}>
-          MA7 {formatOptionalPrice(ma7[ma7.length - 1])}
-        </Text>
-        <Text style={[styles.legendText, { color: MA25_COLOR }]}>
-          MA25 {formatOptionalPrice(ma25[ma25.length - 1])}
-        </Text>
+        {movingAverages.map((item) => (
+          <Text key={`ma:${item.period}`} style={[styles.legendText, { color: item.color }]}>
+            MA{item.period} {formatOptionalPrice(item.values[item.values.length - 1])}
+          </Text>
+        ))}
         <Text style={styles.legendText}>VOL {formatMetric(latest.volume ?? null)}</Text>
       </View>
-      <ScrollView
-        horizontal
-        ref={scrollRef}
-        bounces={false}
-        showsHorizontalScrollIndicator={false}
-        scrollEventThrottle={32}
-        onScroll={handleScroll}
-        onContentSizeChange={() => {
-          scrollRef.current?.scrollToEnd({ animated: false });
-          setScrollX(maxScrollX);
-        }}
-      >
-        <View style={styles.chartPanel}>
-          <Svg width={plotWidth} height={PRICE_CHART_HEIGHT}>
+      <View style={styles.chartViewport}>
+        <ScrollView
+          horizontal
+          ref={scrollRef}
+          bounces={false}
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={32}
+          onScroll={handleScroll}
+          onContentSizeChange={() => {
+            if (autoScrolledRef.current) return;
+            scrollRef.current?.scrollToEnd({ animated: false });
+            setScrollX(maxScrollX);
+            autoScrolledRef.current = true;
+          }}
+        >
+          <View style={styles.chartPanel}>
+            <Svg width={plotWidth} height={PRICE_CHART_HEIGHT}>
             {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
               const y = ratio * PRICE_CHART_HEIGHT;
               return (
@@ -187,23 +218,11 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
                 </React.Fragment>
               );
             })}
-            {ma7Path ? <Path d={ma7Path} stroke={MA7_COLOR} strokeWidth={1.4} fill="none" /> : null}
-            {ma25Path ? <Path d={ma25Path} stroke={MA25_COLOR} strokeWidth={1.4} fill="none" /> : null}
-            {priceMarks.map((mark, index) => {
-              const y = yForPrice(mark, high, range);
-              return (
-                <SvgText
-                  key={`mark:${index}`}
-                  x={axisX}
-                  y={clamp(y + 4, 12, PRICE_CHART_HEIGHT - 4)}
-                  fill={AXIS_COLOR}
-                  fontSize="11"
-                  fontWeight="700"
-                >
-                  {formatPrice(mark)}
-                </SvgText>
-              );
-            })}
+            {movingAveragePaths.map((item) =>
+              item.path ? (
+                <Path key={`ma-path:${item.period}`} d={item.path} stroke={item.color} strokeWidth={1.4} fill="none" />
+              ) : null
+            )}
           </Svg>
           <Svg width={plotWidth} height={X_AXIS_HEIGHT}>
             <Line
@@ -252,17 +271,17 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
                 />
               );
             })}
-            {volumeMa5Path ? <Path d={volumeMa5Path} stroke={MA7_COLOR} strokeWidth={1.2} fill="none" /> : null}
-            {volumeMa10Path ? <Path d={volumeMa10Path} stroke={MA25_COLOR} strokeWidth={1.2} fill="none" /> : null}
+            {volumeMa5Path ? <Path d={volumeMa5Path} stroke={MA_COLORS[5]} strokeWidth={1.2} fill="none" /> : null}
+            {volumeMa10Path ? <Path d={volumeMa10Path} stroke={MA_COLORS[11]} strokeWidth={1.2} fill="none" /> : null}
             <SvgText x={axisX} y={12} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
               {formatMetric(maxVolume)}
             </SvgText>
           </Svg>
           <IndicatorLegend
             items={[
-              { label: `DIF: ${formatIndicator(macd.dif[macd.dif.length - 1])}`, color: MA7_COLOR },
-              { label: `DEA: ${formatIndicator(macd.dea[macd.dea.length - 1])}`, color: MA25_COLOR },
-              { label: `MACD: ${formatIndicator(latestMacd)}`, color: MA7_COLOR }
+              { label: `DIF: ${formatIndicator(macd.dif[macd.dif.length - 1])}`, color: MA_COLORS[5] },
+              { label: `DEA: ${formatIndicator(macd.dea[macd.dea.length - 1])}`, color: MA_COLORS[22] },
+              { label: `MACD: ${formatIndicator(latestMacd)}`, color: MA_COLORS[5] }
             ]}
           />
           <Svg width={plotWidth} height={MACD_CHART_HEIGHT}>
@@ -290,8 +309,8 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
                 />
               );
             })}
-            {macdDifPath ? <Path d={macdDifPath} stroke={MA7_COLOR} strokeWidth={1.3} fill="none" /> : null}
-            {macdDeaPath ? <Path d={macdDeaPath} stroke={MA25_COLOR} strokeWidth={1.3} fill="none" /> : null}
+            {macdDifPath ? <Path d={macdDifPath} stroke={MA_COLORS[5]} strokeWidth={1.3} fill="none" /> : null}
+            {macdDeaPath ? <Path d={macdDeaPath} stroke={MA_COLORS[22]} strokeWidth={1.3} fill="none" /> : null}
             <SvgText x={axisX} y={16} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
               {formatIndicator(macdMax)}
             </SvgText>
@@ -301,9 +320,9 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
           </Svg>
           <IndicatorLegend
             items={[
-              { label: `RSI(7): ${formatIndicator(rsi7[rsi7.length - 1])}`, color: MA7_COLOR },
+              { label: `RSI(7): ${formatIndicator(rsi7[rsi7.length - 1])}`, color: MA_COLORS[5] },
               { label: `RSI(14): ${formatIndicator(rsi14[rsi14.length - 1])}`, color: "#ec4899" },
-              { label: `RSI(28): ${formatIndicator(rsi28[rsi28.length - 1])}`, color: MA25_COLOR }
+              { label: `RSI(28): ${formatIndicator(rsi28[rsi28.length - 1])}`, color: MA_COLORS[22] }
             ]}
           />
           <Svg width={plotWidth} height={RSI_CHART_HEIGHT}>
@@ -321,9 +340,9 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
                 />
               );
             })}
-            {rsi7Path ? <Path d={rsi7Path} stroke={MA7_COLOR} strokeWidth={1.3} fill="none" /> : null}
+            {rsi7Path ? <Path d={rsi7Path} stroke={MA_COLORS[5]} strokeWidth={1.3} fill="none" /> : null}
             {rsi14Path ? <Path d={rsi14Path} stroke="#ec4899" strokeWidth={1.3} fill="none" /> : null}
-            {rsi28Path ? <Path d={rsi28Path} stroke={MA25_COLOR} strokeWidth={1.3} fill="none" /> : null}
+            {rsi28Path ? <Path d={rsi28Path} stroke={MA_COLORS[22]} strokeWidth={1.3} fill="none" /> : null}
             <SvgText x={axisX} y={18} fill={AXIS_COLOR} fontSize="10" fontWeight="700">
               70.0
             </SvgText>
@@ -331,8 +350,29 @@ export function NativeKLineChart({ bars }: { bars: MobileBar[] }) {
               30.0
             </SvgText>
           </Svg>
+          </View>
+        </ScrollView>
+        <View pointerEvents="none" style={styles.priceAxisOverlay}>
+          <Svg width={RIGHT_PADDING} height={PRICE_CHART_HEIGHT}>
+            <Rect x={0} y={0} width={RIGHT_PADDING} height={PRICE_CHART_HEIGHT} fill="#ffffff" opacity={0.96} />
+            {priceMarks.map((mark, index) => {
+              const y = yForPrice(mark, high, range);
+              return (
+                <SvgText
+                  key={`price-axis:${index}`}
+                  x={6}
+                  y={clamp(y + 4, 12, PRICE_CHART_HEIGHT - 4)}
+                  fill={AXIS_COLOR}
+                  fontSize="11"
+                  fontWeight="800"
+                >
+                  {formatPrice(mark)}
+                </SvgText>
+              );
+            })}
+          </Svg>
         </View>
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -636,6 +676,19 @@ const styles = StyleSheet.create({
   },
   chartPanel: {
     backgroundColor: "#ffffff"
+  },
+  chartViewport: {
+    flex: 1,
+    position: "relative"
+  },
+  priceAxisOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: RIGHT_PADDING,
+    height: PRICE_CHART_HEIGHT,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: "#d4d4d8"
   },
   volumeSvg: {
     marginTop: 2
