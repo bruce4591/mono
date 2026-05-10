@@ -2005,7 +2005,7 @@ class CliTests(unittest.TestCase):
                 )
                 connection.commit()
 
-            with patch("market.cli.send_expo_push_message") as send_push:
+            with patch("market.cli.send_auto_push_message") as send_push:
                 send_push.return_value.delivery_status = "sent"
                 send_push.return_value.response_id = "receipt-1"
                 send_push.return_value.error = None

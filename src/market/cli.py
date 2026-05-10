@@ -38,7 +38,7 @@ from market.crypto_gaps import fill_binance_futures_1m_gaps
 from market.db import connect, connect_database_url, init_database, init_postgres_database
 from market.models import AlertRule, WatchlistEntry
 from market.parquet_export import export_bars_to_parquet
-from market.push import deliver_mobile_alert_pushes, send_expo_push_message
+from market.push import deliver_mobile_alert_pushes, send_auto_push_message
 from market.realtime import apply_binance_futures_kline_event, apply_binance_ticker_event
 from market.repositories import (
     AlertEventRepository,
@@ -1142,7 +1142,7 @@ def main(argv: list[str] | None = None) -> int:
             deliveries = deliver_mobile_alert_pushes(
                 connection,
                 now_utc=now_utc,
-                sender=send_expo_push_message,
+                sender=send_auto_push_message,
             )
         sent = sum(1 for delivery in deliveries if delivery.delivery_status == "sent")
         failed = sum(1 for delivery in deliveries if delivery.delivery_status == "failed")
