@@ -1,5 +1,6 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  GestureResponderEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
@@ -37,11 +38,15 @@ const MA_COLORS: Record<(typeof MA_PERIODS)[number], string> = {
 
 export function NativeKLineChart({
   bars,
+  period,
   resetKey,
+  onSelectedBarChange,
   onReachStart
 }: {
   bars: MobileBar[];
+  period: string;
   resetKey?: string;
+  onSelectedBarChange?: (bar: MobileBar | null) => void;
   onReachStart?: () => void;
 }) {
   const scrollRef = useRef<ScrollView>(null);
@@ -49,6 +54,7 @@ export function NativeKLineChart({
   const resetKeyRef = useRef(resetKey);
   const { width } = useWindowDimensions();
   const [scrollX, setScrollX] = useState(0);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
   if (resetKeyRef.current !== resetKey) {
     resetKeyRef.current = resetKey;
     autoScrolledRef.current = false;
@@ -64,11 +70,30 @@ export function NativeKLineChart({
   const visibleWindow = useMemo(() => {
     return getVisibleWindow(visibleBars, effectiveScrollX, viewportWidth, slotWidth);
   }, [effectiveScrollX, slotWidth, viewportWidth, visibleBars]);
+  const latest = visibleBars[visibleBars.length - 1] ?? null;
+  const selectedIndex = Math.max(
+    selectedTime ? visibleBars.findIndex((bar) => bar.time === selectedTime) : -1,
+    -1
+  );
+  const selectedBar = selectedIndex >= 0 ? visibleBars[selectedIndex] : latest;
+  const selectedX =
+    selectedIndex >= 0
+      ? xForIndex(selectedIndex, slotWidth)
+      : xForIndex(Math.max(visibleBars.length - 1, 0), slotWidth);
+
+  useEffect(() => {
+    setSelectedTime(null);
+  }, [resetKey]);
+
+  useEffect(() => {
+    onSelectedBarChange?.(selectedBar);
+  }, [onSelectedBarChange, selectedBar]);
 
   if (visibleBars.length === 0 || visibleWindow.length === 0) {
     return <EmptyState title="暂无 K 线" message="当前周期没有可展示的数据" />;
   }
 
+  const chartBar = selectedBar ?? visibleBars[visibleBars.length - 1]!;
   const rawHigh = Math.max(...visibleWindow.map((bar) => bar.high));
   const rawLow = Math.min(...visibleWindow.map((bar) => bar.low));
   const pricePadding = Math.max((rawHigh - rawLow) * 0.12, Math.abs(rawHigh) * 0.001, 0.000001);
@@ -76,10 +101,6 @@ export function NativeKLineChart({
   const low = rawLow - pricePadding;
   const range = Math.max(high - low, 0.000001);
   const maxVolume = Math.max(...visibleWindow.map((bar) => bar.volume ?? 0), 0.000001);
-  const latest = visibleBars[visibleBars.length - 1];
-  const previous = visibleBars.length > 1 ? visibleBars[visibleBars.length - 2] : null;
-  const latestChange = previous ? latest.close - previous.close : latest.close - latest.open;
-  const latestChangePct = previous && previous.close !== 0 ? (latestChange / previous.close) * 100 : null;
   const movingAverages = MA_PERIODS.map((periodValue) => ({
     period: periodValue,
     color: MA_COLORS[periodValue],
@@ -117,7 +138,7 @@ export function NativeKLineChart({
   const rsi28Path = buildScaledLinePath(rsi28, 0, 100, RSI_CHART_HEIGHT, slotWidth);
   const priceMarks = buildPriceMarks(high, low);
   const latestMacd = macd.histogram[macd.histogram.length - 1];
-  const xLabels = buildXAxisLabels(visibleWindow, effectiveScrollX, viewportWidth);
+  const xLabels = buildXAxisLabels(visibleWindow, effectiveScrollX, viewportWidth, period);
 
   function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
     const nextScrollX = event.nativeEvent.contentOffset.x;
@@ -127,25 +148,23 @@ export function NativeKLineChart({
     }
   }
 
+  function handlePriceChartPress(event: GestureResponderEvent) {
+    const nextIndex = Math.round(
+      clamp(
+        (event.nativeEvent.locationX - LEFT_PADDING - CANDLE_WIDTH / 2) / slotWidth,
+        0,
+        Math.max(visibleBars.length - 1, 0)
+      )
+    );
+    const nextBar = visibleBars[nextIndex] ?? chartBar;
+    setSelectedTime(nextBar.time);
+    onSelectedBarChange?.(nextBar);
+  }
+
   return (
     <View style={styles.root}>
       <View style={styles.headerRow}>
-        <Text style={styles.latestText}>{latest.time}</Text>
-      </View>
-      <View style={styles.ohlcRow}>
-        <Info label="开" value={formatPrice(latest.open)} />
-        <Info label="高" value={formatPrice(latest.high)} />
-        <Info label="低" value={formatPrice(latest.low)} />
-        <Info label="收" value={formatPrice(latest.close)} />
-        <Info
-          label="涨跌"
-          value={
-            latestChangePct === null
-              ? "--"
-              : `${latestChangePct >= 0 ? "+" : ""}${latestChangePct.toFixed(2)}%`
-          }
-          tone={latestChange >= 0 ? "up" : "down"}
-        />
+        <Text style={styles.latestText}>{formatSelectedTime(chartBar.time, period)}</Text>
       </View>
       <View style={styles.legendRow}>
         {movingAverages.map((item) => (
@@ -153,7 +172,7 @@ export function NativeKLineChart({
             MA{item.period} {formatOptionalPrice(item.values[item.values.length - 1])}
           </Text>
         ))}
-        <Text style={styles.legendText}>VOL {formatMetric(latest.volume ?? null)}</Text>
+        <Text style={styles.legendText}>VOL {formatMetric(chartBar.volume ?? null)}</Text>
       </View>
       <View style={styles.chartViewport}>
         <ScrollView
@@ -171,7 +190,7 @@ export function NativeKLineChart({
           }}
         >
           <View style={styles.chartPanel}>
-            <Svg width={plotWidth} height={PRICE_CHART_HEIGHT}>
+            <Svg width={plotWidth} height={PRICE_CHART_HEIGHT} onPress={handlePriceChartPress}>
             {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
               const y = ratio * PRICE_CHART_HEIGHT;
               return (
@@ -223,6 +242,16 @@ export function NativeKLineChart({
                 <Path key={`ma-path:${item.period}`} d={item.path} stroke={item.color} strokeWidth={1.4} fill="none" />
               ) : null
             )}
+            <Line
+              x1={selectedX}
+              y1={0}
+              x2={selectedX}
+              y2={PRICE_CHART_HEIGHT}
+              stroke="#18181b"
+              strokeWidth={1}
+              strokeDasharray="4 4"
+              opacity={0.5}
+            />
           </Svg>
           <Svg width={plotWidth} height={X_AXIS_HEIGHT}>
             <Line
@@ -393,25 +422,6 @@ function IndicatorLegend({
   );
 }
 
-function Info({
-  label,
-  value,
-  tone
-}: {
-  label: string;
-  value: string;
-  tone?: "up" | "down";
-}) {
-  return (
-    <Text style={styles.infoText}>
-      {label}{" "}
-      <Text style={tone === "up" ? styles.upText : tone === "down" ? styles.downText : styles.infoValue}>
-        {value}
-      </Text>
-    </Text>
-  );
-}
-
 function isValidBar(bar: MobileBar): boolean {
   return (
     Number.isFinite(bar.open) &&
@@ -526,7 +536,8 @@ function buildPriceMarks(high: number, low: number): number[] {
 function buildXAxisLabels(
   bars: MobileBar[],
   scrollX: number,
-  viewportWidth: number
+  viewportWidth: number,
+  period: string
 ): Array<{ text: string; x: number; anchor: "start" | "middle" | "end" }> {
   if (bars.length === 0) return [];
   const middleIndex = Math.floor(bars.length / 2);
@@ -536,17 +547,17 @@ function buildXAxisLabels(
   const rightX = scrollX + viewportWidth - RIGHT_PADDING - 4;
   return [
     {
-      text: formatAxisTime(bars[0].time),
+      text: formatAxisTime(bars[0].time, period),
       x: leftX,
       anchor: "start"
     },
     {
-      text: formatAxisTime(bars[middleIndex].time),
+      text: formatAxisTime(bars[middleIndex].time, period),
       x: centerX,
       anchor: "middle"
     },
     {
-      text: formatAxisTime(bars[lastIndex].time),
+      text: formatAxisTime(bars[lastIndex].time, period),
       x: rightX,
       anchor: "end"
     }
@@ -612,9 +623,46 @@ function formatMetric(value: number | null): string {
   return value.toFixed(2);
 }
 
-function formatAxisTime(value: string): string {
-  if (value.length >= 10) return value.slice(5, 10);
-  return value;
+function formatAxisTime(value: string, period: string): string {
+  const parsed = parseTimeParts(value);
+  if (parsed === null) {
+    return value.length >= 10 ? value.slice(5, 10) : value;
+  }
+  if (period === "1d") {
+    return `${parsed.month}-${parsed.day}`;
+  }
+  if (period === "8h") {
+    return `${parsed.month}-${parsed.day} ${parsed.hour}:${parsed.minute}`;
+  }
+  return `${parsed.hour}:${parsed.minute}`;
+}
+
+function formatSelectedTime(value: string, period: string): string {
+  const parsed = parseTimeParts(value);
+  if (parsed === null) return value;
+  if (period === "1d") {
+    return `${parsed.year}-${parsed.month}-${parsed.day}`;
+  }
+  return `${parsed.month}-${parsed.day} ${parsed.hour}:${parsed.minute}`;
+}
+
+function parseTimeParts(value: string): {
+  year: string;
+  month: string;
+  day: string;
+  hour: string;
+  minute: string;
+} | null {
+  const normalized = value.includes("T") ? value : `${value}T00:00:00Z`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    year: String(date.getUTCFullYear()),
+    month: String(date.getUTCMonth() + 1).padStart(2, "0"),
+    day: String(date.getUTCDate()).padStart(2, "0"),
+    hour: String(date.getUTCHours()).padStart(2, "0"),
+    minute: String(date.getUTCMinutes()).padStart(2, "0")
+  };
 }
 
 function formatIndicator(value: number | null): string {
@@ -640,28 +688,6 @@ const styles = StyleSheet.create({
   latestText: {
     color: "#777777",
     fontSize: 10
-  },
-  ohlcRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 7,
-    marginBottom: 4
-  },
-  infoText: {
-    color: "#777777",
-    fontSize: 10
-  },
-  infoValue: {
-    color: "#111111",
-    fontWeight: "700"
-  },
-  upText: {
-    color: UP_COLOR,
-    fontWeight: "800"
-  },
-  downText: {
-    color: DOWN_COLOR,
-    fontWeight: "800"
   },
   legendRow: {
     flexDirection: "row",

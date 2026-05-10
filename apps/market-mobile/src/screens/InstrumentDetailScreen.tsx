@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { homeRoute, type AppRoute, type InstrumentRoute } from "../app/navigation";
 import { fetchMobileInstrumentDetail } from "../api/market";
-import type { MobileInstrumentDetailPayload } from "../api/types";
+import type { MobileBar, MobileInstrumentDetailPayload } from "../api/types";
 import { getCached } from "../cache/queryCache";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
@@ -33,6 +33,7 @@ export function InstrumentDetailScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [historyLimit, setHistoryLimit] = useState(INITIAL_HISTORY_LIMIT);
+  const [selectedBar, setSelectedBar] = useState<MobileBar | null>(null);
   const historyRequestInFlightRef = useRef(false);
 
   async function loadDetail(force = false) {
@@ -66,6 +67,7 @@ export function InstrumentDetailScreen({
 
   useEffect(() => {
     setHistoryLimit(INITIAL_HISTORY_LIMIT);
+    setSelectedBar(null);
   }, [route.market, route.symbol]);
 
   useEffect(() => {
@@ -77,6 +79,7 @@ export function InstrumentDetailScreen({
   function selectPeriod(nextPeriod: string) {
     if (nextPeriod === period) return;
     setHistoryLimit(INITIAL_HISTORY_LIMIT);
+    setSelectedBar(null);
     setPeriod(nextPeriod);
   }
 
@@ -101,6 +104,9 @@ export function InstrumentDetailScreen({
     return <ErrorState message={error} onRetry={() => void loadDetail(true)} />;
   }
 
+  const latestBar = payload?.bars[payload.bars.length - 1] ?? null;
+  const displayBar = selectedBar ?? latestBar;
+
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
@@ -120,10 +126,18 @@ export function InstrumentDetailScreen({
           <Text style={styles.refreshText}>{loading ? "刷新中" : "刷新"}</Text>
         </Pressable>
       </View>
-      <View style={styles.statsRow}>
-        <Metric label="标记价格" value={formatNumber(payload?.snapshot.last_price ?? null)} />
-        <Metric label="涨跌幅" value={formatPercent(payload?.snapshot.change_pct ?? null)} />
-        <Metric label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
+      <View style={styles.marketPanel}>
+        <View style={styles.snapshotGrid}>
+          <Metric label="标记价格" value={formatNumber(payload?.snapshot.last_price ?? null)} />
+          <Metric label="涨跌幅" value={formatPercent(payload?.snapshot.change_pct ?? null)} />
+          <Metric label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
+        </View>
+        <View style={styles.ohlcGrid}>
+          <Metric compact label="开" value={formatNumber(displayBar?.open ?? null)} />
+          <Metric compact label="高" value={formatNumber(displayBar?.high ?? null)} />
+          <Metric compact label="低" value={formatNumber(displayBar?.low ?? null)} />
+          <Metric compact label="收" value={formatNumber(displayBar?.close ?? null)} />
+        </View>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <ScrollView
@@ -154,7 +168,9 @@ export function InstrumentDetailScreen({
       <View style={styles.chartArea}>
         <NativeKLineChart
           bars={payload?.bars ?? []}
+          period={period}
           resetKey={`${route.market}:${route.symbol}:${period}`}
+          onSelectedBarChange={setSelectedBar}
           onReachStart={loadMoreHistory}
         />
       </View>
@@ -162,11 +178,13 @@ export function InstrumentDetailScreen({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
   return (
-    <View style={styles.metric}>
+    <View style={compact ? styles.metricCompact : styles.metric}>
       <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={compact ? styles.metricValueCompact : styles.metricValue} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -259,18 +277,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800"
   },
-  statsRow: {
-    minHeight: 40,
+  marketPanel: {
+    minHeight: 58,
     flexDirection: "row",
-    alignItems: "center",
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#eeeeee",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#eeeeee",
-    paddingHorizontal: 14
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    gap: 12
+  },
+  snapshotGrid: {
+    flex: 1.25,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  ohlcGrid: {
+    flex: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    rowGap: 4,
+    columnGap: 8
   },
   metric: {
     flex: 1
+  },
+  metricCompact: {
+    width: "46%"
   },
   metricLabel: {
     color: "#737373",
@@ -281,6 +316,12 @@ const styles = StyleSheet.create({
     color: "#111111",
     fontSize: 13,
     fontWeight: "700"
+  },
+  metricValueCompact: {
+    marginTop: 2,
+    color: "#111111",
+    fontSize: 11,
+    fontWeight: "800"
   },
   error: {
     paddingHorizontal: 18,
