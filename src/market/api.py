@@ -1389,6 +1389,18 @@ def register_mobile_device(
     ).fetchone()
     if row is None:
         raise ValueError("push device registration failed")
+    checkpoint = connection.execute(
+        """
+        SELECT
+            push_device_id,
+            last_seen_mobile_alert_event_id,
+            last_ack_mobile_alert_event_id,
+            updated_at_utc
+        FROM device_checkpoint
+        WHERE push_device_id = ?
+        """,
+        (int(row["push_device_id"]),),
+    ).fetchone()
     return {
         "push_device_id": int(row["push_device_id"]),
         "platform": str(row["platform"]),
@@ -1396,6 +1408,9 @@ def register_mobile_device(
         "getui_cid": _optional_str(row["getui_cid"]),
         "device_label": _optional_str(row["device_label"]),
         "enabled": bool(row["enabled"]),
+        "checkpoint": (
+            _device_checkpoint_payload(checkpoint) if checkpoint is not None else None
+        ),
     }
 
 

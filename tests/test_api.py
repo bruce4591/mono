@@ -145,6 +145,54 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(rows[0]["device_label"], "OnePlus 13T")
         self.assertEqual(rows[0]["enabled"], 1)
 
+    def test_register_mobile_device_returns_existing_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+            with connect(db_path) as connection:
+                push_device_id = int(
+                    connection.execute(
+                        "SELECT push_device_id FROM push_device"
+                    ).fetchone()["push_device_id"]
+                )
+                connection.execute(
+                    """
+                    INSERT INTO device_checkpoint (
+                        push_device_id,
+                        last_seen_mobile_alert_event_id,
+                        last_ack_mobile_alert_event_id,
+                        updated_at_utc
+                    )
+                    VALUES (?, 7, 6, '2026-05-05T00:00:00Z')
+                    """,
+                    (push_device_id,),
+                )
+            response_status, response_body = _request_api(
+                db_path,
+                "POST",
+                "/api/mobile/devices",
+                {
+                    "platform": "android",
+                    "push_token": "ExponentPushToken[test-token]",
+                    "device_label": "OnePlus 13T",
+                },
+            )
+
+        self.assertEqual(response_status, 200, response_body)
+        payload = json.loads(response_body)
+        self.assertEqual(payload["checkpoint"]["last_seen_mobile_alert_event_id"], 7)
+        self.assertEqual(payload["checkpoint"]["last_ack_mobile_alert_event_id"], 6)
+
     def test_board_open_refresh_uses_durable_refresh_state(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

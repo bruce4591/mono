@@ -128,19 +128,14 @@ export function InstrumentDetailScreen({
         </Pressable>
       </View>
       <View style={styles.marketPanel}>
-        <View style={styles.snapshotGrid}>
-          <Metric inline label="标记价格" value={formatNumber(payload?.snapshot.last_price ?? null)} />
-          <View style={styles.snapshotSecondRow}>
-            <Metric inline compactLabel label="涨跌幅" value={formatPercent(payload?.snapshot.change_pct ?? null)} />
-            <Metric inline compactLabel label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
-          </View>
-        </View>
-        <View style={styles.ohlcGrid}>
-          <Metric compact inline label="开" value={formatNumber(displayBar?.open ?? null)} />
-          <Metric compact inline label="高" value={formatNumber(displayBar?.high ?? null)} />
-          <Metric compact inline label="低" value={formatNumber(displayBar?.low ?? null)} />
-          <Metric compact inline label="收" value={formatNumber(displayBar?.close ?? null)} />
-        </View>
+        <SummaryCell label="标记" value={formatNumber(payload?.snapshot.last_price ?? null)} />
+        <SummaryCell label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
+        <SummaryCell label="开" value={formatCompactPrice(displayBar?.open ?? null)} />
+        <SummaryCell label="高" value={formatCompactPrice(displayBar?.high ?? null)} />
+        <SummaryCell label="涨跌幅" value={formatPercent(payload?.snapshot.change_pct ?? null)} />
+        <View style={styles.summaryCell} />
+        <SummaryCell label="低" value={formatCompactPrice(displayBar?.low ?? null)} />
+        <SummaryCell label="收" value={formatCompactPrice(displayBar?.close ?? null)} />
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.periodBar}>
@@ -186,33 +181,17 @@ export function InstrumentDetailScreen({
   );
 }
 
-function Metric({
-  label,
-  value,
-  compact = false,
-  inline = false,
-  compactLabel = false
-}: {
-  label: string;
-  value: string;
-  compact?: boolean;
-  inline?: boolean;
-  compactLabel?: boolean;
-}) {
+function SummaryCell({ label, value }: { label: string; value: string }) {
   return (
-    <View style={[compact ? styles.metricCompact : styles.metric, inline ? styles.metricInline : null]}>
-      <Text
-        style={[
-          styles.metricLabel,
-          inline ? styles.metricLabelInline : null,
-          compactLabel ? styles.metricLabelCompactInline : null
-        ]}
-      >
+    <View style={styles.summaryCell}>
+      <Text style={styles.summaryLabel} numberOfLines={1}>
         {label}
       </Text>
       <Text
-        style={compact ? styles.metricValueCompact : styles.metricValue}
+        style={styles.summaryValue}
         numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.78}
       >
         {value}
       </Text>
@@ -230,6 +209,14 @@ function formatNumber(value: number | null): string {
   return value.toLocaleString(undefined, {
     maximumFractionDigits: value >= 100 ? 2 : 8
   });
+}
+
+function formatCompactPrice(value: number | null): string {
+  if (value === null) return "--";
+  const abs = Math.abs(value);
+  if (abs > 0 && abs < 1) return value.toFixed(6);
+  if (abs >= 1000) return value.toFixed(2);
+  return value.toFixed(4);
 }
 
 function formatMarketMetric(value: number | null): string {
@@ -339,64 +326,31 @@ const styles = StyleSheet.create({
   marketPanel: {
     minHeight: 62,
     flexDirection: "row",
-    alignItems: "stretch",
+    flexWrap: "wrap",
+    alignItems: "center",
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#eeeeee",
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#eeeeee",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    gap: 12
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    rowGap: 3
   },
-  snapshotGrid: {
-    flex: 1.18,
-    justifyContent: "space-between",
-    gap: 5
+  summaryCell: {
+    width: "25%",
+    minHeight: 24,
+    paddingRight: 6,
+    justifyContent: "center"
   },
-  snapshotSecondRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10
-  },
-  ohlcGrid: {
-    flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignContent: "space-between",
-    rowGap: 6,
-    columnGap: 8
-  },
-  metric: {
-    flex: 1
-  },
-  metricCompact: {
-    width: "46%"
-  },
-  metricInline: {
-    minHeight: 17,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6
-  },
-  metricLabel: {
+  summaryLabel: {
     color: "#737373",
-    fontSize: 11
-  },
-  metricLabelInline: {
-    width: 48
-  },
-  metricLabelCompactInline: {
-    width: 36
-  },
-  metricValue: {
-    color: "#111111",
-    fontSize: 13,
+    fontSize: 9,
     fontWeight: "700"
   },
-  metricValueCompact: {
-    flex: 1,
+  summaryValue: {
     color: "#111111",
-    fontSize: 11,
+    fontSize: 12,
+    lineHeight: 15,
     fontWeight: "800"
   },
   error: {

@@ -17,6 +17,11 @@ export type PushRegistration = {
   getuiCid?: string | null;
 };
 
+export type PushRegistrationResult = {
+  lastSeenAlertEventId: number;
+  lastAckAlertEventId: number;
+};
+
 async function ensureNotificationPermission(): Promise<boolean> {
   const current = await Notifications.getPermissionsAsync();
   const permission =
@@ -55,9 +60,9 @@ export async function getExpoPushToken(): Promise<string | null> {
 export async function registerDeviceForPush({
   pushToken,
   getuiCid
-}: PushRegistration): Promise<void> {
+}: PushRegistration): Promise<PushRegistrationResult> {
   if (!pushToken && !getuiCid) {
-    return;
+    return { lastSeenAlertEventId: 0, lastAckAlertEventId: 0 };
   }
 
   const response = await fetch(`${API_BASE_URL}/api/mobile/devices`, {
@@ -74,6 +79,22 @@ export async function registerDeviceForPush({
   if (!response.ok) {
     throw new Error("Failed to register push token");
   }
+  const payload = (await response.json()) as {
+    checkpoint?: {
+      last_seen_mobile_alert_event_id?: unknown;
+      last_ack_mobile_alert_event_id?: unknown;
+    } | null;
+  };
+  return {
+    lastSeenAlertEventId:
+      typeof payload.checkpoint?.last_seen_mobile_alert_event_id === "number"
+        ? payload.checkpoint.last_seen_mobile_alert_event_id
+        : 0,
+    lastAckAlertEventId:
+      typeof payload.checkpoint?.last_ack_mobile_alert_event_id === "number"
+        ? payload.checkpoint.last_ack_mobile_alert_event_id
+        : 0
+  };
 }
 
 export async function showLocalAlert(

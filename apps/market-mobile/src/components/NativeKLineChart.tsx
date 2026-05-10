@@ -19,6 +19,7 @@ const VOLUME_CHART_HEIGHT = 48;
 const MACD_CHART_HEIGHT = 58;
 const RSI_CHART_HEIGHT = 62;
 const X_AXIS_HEIGHT = 22;
+const INDICATOR_LEGEND_HEIGHT = 18;
 const CANDLE_WIDTH = 6;
 const CANDLE_GAP = 3;
 const LEFT_PADDING = 8;
@@ -66,6 +67,9 @@ export function NativeKLineChart({
   const plotWidth = Math.max(viewportWidth, dataWidth + RIGHT_PADDING);
   const maxScrollX = Math.max(plotWidth - viewportWidth, 0);
   const effectiveScrollX = clamp(scrollX, 0, maxScrollX);
+  const axisX = effectiveScrollX + viewportWidth - RIGHT_PADDING + 6;
+  const fixedLegendX = effectiveScrollX + LEFT_PADDING;
+  const fixedLegendWidth = Math.max(viewportWidth - RIGHT_PADDING - LEFT_PADDING, 160);
   const visibleWindow = useMemo(() => {
     return getVisibleWindow(visibleBars, effectiveScrollX, viewportWidth, slotWidth);
   }, [effectiveScrollX, slotWidth, viewportWidth, visibleBars]);
@@ -96,6 +100,8 @@ export function NativeKLineChart({
   const chartBar = selectedBar ?? visibleBars[visibleBars.length - 1]!;
   const rawHigh = Math.max(...visibleWindow.map((bar) => bar.high));
   const rawLow = Math.min(...visibleWindow.map((bar) => bar.low));
+  const highIndex = findExtremeIndex(visibleBars, visibleWindow, "high", rawHigh);
+  const lowIndex = findExtremeIndex(visibleBars, visibleWindow, "low", rawLow);
   const pricePadding = Math.max((rawHigh - rawLow) * 0.12, Math.abs(rawHigh) * 0.001, 0.000001);
   const high = rawHigh + pricePadding;
   const low = rawLow - pricePadding;
@@ -237,6 +243,26 @@ export function NativeKLineChart({
                 <Path key={`ma-path:${item.period}`} d={item.path} stroke={item.color} strokeWidth={1.4} fill="none" />
               ) : null
             )}
+            <ExtremePriceLabel
+              index={highIndex}
+              price={rawHigh}
+              high={high}
+              range={range}
+              slotWidth={slotWidth}
+              viewportLeft={effectiveScrollX}
+              viewportRight={effectiveScrollX + viewportWidth - RIGHT_PADDING}
+              type="high"
+            />
+            <ExtremePriceLabel
+              index={lowIndex}
+              price={rawLow}
+              high={high}
+              range={range}
+              slotWidth={slotWidth}
+              viewportLeft={effectiveScrollX}
+              viewportRight={effectiveScrollX + viewportWidth - RIGHT_PADDING}
+              type="low"
+            />
             <Line
               x1={selectedX}
               y1={0}
@@ -272,6 +298,8 @@ export function NativeKLineChart({
             ))}
           </Svg>
           <IndicatorLegend
+            offsetX={fixedLegendX}
+            width={fixedLegendWidth}
             items={[
               { label: `VOL: ${formatMetric(chartBar.volume ?? null)}`, color: AXIS_COLOR },
               { label: `MA5: ${formatMetric(volumeMa5[selectedValueIndex] ?? null)}`, color: MA_COLORS[5] },
@@ -304,8 +332,17 @@ export function NativeKLineChart({
             })}
             {volumeMa5Path ? <Path d={volumeMa5Path} stroke={MA_COLORS[5]} strokeWidth={1.2} fill="none" /> : null}
             {volumeMa10Path ? <Path d={volumeMa10Path} stroke={MA_COLORS[11]} strokeWidth={1.2} fill="none" /> : null}
+            <Rect x={axisX - 6} y={0} width={RIGHT_PADDING + 6} height={VOLUME_CHART_HEIGHT} fill="#ffffff" opacity={0.95} />
+            <SvgText x={axisX} y={13} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
+              {formatMetric(maxVolume)}
+            </SvgText>
+            <SvgText x={axisX} y={VOLUME_CHART_HEIGHT - 5} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
+              0
+            </SvgText>
           </Svg>
           <IndicatorLegend
+            offsetX={fixedLegendX}
+            width={fixedLegendWidth}
             items={[
               { label: `DIF: ${formatIndicator(macd.dif[selectedValueIndex] ?? null)}`, color: MA_COLORS[5] },
               { label: `DEA: ${formatIndicator(macd.dea[selectedValueIndex] ?? null)}`, color: MA_COLORS[22] },
@@ -339,8 +376,17 @@ export function NativeKLineChart({
             })}
             {macdDifPath ? <Path d={macdDifPath} stroke={MA_COLORS[5]} strokeWidth={1.3} fill="none" /> : null}
             {macdDeaPath ? <Path d={macdDeaPath} stroke={MA_COLORS[22]} strokeWidth={1.3} fill="none" /> : null}
+            <Rect x={axisX - 6} y={0} width={RIGHT_PADDING + 6} height={MACD_CHART_HEIGHT} fill="#ffffff" opacity={0.95} />
+            <SvgText x={axisX} y={14} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
+              {formatIndicator(macdMax)}
+            </SvgText>
+            <SvgText x={axisX} y={MACD_CHART_HEIGHT / 2 + 4} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
+              0
+            </SvgText>
           </Svg>
           <IndicatorLegend
+            offsetX={fixedLegendX}
+            width={fixedLegendWidth}
             items={[
               { label: `RSI(7): ${formatIndicator(rsi7[selectedValueIndex] ?? null)}`, color: MA_COLORS[5] },
               { label: `RSI(14): ${formatIndicator(rsi14[selectedValueIndex] ?? null)}`, color: "#ec4899" },
@@ -365,6 +411,13 @@ export function NativeKLineChart({
             {rsi7Path ? <Path d={rsi7Path} stroke={MA_COLORS[5]} strokeWidth={1.3} fill="none" /> : null}
             {rsi14Path ? <Path d={rsi14Path} stroke="#ec4899" strokeWidth={1.3} fill="none" /> : null}
             {rsi28Path ? <Path d={rsi28Path} stroke={MA_COLORS[22]} strokeWidth={1.3} fill="none" /> : null}
+            <Rect x={axisX - 6} y={0} width={RIGHT_PADDING + 6} height={RSI_CHART_HEIGHT} fill="#ffffff" opacity={0.95} />
+            <SvgText x={axisX} y={18} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
+              70
+            </SvgText>
+            <SvgText x={axisX} y={RSI_CHART_HEIGHT - 8} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
+              30
+            </SvgText>
           </Svg>
           </View>
         </ScrollView>
@@ -394,18 +447,76 @@ export function NativeKLineChart({
 }
 
 function IndicatorLegend({
+  offsetX,
+  width,
   items
 }: {
+  offsetX: number;
+  width: number;
   items: Array<{ label: string; color: string }>;
 }) {
   return (
-    <View style={styles.indicatorLegend}>
+    <View style={[styles.indicatorLegend, { marginLeft: offsetX, width }]}>
       {items.map((item) => (
         <Text key={item.label} style={[styles.indicatorText, { color: item.color }]}>
           {item.label}
         </Text>
       ))}
     </View>
+  );
+}
+
+function ExtremePriceLabel({
+  index,
+  price,
+  high,
+  range,
+  slotWidth,
+  viewportLeft,
+  viewportRight,
+  type
+}: {
+  index: number;
+  price: number;
+  high: number;
+  range: number;
+  slotWidth: number;
+  viewportLeft: number;
+  viewportRight: number;
+  type: "high" | "low";
+}) {
+  if (index < 0) return null;
+  const candleX = xForIndex(index, slotWidth);
+  const y = clamp(yForPrice(price, high, range), 12, PRICE_CHART_HEIGHT - 8);
+  const canPlaceRight = candleX + 86 <= viewportRight;
+  const canPlaceLeft = candleX - 86 >= viewportLeft;
+  const placeLeft = !canPlaceRight && canPlaceLeft;
+  const labelX = placeLeft
+    ? clamp(candleX - 8, viewportLeft + 58, viewportRight - 8)
+    : clamp(candleX + 8, viewportLeft + 8, viewportRight - 58);
+  const lineEndX = placeLeft ? candleX - 4 : candleX + 4;
+  const lineStartX = placeLeft ? Math.max(candleX - 42, viewportLeft + 8) : Math.min(candleX + 42, viewportRight - 8);
+  return (
+    <>
+      <Line
+        x1={lineStartX}
+        y1={y}
+        x2={lineEndX}
+        y2={y}
+        stroke="#18181b"
+        strokeWidth={1}
+      />
+      <SvgText
+        x={labelX}
+        y={type === "high" ? y - 4 : y + 12}
+        fill="#18181b"
+        fontSize="10"
+        fontWeight="800"
+        textAnchor={placeLeft ? "end" : "start"}
+      >
+        {formatPrice(price)}
+      </SvgText>
+    </>
   );
 }
 
@@ -513,6 +624,17 @@ function getVisibleWindow(
   const startIndex = clamp(Math.floor(left / slotWidth) - 2, 0, Math.max(bars.length - 1, 0));
   const endIndex = clamp(Math.ceil(right / slotWidth) + 2, startIndex + 1, bars.length);
   return bars.slice(startIndex, endIndex);
+}
+
+function findExtremeIndex(
+  bars: MobileBar[],
+  visibleWindow: MobileBar[],
+  field: "high" | "low",
+  value: number
+): number {
+  const match = visibleWindow.find((bar) => bar[field] === value);
+  if (!match) return -1;
+  return bars.findIndex((bar) => bar.time === match.time);
 }
 
 function buildPriceMarks(high: number, low: number): number[] {
@@ -688,9 +810,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    minHeight: 18,
+    height: INDICATOR_LEGEND_HEIGHT,
     alignItems: "center",
-    marginTop: 3
+    marginTop: 3,
+    overflow: "hidden"
   },
   indicatorText: {
     fontSize: 10,

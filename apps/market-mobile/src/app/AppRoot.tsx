@@ -60,11 +60,17 @@ export function AppRoot() {
         waitForGetuiClientId()
       ]);
       if (!cancelled) {
-        await registerDeviceForPush({ pushToken, getuiCid });
+        const registration = await registerDeviceForPush({ pushToken, getuiCid });
         const nextToken = pushToken || (getuiCid ? `getui:${getuiCid}` : null);
+        latestSeenAlertEventIdRef.current = Math.max(
+          latestSeenAlertEventIdRef.current,
+          registration.lastSeenAlertEventId,
+          registration.lastAckAlertEventId
+        );
         devicePushTokenRef.current = nextToken;
         setDevicePushToken(nextToken);
         setGetuiClientId(getuiCid);
+        setLatestSeenAlertEventId(latestSeenAlertEventIdRef.current);
         await pullMissedAlertEvents();
       }
     }
