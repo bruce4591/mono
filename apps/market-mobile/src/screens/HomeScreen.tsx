@@ -8,6 +8,7 @@ import { getCached } from "../cache/queryCache";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { MarketList } from "../components/MarketList";
+import { theme } from "../theme";
 
 export function HomeScreen({
   route,
@@ -97,6 +98,9 @@ export function HomeScreen({
           <Pressable onPress={() => navigate({ name: "settings" })}>
             <Text style={styles.link}>Settings</Text>
           </Pressable>
+          <Pressable style={styles.headerRefreshButton} onPress={() => void loadHome(true)}>
+            <Text style={styles.headerRefreshText}>{loading ? "刷新中" : "刷新"}</Text>
+          </Pressable>
         </View>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -141,9 +145,6 @@ export function HomeScreen({
             );
           })}
         </ScrollView>
-        <Pressable style={styles.refreshButton} onPress={() => void loadHome(true)}>
-          <Text style={styles.refreshText}>{loading ? "刷新中" : "刷新"}</Text>
-        </Pressable>
       </View>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <MarketList boards={selectedBoard ? [selectedBoard] : []} navigate={navigate} />
@@ -159,43 +160,52 @@ function boardGroupForKey(key: string): BoardGroup {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#071113"
+    backgroundColor: theme.colors.background
   },
   header: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingTop: 48,
-    paddingBottom: 14
+    paddingBottom: 14,
+    gap: 10
   },
   title: {
-    color: "#f8fafc",
+    color: theme.colors.textStrong,
     fontSize: 24,
-    fontWeight: "700"
+    fontWeight: "900"
   },
   subtitle: {
     marginTop: 8,
-    color: "#9fb2b7",
+    color: theme.colors.textMuted,
     fontSize: 15
   },
   headerActions: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "flex-end",
-    gap: 12,
-    maxWidth: 190
+    alignItems: "center",
+    gap: 14
   },
   error: {
     paddingHorizontal: 16,
     paddingBottom: 8,
-    color: "#fca5a5",
+    color: theme.colors.danger,
     fontSize: 13
   },
   link: {
-    color: "#5eead4",
+    color: theme.colors.text,
     fontSize: 14,
     fontWeight: "800"
+  },
+  headerRefreshButton: {
+    minHeight: 28,
+    justifyContent: "center",
+    borderRadius: 7,
+    backgroundColor: theme.colors.accent,
+    paddingHorizontal: 12
+  },
+  headerRefreshText: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "900"
   },
   groupTabs: {
     flexDirection: "row",
@@ -209,19 +219,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 8,
-    backgroundColor: "#102528",
+    backgroundColor: theme.colors.surface,
     paddingHorizontal: 10
   },
   groupTabActive: {
-    backgroundColor: "#5eead4"
+    backgroundColor: theme.colors.accent
   },
   groupTabText: {
-    color: "#b9cdd2",
+    color: theme.colors.textMuted,
     fontSize: 14,
     fontWeight: "900"
   },
   groupTabTextActive: {
-    color: "#071113"
+    color: theme.colors.text
   },
   toolbar: {
     minHeight: 42,
@@ -242,30 +252,19 @@ const styles = StyleSheet.create({
     minHeight: 34,
     justifyContent: "center",
     borderRadius: 8,
-    backgroundColor: "#102528",
+    backgroundColor: theme.colors.surface,
     paddingHorizontal: 12
   },
   tabActive: {
-    backgroundColor: "#5eead4"
+    backgroundColor: theme.colors.accent
   },
   tabText: {
-    color: "#b9cdd2",
+    color: theme.colors.textMuted,
     fontSize: 14,
     fontWeight: "800"
   },
   tabTextActive: {
-    color: "#071113"
-  },
-  refreshButton: {
-    borderRadius: 8,
-    backgroundColor: "#123638",
-    paddingHorizontal: 14,
-    paddingVertical: 8
-  },
-  refreshText: {
-    color: "#dff8f5",
-    fontSize: 14,
-    fontWeight: "600"
+    color: theme.colors.text
   },
   scroll: {
     flex: 1

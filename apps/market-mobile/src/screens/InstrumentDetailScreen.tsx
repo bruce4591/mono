@@ -8,9 +8,10 @@ import { getCached } from "../cache/queryCache";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { NativeKLineChart } from "../components/NativeKLineChart";
+import { theme } from "../theme";
 
 const PERIOD_TABS = [
-  { label: "分时", value: "1m" },
+  { label: "1分", value: "1m" },
   { label: "5分", value: "5m" },
   { label: "15分", value: "15m" },
   { label: "8小时", value: "8h" },
@@ -107,6 +108,9 @@ export function InstrumentDetailScreen({
   const latestBar = payload?.bars[payload.bars.length - 1] ?? null;
   const displayBar = selectedBar ?? latestBar;
   const displayTime = displayBar ? formatSelectedTime(displayBar.time, period) : "--";
+  const priceLabel = isCryptoContract(route.market, payload?.instrument.asset_class ?? null)
+    ? "标记"
+    : "最新";
 
   return (
     <View style={styles.root}>
@@ -128,7 +132,7 @@ export function InstrumentDetailScreen({
         </Pressable>
       </View>
       <View style={styles.marketPanel}>
-        <SummaryCell label="标记" value={formatNumber(payload?.snapshot.last_price ?? null)} />
+        <SummaryCell label={priceLabel} value={formatNumber(payload?.snapshot.last_price ?? null)} />
         <SummaryCell label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
         <SummaryCell label="开" value={formatCompactPrice(displayBar?.open ?? null)} />
         <SummaryCell label="高" value={formatCompactPrice(displayBar?.high ?? null)} />
@@ -230,6 +234,10 @@ function formatMarketMetric(value: number | null): string {
   return value.toFixed(2);
 }
 
+function isCryptoContract(market: string, assetClass: string | null): boolean {
+  return market.toUpperCase() === "CRYPTO" || assetClass?.toLowerCase().includes("crypto") === true;
+}
+
 function formatSelectedTime(value: string, period: string): string {
   const parsed = parseTimeParts(value);
   if (parsed === null) return value;
@@ -261,7 +269,7 @@ function parseTimeParts(value: string): {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#ffffff"
+    backgroundColor: theme.colors.background
   },
   topBar: {
     minHeight: 78,
@@ -269,7 +277,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 14,
     paddingTop: 24,
-    backgroundColor: "#ffffff"
+    backgroundColor: theme.colors.background
   },
   iconButton: {
     width: 28,
@@ -277,7 +285,7 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   iconText: {
-    color: "#111827",
+    color: theme.colors.text,
     fontSize: 34,
     lineHeight: 34
   },
@@ -292,15 +300,15 @@ const styles = StyleSheet.create({
     gap: 8
   },
   symbol: {
-    color: "#030712",
+    color: theme.colors.textStrong,
     fontSize: 20,
     fontWeight: "900"
   },
   badge: {
     overflow: "hidden",
     borderRadius: 5,
-    backgroundColor: "#f1f1f1",
-    color: "#111827",
+    backgroundColor: theme.colors.surface,
+    color: theme.colors.text,
     fontSize: 13,
     fontWeight: "700",
     paddingHorizontal: 7,
@@ -308,18 +316,18 @@ const styles = StyleSheet.create({
   },
   name: {
     marginTop: 3,
-    color: "#737373",
+    color: theme.colors.textMuted,
     fontSize: 12
   },
   refreshButton: {
     minHeight: 32,
     justifyContent: "center",
     borderRadius: 7,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: theme.colors.accent,
     paddingHorizontal: 10
   },
   refreshText: {
-    color: "#111111",
+    color: theme.colors.text,
     fontSize: 13,
     fontWeight: "800"
   },
@@ -329,9 +337,9 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#eeeeee",
+    borderTopColor: theme.colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#eeeeee",
+    borderBottomColor: theme.colors.border,
     paddingHorizontal: 12,
     paddingVertical: 5,
     rowGap: 3
@@ -343,19 +351,19 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   summaryLabel: {
-    color: "#737373",
+    color: theme.colors.textMuted,
     fontSize: 9,
     fontWeight: "700"
   },
   summaryValue: {
-    color: "#111111",
+    color: theme.colors.text,
     fontSize: 12,
     lineHeight: 15,
     fontWeight: "800"
   },
   error: {
     paddingHorizontal: 18,
-    color: "#dc2626",
+    color: theme.colors.danger,
     fontSize: 13
   },
   periodBar: {
@@ -364,9 +372,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#f1f1f1",
+    borderTopColor: theme.colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#eeeeee",
+    borderBottomColor: theme.colors.border,
     paddingRight: 12
   },
   periodScroll: {
@@ -383,7 +391,7 @@ const styles = StyleSheet.create({
     paddingRight: 24
   },
   selectedTime: {
-    color: "#525252",
+    color: theme.colors.textMuted,
     fontSize: 11,
     fontWeight: "800"
   },
@@ -392,15 +400,15 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   periodText: {
-    color: "#777777",
-    fontSize: 14,
+    color: theme.colors.textMuted,
+    fontSize: 13,
     fontWeight: "800"
   },
   periodTextActive: {
-    color: "#111111"
+    color: theme.colors.text
   },
   chartArea: {
     flex: 1,
-    backgroundColor: "#ffffff"
+    backgroundColor: theme.colors.background
   }
 });

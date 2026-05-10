@@ -1,6 +1,8 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { theme } from "../theme";
+
 export function ErrorState({
   title = "加载失败",
   message,
@@ -31,14 +33,14 @@ const styles = StyleSheet.create({
     padding: 24
   },
   title: {
-    color: "#f8fafc",
+    color: theme.colors.textStrong,
     fontSize: 18,
     fontWeight: "700",
     textAlign: "center"
   },
   message: {
     marginTop: 8,
-    color: "#9fb2b7",
+    color: theme.colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center"
@@ -46,13 +48,13 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 18,
     borderRadius: 8,
-    backgroundColor: "#123638",
+    backgroundColor: theme.colors.accent,
     paddingHorizontal: 16,
     paddingVertical: 10
   },
   buttonText: {
-    color: "#dff8f5",
+    color: theme.colors.text,
     fontSize: 15,
-    fontWeight: "600"
+    fontWeight: "800"
   }
 });

@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import type { AppRoute } from "../app/navigation";
 import type { MobileBoard } from "../api/types";
+import { theme } from "../theme";
 import { EmptyState } from "./EmptyState";
 import { MarketListItem } from "./MarketListItem";
 
@@ -49,15 +50,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#245057"
+    borderBottomColor: theme.colors.borderStrong
   },
   title: {
-    color: "#f8fafc",
+    color: theme.colors.textStrong,
     fontSize: 17,
-    fontWeight: "700"
+    fontWeight: "800"
   },
   count: {
-    color: "#8ea4aa",
+    color: theme.colors.textSubtle,
     fontSize: 13
   }
 });

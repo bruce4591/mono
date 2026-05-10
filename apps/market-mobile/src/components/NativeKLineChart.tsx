@@ -12,6 +12,7 @@ import {
 import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
 import type { MobileBar } from "../api/types";
+import { theme } from "../theme";
 import { EmptyState } from "./EmptyState";
 
 const PRICE_CHART_HEIGHT = 238;
@@ -20,17 +21,22 @@ const MACD_CHART_HEIGHT = 58;
 const RSI_CHART_HEIGHT = 62;
 const X_AXIS_HEIGHT = 22;
 const INDICATOR_LEGEND_HEIGHT = 18;
+const INDICATOR_LEGEND_TOP_MARGIN = 3;
+const VOLUME_TOP =
+  PRICE_CHART_HEIGHT + X_AXIS_HEIGHT + INDICATOR_LEGEND_TOP_MARGIN + INDICATOR_LEGEND_HEIGHT + 2;
+const MACD_TOP = VOLUME_TOP + VOLUME_CHART_HEIGHT + INDICATOR_LEGEND_TOP_MARGIN + INDICATOR_LEGEND_HEIGHT;
+const RSI_TOP = MACD_TOP + MACD_CHART_HEIGHT + INDICATOR_LEGEND_TOP_MARGIN + INDICATOR_LEGEND_HEIGHT;
 const CANDLE_WIDTH = 6;
 const CANDLE_GAP = 3;
 const LEFT_PADDING = 8;
 const RIGHT_PADDING = 64;
-const UP_COLOR = "#0ecb81";
-const DOWN_COLOR = "#f6465d";
-const GRID_COLOR = "#dddddd";
-const AXIS_COLOR = "#3f3f46";
+const UP_COLOR = theme.colors.positive;
+const DOWN_COLOR = theme.colors.negative;
+const GRID_COLOR = theme.colors.grid;
+const AXIS_COLOR = theme.colors.axis;
 const MA_PERIODS = [5, 11, 22, 60, 120] as const;
 const MA_COLORS: Record<(typeof MA_PERIODS)[number], string> = {
-  5: "#f0b90b",
+  5: theme.colors.accent,
   11: "#ec4899",
   22: "#8b5cf6",
   60: "#22c55e",
@@ -67,7 +73,6 @@ export function NativeKLineChart({
   const plotWidth = Math.max(viewportWidth, dataWidth + RIGHT_PADDING);
   const maxScrollX = Math.max(plotWidth - viewportWidth, 0);
   const effectiveScrollX = clamp(scrollX, 0, maxScrollX);
-  const axisX = effectiveScrollX + viewportWidth - RIGHT_PADDING + 6;
   const fixedLegendX = effectiveScrollX + LEFT_PADDING;
   const fixedLegendWidth = Math.max(viewportWidth - RIGHT_PADDING - LEFT_PADDING, 160);
   const visibleWindow = useMemo(() => {
@@ -233,7 +238,7 @@ export function NativeKLineChart({
                     height={bodyHeight}
                     stroke={color}
                     strokeWidth={1}
-                    fill={rising ? color : "#ffffff"}
+                    fill={rising ? color : theme.colors.background}
                   />
                 </React.Fragment>
               );
@@ -268,7 +273,7 @@ export function NativeKLineChart({
               y1={0}
               x2={selectedX}
               y2={PRICE_CHART_HEIGHT}
-              stroke="#18181b"
+              stroke={theme.colors.text}
               strokeWidth={1}
               strokeDasharray="4 4"
               opacity={0.5}
@@ -332,13 +337,6 @@ export function NativeKLineChart({
             })}
             {volumeMa5Path ? <Path d={volumeMa5Path} stroke={MA_COLORS[5]} strokeWidth={1.2} fill="none" /> : null}
             {volumeMa10Path ? <Path d={volumeMa10Path} stroke={MA_COLORS[11]} strokeWidth={1.2} fill="none" /> : null}
-            <Rect x={axisX - 6} y={0} width={RIGHT_PADDING + 6} height={VOLUME_CHART_HEIGHT} fill="#ffffff" opacity={0.95} />
-            <SvgText x={axisX} y={13} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
-              {formatMetric(maxVolume)}
-            </SvgText>
-            <SvgText x={axisX} y={VOLUME_CHART_HEIGHT - 5} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
-              0
-            </SvgText>
           </Svg>
           <IndicatorLegend
             offsetX={fixedLegendX}
@@ -376,13 +374,6 @@ export function NativeKLineChart({
             })}
             {macdDifPath ? <Path d={macdDifPath} stroke={MA_COLORS[5]} strokeWidth={1.3} fill="none" /> : null}
             {macdDeaPath ? <Path d={macdDeaPath} stroke={MA_COLORS[22]} strokeWidth={1.3} fill="none" /> : null}
-            <Rect x={axisX - 6} y={0} width={RIGHT_PADDING + 6} height={MACD_CHART_HEIGHT} fill="#ffffff" opacity={0.95} />
-            <SvgText x={axisX} y={14} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
-              {formatIndicator(macdMax)}
-            </SvgText>
-            <SvgText x={axisX} y={MACD_CHART_HEIGHT / 2 + 4} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
-              0
-            </SvgText>
           </Svg>
           <IndicatorLegend
             offsetX={fixedLegendX}
@@ -411,19 +402,12 @@ export function NativeKLineChart({
             {rsi7Path ? <Path d={rsi7Path} stroke={MA_COLORS[5]} strokeWidth={1.3} fill="none" /> : null}
             {rsi14Path ? <Path d={rsi14Path} stroke="#ec4899" strokeWidth={1.3} fill="none" /> : null}
             {rsi28Path ? <Path d={rsi28Path} stroke={MA_COLORS[22]} strokeWidth={1.3} fill="none" /> : null}
-            <Rect x={axisX - 6} y={0} width={RIGHT_PADDING + 6} height={RSI_CHART_HEIGHT} fill="#ffffff" opacity={0.95} />
-            <SvgText x={axisX} y={18} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
-              70
-            </SvgText>
-            <SvgText x={axisX} y={RSI_CHART_HEIGHT - 8} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
-              30
-            </SvgText>
           </Svg>
           </View>
         </ScrollView>
         <View pointerEvents="none" style={styles.priceAxisOverlay}>
           <Svg width={RIGHT_PADDING} height={PRICE_CHART_HEIGHT}>
-            <Rect x={0} y={0} width={RIGHT_PADDING} height={PRICE_CHART_HEIGHT} fill="#ffffff" opacity={0.96} />
+            <Rect x={0} y={0} width={RIGHT_PADDING} height={PRICE_CHART_HEIGHT} fill={theme.colors.background} opacity={0.96} />
             {priceMarks.map((mark, index) => {
               const y = yForPrice(mark, high, range);
               return (
@@ -441,7 +425,54 @@ export function NativeKLineChart({
             })}
           </Svg>
         </View>
+        <IndicatorAxisOverlay
+          top={VOLUME_TOP}
+          height={VOLUME_CHART_HEIGHT}
+          labels={[
+            { text: formatMetric(maxVolume), y: 13 },
+            { text: "0", y: VOLUME_CHART_HEIGHT - 5 }
+          ]}
+        />
+        <IndicatorAxisOverlay
+          top={MACD_TOP}
+          height={MACD_CHART_HEIGHT}
+          labels={[
+            { text: formatIndicator(macdMax), y: 14 },
+            { text: "0", y: MACD_CHART_HEIGHT / 2 + 4 }
+          ]}
+        />
+        <IndicatorAxisOverlay
+          top={RSI_TOP}
+          height={RSI_CHART_HEIGHT}
+          labels={[
+            { text: "70", y: 18 },
+            { text: "30", y: RSI_CHART_HEIGHT - 8 }
+          ]}
+        />
       </View>
+    </View>
+  );
+}
+
+function IndicatorAxisOverlay({
+  top,
+  height,
+  labels
+}: {
+  top: number;
+  height: number;
+  labels: Array<{ text: string; y: number }>;
+}) {
+  return (
+    <View pointerEvents="none" style={[styles.indicatorAxisOverlay, { top, height }]}>
+      <Svg width={RIGHT_PADDING} height={height}>
+        <Rect x={0} y={0} width={RIGHT_PADDING} height={height} fill={theme.colors.background} opacity={0.95} />
+        {labels.map((label) => (
+          <SvgText key={`${label.text}:${label.y}`} x={6} y={label.y} fill={AXIS_COLOR} fontSize="10" fontWeight="800">
+            {label.text}
+          </SvgText>
+        ))}
+      </Svg>
     </View>
   );
 }
@@ -503,13 +534,13 @@ function ExtremePriceLabel({
         y1={y}
         x2={lineEndX}
         y2={y}
-        stroke="#18181b"
+        stroke={theme.colors.text}
         strokeWidth={1}
       />
       <SvgText
         x={labelX}
         y={type === "high" ? y - 4 : y + 12}
-        fill="#18181b"
+        fill={theme.colors.text}
         fontSize="10"
         fontWeight="800"
         textAnchor={placeLeft ? "end" : "start"}
@@ -788,7 +819,7 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   chartPanel: {
-    backgroundColor: "#ffffff"
+    backgroundColor: theme.colors.background
   },
   chartViewport: {
     flex: 1,
@@ -801,7 +832,14 @@ const styles = StyleSheet.create({
     width: RIGHT_PADDING,
     height: PRICE_CHART_HEIGHT,
     borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: "#d4d4d8"
+    borderLeftColor: theme.colors.borderStrong
+  },
+  indicatorAxisOverlay: {
+    position: "absolute",
+    right: 0,
+    width: RIGHT_PADDING,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: theme.colors.borderStrong
   },
   volumeSvg: {
     marginTop: 2

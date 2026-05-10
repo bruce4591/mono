@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { homeRoute, type AppRoute } from "../app/navigation";
 import { API_BASE_URL } from "../config";
 import { ONEPLUS_13T_BACKGROUND_CHECKLIST } from "../oneplusGuidance";
+import { theme } from "../theme";
 
 export function SettingsScreen({
   navigate,
@@ -61,7 +62,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#071113"
+    backgroundColor: theme.colors.background
   },
   content: {
     paddingHorizontal: 16,
@@ -69,24 +70,24 @@ const styles = StyleSheet.create({
     paddingBottom: 36
   },
   back: {
-    color: "#5eead4",
+    color: theme.colors.text,
     fontSize: 15
   },
   title: {
     marginTop: 20,
-    color: "#f8fafc",
+    color: theme.colors.textStrong,
     fontSize: 24,
     fontWeight: "700"
   },
   section: {
     marginTop: 24,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#245057",
+    borderTopColor: theme.colors.border,
     paddingTop: 14
   },
   sectionTitle: {
     marginBottom: 10,
-    color: "#f8fafc",
+    color: theme.colors.textStrong,
     fontSize: 17,
     fontWeight: "700"
   },
@@ -98,19 +99,19 @@ const styles = StyleSheet.create({
     gap: 14
   },
   label: {
-    color: "#9fb2b7",
+    color: theme.colors.textMuted,
     fontSize: 13
   },
   value: {
     flex: 1,
-    color: "#d6e2e4",
+    color: theme.colors.text,
     fontSize: 14,
     lineHeight: 20,
     textAlign: "right"
   },
   checkItem: {
     minHeight: 30,
-    color: "#d6e2e4",
+    color: theme.colors.text,
     fontSize: 14,
     lineHeight: 22
   }

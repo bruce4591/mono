@@ -1,6 +1,8 @@
 import React from "react";
 import { StyleSheet, Text } from "react-native";
 
+import { theme } from "../theme";
+
 export function DataTimeBadge({ value }: { value: string | null }) {
   return <Text style={styles.badge}>{value ? `数据 ${formatDataTime(value)}` : "数据 --"}</Text>;
 }
@@ -18,7 +20,7 @@ function formatDataTime(value: string): string {
 
 const styles = StyleSheet.create({
   badge: {
-    color: "#8ea4aa",
+    color: theme.colors.textSubtle,
     fontSize: 12
   }
 });

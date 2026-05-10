@@ -1,6 +1,8 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { theme } from "../theme";
+
 export function EmptyState({
   title = "暂无数据",
   message
@@ -24,14 +26,14 @@ const styles = StyleSheet.create({
     padding: 24
   },
   title: {
-    color: "#f8fafc",
+    color: theme.colors.textStrong,
     fontSize: 18,
     fontWeight: "700",
     textAlign: "center"
   },
   message: {
     marginTop: 8,
-    color: "#9fb2b7",
+    color: theme.colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center"

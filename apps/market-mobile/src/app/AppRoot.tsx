@@ -17,6 +17,7 @@ import { AlertRulesScreen } from "../screens/AlertRulesScreen";
 import { HomeScreen } from "../screens/HomeScreen";
 import { InstrumentDetailScreen } from "../screens/InstrumentDetailScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
+import { theme } from "../theme";
 
 export function AppRoot() {
   const devicePushTokenRef = useRef<string | null>(null);
@@ -122,7 +123,7 @@ export function AppRoot() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#071113" />
+      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background} />
       {route.name === "home" ? <HomeScreen route={route} navigate={setRoute} /> : null}
       {route.name === "instrument" ? (
         <InstrumentDetailScreen route={route} navigate={setRoute} />
@@ -148,6 +149,6 @@ export function AppRoot() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#071113"
+    backgroundColor: theme.colors.background
   }
 });

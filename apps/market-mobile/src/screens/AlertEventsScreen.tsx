@@ -7,6 +7,7 @@ import type { MobileAlertEvent } from "../api/types";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
+import { theme } from "../theme";
 
 export function AlertEventsScreen({
   navigate,
@@ -93,10 +94,10 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 48,
-    backgroundColor: "#071113"
+    backgroundColor: theme.colors.background
   },
   back: {
-    color: "#5eead4",
+    color: theme.colors.text,
     fontSize: 15
   },
   topBar: {
@@ -105,18 +106,18 @@ const styles = StyleSheet.create({
     alignItems: "center"
   },
   refresh: {
-    color: "#5eead4",
+    color: theme.colors.text,
     fontSize: 15
   },
   title: {
     marginTop: 20,
-    color: "#f8fafc",
+    color: theme.colors.textStrong,
     fontSize: 24,
     fontWeight: "700"
   },
   error: {
     marginTop: 10,
-    color: "#fca5a5",
+    color: theme.colors.danger,
     fontSize: 13
   },
   list: {
@@ -125,23 +126,23 @@ const styles = StyleSheet.create({
   item: {
     minHeight: 84,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#173438",
+    borderBottomColor: theme.colors.border,
     paddingVertical: 12
   },
   itemTitle: {
-    color: "#f8fafc",
+    color: theme.colors.textStrong,
     fontSize: 16,
     fontWeight: "700"
   },
   itemBody: {
     marginTop: 5,
-    color: "#b9cdd2",
+    color: theme.colors.text,
     fontSize: 14,
     lineHeight: 20
   },
   itemMeta: {
     marginTop: 7,
-    color: "#9fb2b7",
+    color: theme.colors.textMuted,
     fontSize: 12
   }
 });

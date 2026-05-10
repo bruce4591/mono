@@ -1,6 +1,8 @@
 import React from "react";
 import { StyleSheet, Text } from "react-native";
 
+import { theme } from "../theme";
+
 export function PriceChange({ value }: { value: number | null }) {
   const colorStyle =
     value === null ? styles.muted : value > 0 ? styles.positive : value < 0 ? styles.negative : styles.flat;
@@ -16,15 +18,15 @@ const styles = StyleSheet.create({
     textAlign: "right"
   },
   positive: {
-    color: "#f87171"
+    color: theme.colors.positive
   },
   negative: {
-    color: "#34d399"
+    color: theme.colors.negative
   },
   flat: {
-    color: "#d6e2e4"
+    color: theme.colors.textMuted
   },
   muted: {
-    color: "#6f858a"
+    color: theme.colors.textSubtle
   }
 });

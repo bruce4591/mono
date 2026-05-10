@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { AppRoute } from "../app/navigation";
 import type { MobileBoardItem } from "../api/types";
+import { theme } from "../theme";
 import { DataTimeBadge } from "./DataTimeBadge";
 import { PriceChange } from "./PriceChange";
 
@@ -57,7 +58,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#173438",
+    borderBottomColor: theme.colors.border,
     paddingVertical: 10
   },
   left: {
@@ -66,13 +67,13 @@ const styles = StyleSheet.create({
     paddingRight: 12
   },
   symbol: {
-    color: "#f8fafc",
+    color: theme.colors.textStrong,
     fontSize: 16,
-    fontWeight: "700"
+    fontWeight: "800"
   },
   name: {
     marginTop: 3,
-    color: "#a9bdc2",
+    color: theme.colors.textMuted,
     fontSize: 13
   },
   right: {
@@ -80,12 +81,12 @@ const styles = StyleSheet.create({
     gap: 3
   },
   price: {
-    color: "#f8fafc",
+    color: theme.colors.text,
     fontSize: 16,
-    fontWeight: "700"
+    fontWeight: "800"
   },
   metric: {
-    color: "#8ea4aa",
+    color: theme.colors.textSubtle,
     fontSize: 12
   }
 });
