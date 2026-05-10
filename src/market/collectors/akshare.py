@@ -186,12 +186,23 @@ class AkshareCollector:
 def fetch_akshare_daily_frame(instrument: Instrument):
     akshare = _load_akshare()
     if instrument.instrument_type == "index":
+        if instrument.extra_meta.get("akshare_function") == "stock_hk_index_daily_sina":
+            return akshare.stock_hk_index_daily_sina(
+                symbol=str(instrument.extra_meta.get("akshare_symbol") or instrument.symbol)
+            )
+        if instrument.extra_meta.get("akshare_function") == "stock_zh_index_daily":
+            return akshare.stock_zh_index_daily(
+                symbol=str(instrument.extra_meta.get("akshare_symbol") or instrument.symbol)
+            )
         if instrument.extra_meta.get("akshare_function") == "index_global_hist_em":
             return akshare.index_global_hist_em(
                 symbol=str(instrument.extra_meta.get("akshare_symbol") or instrument.display_name)
             )
         return akshare.index_us_stock_sina(
-            symbol=AKSHARE_INDEX_SYMBOLS.get(instrument.symbol.upper(), instrument.symbol)
+            symbol=str(
+                instrument.extra_meta.get("akshare_symbol")
+                or AKSHARE_INDEX_SYMBOLS.get(instrument.symbol.upper(), instrument.symbol)
+            )
         )
     if instrument.instrument_type == "commodity":
         if instrument.extra_meta.get("akshare_function") == "futures_global_hist_em":

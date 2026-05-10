@@ -33,239 +33,237 @@
     },
     {
       "market": "US",
-      "symbol": "UKX",
-      "display_name": "FTSE 100 Index",
-      "exchange": "EM",
+      "symbol": "IXIC",
+      "display_name": "Nasdaq Composite Index",
+      "exchange": "NASDAQ",
       "instrument_type": "index",
-      "quote_currency": "GBP",
-      "timezone": "Europe/London",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "英国富时100"
+        "akshare_symbol": ".IXIC"
       },
       "sort_order": 4
     },
     {
       "market": "US",
-      "symbol": "DAX",
-      "display_name": "DAX 30 Index",
-      "exchange": "EM",
+      "symbol": "SOX",
+      "display_name": "PHLX Semiconductor Index",
+      "exchange": "NASDAQ",
       "instrument_type": "index",
-      "quote_currency": "EUR",
-      "timezone": "Europe/Berlin",
+      "quote_currency": "USD",
+      "timezone": "America/New_York",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "德国DAX30"
+        "akshare_symbol": ".SOX"
       },
       "sort_order": 5
     },
     {
       "market": "US",
-      "symbol": "CAC",
-      "display_name": "CAC 40 Index",
-      "exchange": "EM",
+      "symbol": "HSI",
+      "display_name": "Hang Seng Index",
+      "exchange": "HKEX",
       "instrument_type": "index",
-      "quote_currency": "EUR",
-      "timezone": "Europe/Paris",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "法国CAC40"
+        "akshare_function": "stock_hk_index_daily_sina",
+        "akshare_symbol": "HSI"
       },
       "sort_order": 6
     },
     {
       "market": "US",
-      "symbol": "SWI20",
-      "display_name": "Swiss Market Index",
-      "exchange": "EM",
+      "symbol": "HSCEI",
+      "display_name": "Hang Seng China Enterprises Index",
+      "exchange": "HKEX",
       "instrument_type": "index",
-      "quote_currency": "CHF",
-      "timezone": "Europe/Zurich",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "瑞士SMI"
+        "akshare_function": "stock_hk_index_daily_sina",
+        "akshare_symbol": "HSCEI"
       },
       "sort_order": 7
     },
     {
       "market": "US",
-      "symbol": "AEX",
-      "display_name": "AEX Index",
-      "exchange": "EM",
+      "symbol": "HSTECH",
+      "display_name": "Hang Seng TECH Index",
+      "exchange": "HKEX",
       "instrument_type": "index",
-      "quote_currency": "EUR",
-      "timezone": "Europe/Amsterdam",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "荷兰AEX"
+        "akshare_function": "stock_hk_index_daily_sina",
+        "akshare_symbol": "HSTECH"
       },
       "sort_order": 8
     },
     {
       "market": "US",
-      "symbol": "IBEX",
-      "display_name": "IBEX 35 Index",
-      "exchange": "EM",
+      "symbol": "HSCCI",
+      "display_name": "Hang Seng China-Affiliated Corporations Index",
+      "exchange": "HKEX",
       "instrument_type": "index",
-      "quote_currency": "EUR",
-      "timezone": "Europe/Madrid",
+      "quote_currency": "HKD",
+      "timezone": "Asia/Hong_Kong",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "西班牙IBEX35"
+        "akshare_function": "stock_hk_index_daily_sina",
+        "akshare_symbol": "HSCCI"
       },
       "sort_order": 9
     },
     {
       "market": "US",
-      "symbol": "SX5E",
-      "display_name": "Euro Stoxx 50 Index",
-      "exchange": "EM",
+      "symbol": "SHCOMP",
+      "display_name": "Shanghai Composite Index",
+      "exchange": "SSE",
       "instrument_type": "index",
-      "quote_currency": "EUR",
-      "timezone": "Europe/Brussels",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "欧洲斯托克50"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sh000001"
       },
       "sort_order": 10
     },
     {
       "market": "US",
-      "symbol": "GSPTSE",
-      "display_name": "S&P/TSX Composite Index",
-      "exchange": "EM",
+      "symbol": "SZCOMP",
+      "display_name": "Shenzhen Component Index",
+      "exchange": "SZSE",
       "instrument_type": "index",
-      "quote_currency": "CAD",
-      "timezone": "America/Toronto",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "加拿大S&P/TSX"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sz399001"
       },
       "sort_order": 11
     },
     {
       "market": "US",
-      "symbol": "MXX",
-      "display_name": "Mexico Bolsa Index",
-      "exchange": "EM",
+      "symbol": "CSI300",
+      "display_name": "CSI 300 Index",
+      "exchange": "SSE",
       "instrument_type": "index",
-      "quote_currency": "MXN",
-      "timezone": "America/Mexico_City",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "墨西哥BOLSA"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sh000300"
       },
       "sort_order": 12
     },
     {
       "market": "US",
-      "symbol": "IBOV",
-      "display_name": "Bovespa Index",
-      "exchange": "EM",
+      "symbol": "CSI500",
+      "display_name": "CSI 500 Index",
+      "exchange": "SSE",
       "instrument_type": "index",
-      "quote_currency": "BRL",
-      "timezone": "America/Sao_Paulo",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "巴西BOVESPA"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sh000905"
       },
       "sort_order": 13
     },
     {
       "market": "US",
-      "symbol": "TWJQ",
-      "display_name": "Taiwan Weighted Index",
-      "exchange": "EM",
+      "symbol": "CSI1000",
+      "display_name": "CSI 1000 Index",
+      "exchange": "SSE",
       "instrument_type": "index",
-      "quote_currency": "TWD",
-      "timezone": "Asia/Taipei",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "台湾加权"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sh000852"
       },
       "sort_order": 14
     },
     {
       "market": "US",
-      "symbol": "NKY",
-      "display_name": "Nikkei 225 Index",
-      "exchange": "EM",
+      "symbol": "CHINEXT",
+      "display_name": "ChiNext Index",
+      "exchange": "SZSE",
       "instrument_type": "index",
-      "quote_currency": "JPY",
-      "timezone": "Asia/Tokyo",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "日经225"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sz399006"
       },
       "sort_order": 15
     },
     {
       "market": "US",
-      "symbol": "KOSPI",
-      "display_name": "KOSPI Composite Index",
-      "exchange": "EM",
+      "symbol": "STAR50",
+      "display_name": "STAR 50 Index",
+      "exchange": "SSE",
       "instrument_type": "index",
-      "quote_currency": "KRW",
-      "timezone": "Asia/Seoul",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "韩国KOSPI"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sh000688"
       },
       "sort_order": 16
     },
     {
       "market": "US",
-      "symbol": "JCI",
-      "display_name": "Jakarta Composite Index",
-      "exchange": "EM",
+      "symbol": "SSE50",
+      "display_name": "SSE 50 Index",
+      "exchange": "SSE",
       "instrument_type": "index",
-      "quote_currency": "IDR",
-      "timezone": "Asia/Jakarta",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "印尼雅加达综合"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sh000016"
       },
       "sort_order": 17
     },
     {
       "market": "US",
-      "symbol": "SENSEX",
-      "display_name": "BSE Sensex Index",
-      "exchange": "EM",
+      "symbol": "CSI100",
+      "display_name": "CSI 100 Index",
+      "exchange": "SSE",
       "instrument_type": "index",
-      "quote_currency": "INR",
-      "timezone": "Asia/Kolkata",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "印度孟买SENSEX"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sh000903"
       },
       "sort_order": 18
     },
     {
       "market": "US",
-      "symbol": "AS51",
-      "display_name": "S&P/ASX 200 Index",
-      "exchange": "EM",
+      "symbol": "CSI100R",
+      "display_name": "CSI 100 Equal Weight Index",
+      "exchange": "SZSE",
       "instrument_type": "index",
-      "quote_currency": "AUD",
-      "timezone": "Australia/Sydney",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "澳大利亚标普200"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sz399330"
       },
       "sort_order": 19
     },
     {
       "market": "US",
-      "symbol": "NZ250",
-      "display_name": "NZSE 50 Index",
-      "exchange": "EM",
+      "symbol": "SSE180",
+      "display_name": "SSE 180 Index",
+      "exchange": "SSE",
       "instrument_type": "index",
-      "quote_currency": "NZD",
-      "timezone": "Pacific/Auckland",
+      "quote_currency": "CNY",
+      "timezone": "Asia/Shanghai",
       "extra_meta": {
-        "akshare_function": "index_global_hist_em",
-        "akshare_symbol": "新西兰50"
+        "akshare_function": "stock_zh_index_daily",
+        "akshare_symbol": "sh000015"
       },
       "sort_order": 20
     }

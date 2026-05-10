@@ -70,6 +70,14 @@ class AkshareNormalizerTests(unittest.TestCase):
                 calls.append(("index_global_hist_em", kwargs))
                 return FakeFrame([])
 
+            def stock_hk_index_daily_sina(self, **kwargs):
+                calls.append(("stock_hk_index_daily_sina", kwargs))
+                return FakeFrame([])
+
+            def stock_zh_index_daily(self, **kwargs):
+                calls.append(("stock_zh_index_daily", kwargs))
+                return FakeFrame([])
+
             def futures_foreign_hist(self, **kwargs):
                 calls.append(("futures_foreign_hist", kwargs))
                 return FakeFrame([])
@@ -83,6 +91,32 @@ class AkshareNormalizerTests(unittest.TestCase):
             Instrument("HK", "00700", "Tencent", "HKEX", "stock", "HKD", "Asia/Hong_Kong"),
             Instrument("US", "AAPL", "Apple", "NASDAQ", "stock", "USD", "America/New_York"),
             Instrument("US", "SPX", "S&P 500 Index", "CBOE", "index", "USD", "America/New_York"),
+            Instrument(
+                "US",
+                "HSI",
+                "Hang Seng Index",
+                "HKEX",
+                "index",
+                "HKD",
+                "Asia/Hong_Kong",
+                extra_meta={
+                    "akshare_function": "stock_hk_index_daily_sina",
+                    "akshare_symbol": "HSI",
+                },
+            ),
+            Instrument(
+                "US",
+                "CSI300",
+                "CSI 300 Index",
+                "SSE",
+                "index",
+                "CNY",
+                "Asia/Shanghai",
+                extra_meta={
+                    "akshare_function": "stock_zh_index_daily",
+                    "akshare_symbol": "sh000300",
+                },
+            ),
             Instrument(
                 "US",
                 "N225",
@@ -120,6 +154,8 @@ class AkshareNormalizerTests(unittest.TestCase):
                 ("stock_hk_hist", {"symbol": "00700", "period": "daily", "adjust": ""}),
                 ("stock_us_daily", {"symbol": "AAPL", "adjust": ""}),
                 ("index_us_stock_sina", {"symbol": ".INX"}),
+                ("stock_hk_index_daily_sina", {"symbol": "HSI"}),
+                ("stock_zh_index_daily", {"symbol": "sh000300"}),
                 ("index_global_hist_em", {"symbol": "日经225"}),
                 ("futures_foreign_hist", {"symbol": "OIL"}),
                 ("futures_global_hist_em", {"symbol": "RB00Y"}),
