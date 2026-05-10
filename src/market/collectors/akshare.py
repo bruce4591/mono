@@ -186,6 +186,10 @@ class AkshareCollector:
 def fetch_akshare_daily_frame(instrument: Instrument):
     akshare = _load_akshare()
     if instrument.instrument_type == "index":
+        if instrument.extra_meta.get("akshare_function") == "index_global_hist_em":
+            return akshare.index_global_hist_em(
+                symbol=str(instrument.extra_meta.get("akshare_symbol") or instrument.display_name)
+            )
         return akshare.index_us_stock_sina(
             symbol=AKSHARE_INDEX_SYMBOLS.get(instrument.symbol.upper(), instrument.symbol)
         )
@@ -219,7 +223,7 @@ def parse_akshare_daily_frame(
         DailyBar(
             instrument_id=instrument_id,
             trade_date=_normalize_trade_date(_record_value(record, "date", "日期")),
-            open=_optional_float(_record_value(record, "open", "开盘")),
+            open=_optional_float(_record_value(record, "open", "开盘", "今开")),
             high=_optional_float(_record_value(record, "high", "最高")),
             low=_optional_float(_record_value(record, "low", "最低")),
             close=_optional_float(_record_value(record, "close", "收盘", "最新价")),
@@ -255,10 +259,18 @@ def _snapshot_from_bars(
         last_price=latest.close,
         change_pct=_percent_change(previous.close if previous else None, latest.close),
         volume_raw=latest.volume_raw,
-        turnover_raw=latest.turnover_raw,
+        turnover_raw=_snapshot_turnover(instrument, latest),
         quote_currency=instrument.quote_currency,
         source=source,
     )
+
+
+def _snapshot_turnover(instrument: Instrument, latest: DailyBar) -> float | None:
+    if latest.turnover_raw is not None:
+        return latest.turnover_raw
+    if instrument.instrument_type == "index":
+        return 0.0
+    return None
 
 
 def _focus_instruments(

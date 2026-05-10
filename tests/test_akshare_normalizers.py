@@ -66,6 +66,10 @@ class AkshareNormalizerTests(unittest.TestCase):
                 calls.append(("index_us_stock_sina", kwargs))
                 return FakeFrame([])
 
+            def index_global_hist_em(self, **kwargs):
+                calls.append(("index_global_hist_em", kwargs))
+                return FakeFrame([])
+
             def futures_foreign_hist(self, **kwargs):
                 calls.append(("futures_foreign_hist", kwargs))
                 return FakeFrame([])
@@ -79,6 +83,19 @@ class AkshareNormalizerTests(unittest.TestCase):
             Instrument("HK", "00700", "Tencent", "HKEX", "stock", "HKD", "Asia/Hong_Kong"),
             Instrument("US", "AAPL", "Apple", "NASDAQ", "stock", "USD", "America/New_York"),
             Instrument("US", "SPX", "S&P 500 Index", "CBOE", "index", "USD", "America/New_York"),
+            Instrument(
+                "US",
+                "N225",
+                "Nikkei 225",
+                "EM",
+                "index",
+                "JPY",
+                "Asia/Tokyo",
+                extra_meta={
+                    "akshare_function": "index_global_hist_em",
+                    "akshare_symbol": "日经225",
+                },
+            ),
             Instrument("CMDTY", "OIL", "Brent Oil", "SINA", "commodity", "USD", "UTC"),
             Instrument(
                 "CMDTY",
@@ -103,6 +120,7 @@ class AkshareNormalizerTests(unittest.TestCase):
                 ("stock_hk_hist", {"symbol": "00700", "period": "daily", "adjust": ""}),
                 ("stock_us_daily", {"symbol": "AAPL", "adjust": ""}),
                 ("index_us_stock_sina", {"symbol": ".INX"}),
+                ("index_global_hist_em", {"symbol": "日经225"}),
                 ("futures_foreign_hist", {"symbol": "OIL"}),
                 ("futures_global_hist_em", {"symbol": "RB00Y"}),
             ],
@@ -304,6 +322,73 @@ class AkshareNormalizerTests(unittest.TestCase):
         self.assertEqual(len(snapshots), 2)
         self.assertEqual(snapshots[0]["last_price"], 106.0)
         self.assertAlmostEqual(snapshots[0]["change_pct"], ((106.0 - 104.0) / 104.0) * 100)
+
+    def test_akshare_collector_keeps_index_snapshot_without_turnover_rankable(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            index_config = Path(tmp_dir) / "index.json"
+            index_config.write_text(
+                json.dumps(
+                    {
+                        "watchlist_name": "INDEX_FOCUS20",
+                        "entries": [
+                            {
+                                "market": "US",
+                                "symbol": "N225",
+                                "display_name": "Nikkei 225",
+                                "exchange": "EM",
+                                "instrument_type": "index",
+                                "quote_currency": "JPY",
+                                "timezone": "Asia/Tokyo",
+                                "sort_order": 1,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            init_database(db_path)
+
+            def fetcher(instrument):
+                return FakeFrame(
+                    [
+                        {
+                            "日期": "2026-05-01",
+                            "今开": "62000",
+                            "最高": "62500",
+                            "最低": "61900",
+                            "最新价": "62400",
+                        }
+                    ]
+                )
+
+            with connect(db_path) as connection:
+                sync_watchlist_from_file(connection, index_config)
+                AkshareCollector(
+                    daily_fetcher=fetcher,
+                    min_request_interval_seconds=0,
+                ).sync_focus(
+                    connection,
+                    watchlist_names=["INDEX_FOCUS20"],
+                    days=2,
+                    snapshot_ts_utc="2026-05-01T08:00:00Z",
+                    trade_date_local=None,
+                )
+                row = connection.execute(
+                    """
+                    SELECT bar_daily.open, market_snapshot.turnover_raw
+                    FROM market_snapshot
+                    JOIN instrument
+                        ON instrument.instrument_id = market_snapshot.instrument_id
+                    JOIN bar_daily
+                        ON bar_daily.instrument_id = instrument.instrument_id
+                    WHERE instrument.symbol = 'N225'
+                    """
+                ).fetchone()
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row["open"], 62000.0)
+        self.assertEqual(row["turnover_raw"], 0.0)
 
     def test_akshare_collector_skips_failed_symbol_and_continues(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

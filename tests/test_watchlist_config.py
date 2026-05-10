@@ -17,7 +17,7 @@ class WatchlistConfigTests(unittest.TestCase):
             "hk_stock_focus20.json": ("HK_STOCK_FOCUS20", "HK", "stock", 30),
             "us_stock_focus20.json": ("US_STOCK_FOCUS20", "US", "stock", 30),
             "etf_focus20.json": ("ETF_FOCUS20", "US", "etf", 30),
-            "index_focus20.json": ("INDEX_FOCUS20", "US", "index", 3),
+            "index_focus20.json": ("INDEX_FOCUS20", "US", "index", 20),
             "commodity_focus20.json": ("COMMODITY_FOCUS20", "CMDTY", "commodity", 30),
         }
 

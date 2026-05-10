@@ -92,8 +92,8 @@ android {
         applicationId 'com.local.marketmobile'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 24
-        versionName "0.1.23"
+        versionCode 25
+        versionName "0.1.24"
         manifestPlaceholders = [
             GETUI_APPID: findProperty('GETUI_APP_ID') ?: findProperty('GETUI_APPID') ?: System.getenv('GETUI_APP_ID') ?: System.getenv('GETUI_APPID') ?: ''
         ]

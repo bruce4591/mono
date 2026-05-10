@@ -27,7 +27,7 @@ export function MarketList({
             <Text style={styles.title}>{board.title}</Text>
             <Text style={styles.count}>{board.items.length}</Text>
           </View>
-          {board.items.slice(0, 12).map((item) => (
+          {board.items.slice(0, 20).map((item) => (
             <MarketListItem key={`${board.key}:${item.market}:${item.symbol}`} item={item} navigate={navigate} />
           ))}
         </View>
