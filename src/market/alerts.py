@@ -334,13 +334,11 @@ def _sync_crypto_ranking_mobile_alert_rules(
             UPDATE mobile_alert_rule
             SET enabled = ?, updated_at_utc = ?
             WHERE mobile_alert_rule_id = ?
-                AND enabled != ?
             """,
             (
-                int(should_enable),
+                should_enable,
                 now_utc,
                 int(row["mobile_alert_rule_id"]),
-                int(should_enable),
             ),
         )
     for device in devices:
