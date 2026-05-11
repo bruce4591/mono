@@ -9,9 +9,9 @@ import {
   useWindowDimensions,
   View
 } from "react-native";
-import Svg, { Line, Path, Rect, Text as SvgText } from "react-native-svg";
+import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 
-import type { MobileBar } from "../api/types";
+import type { MobileAlertMarker, MobileBar } from "../api/types";
 import { theme } from "../theme";
 import { EmptyState } from "./EmptyState";
 
@@ -45,12 +45,14 @@ const MA_COLORS: Record<(typeof MA_PERIODS)[number], string> = {
 
 export function NativeKLineChart({
   bars,
+  alertMarkers,
   period,
   resetKey,
   onSelectedBarChange,
   onReachStart
 }: {
   bars: MobileBar[];
+  alertMarkers?: MobileAlertMarker[];
   period: string;
   resetKey?: string;
   onSelectedBarChange?: (bar: MobileBar | null) => void;
@@ -149,6 +151,13 @@ export function NativeKLineChart({
   const rsi28Path = buildScaledLinePath(rsi28, 0, 100, RSI_CHART_HEIGHT, slotWidth);
   const priceMarks = buildPriceMarks(high, low);
   const xLabels = buildXAxisLabels(visibleWindow, effectiveScrollX, viewportWidth, period);
+  const markerPoints = buildAlertMarkerPoints(
+    alertMarkers ?? [],
+    visibleBars,
+    high,
+    range,
+    slotWidth
+  );
 
   function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
     const nextScrollX = event.nativeEvent.contentOffset.x;
@@ -248,6 +257,9 @@ export function NativeKLineChart({
                 <Path key={`ma-path:${item.period}`} d={item.path} stroke={item.color} strokeWidth={1.4} fill="none" />
               ) : null
             )}
+            {markerPoints.map((marker) => (
+              <AlertMarkerPoint key={`alert-marker:${marker.id}`} marker={marker} />
+            ))}
             <ExtremePriceLabel
               index={highIndex}
               price={rawHigh}
@@ -454,6 +466,43 @@ export function NativeKLineChart({
   );
 }
 
+function AlertMarkerPoint({
+  marker
+}: {
+  marker: {
+    id: number;
+    x: number;
+    y: number;
+    direction: string;
+    label: string;
+  };
+}) {
+  const isDown = marker.direction === "down";
+  const color = isDown ? DOWN_COLOR : theme.colors.accent;
+  const labelY = clamp(marker.y + (isDown ? 18 : -10), 10, PRICE_CHART_HEIGHT - 4);
+  return (
+    <>
+      <Circle
+        cx={marker.x}
+        cy={marker.y}
+        r={4.2}
+        fill={color}
+        stroke={theme.colors.background}
+        strokeWidth={1.4}
+      />
+      <SvgText
+        x={marker.x + 6}
+        y={labelY}
+        fill={color}
+        fontSize="10"
+        fontWeight="900"
+      >
+        {marker.label}
+      </SvgText>
+    </>
+  );
+}
+
 function IndicatorAxisOverlay({
   top,
   height,
@@ -566,6 +615,54 @@ function yForPrice(price: number, high: number, range: number): number {
 
 function xForIndex(index: number, slotWidth: number): number {
   return LEFT_PADDING + index * slotWidth + CANDLE_WIDTH / 2;
+}
+
+function buildAlertMarkerPoints(
+  markers: MobileAlertMarker[],
+  bars: MobileBar[],
+  high: number,
+  range: number,
+  slotWidth: number
+): Array<{ id: number; x: number; y: number; direction: string; label: string }> {
+  return markers
+    .map((marker) => {
+      const index = findMarkerBarIndex(bars, marker.time);
+      if (index < 0 || !Number.isFinite(marker.price)) return null;
+      return {
+        id: marker.mobile_alert_event_id,
+        x: xForIndex(index, slotWidth),
+        y: clamp(yForPrice(marker.price, high, range), 8, PRICE_CHART_HEIGHT - 8),
+        direction: marker.direction,
+        label: marker.condition_type.includes("ma11") ? "MA11" : marker.label
+      };
+    })
+    .filter((marker): marker is { id: number; x: number; y: number; direction: string; label: string } => {
+      return marker !== null;
+    });
+}
+
+function findMarkerBarIndex(bars: MobileBar[], markerTime: string): number {
+  const exact = bars.findIndex((bar) => bar.time === markerTime);
+  if (exact >= 0) return exact;
+  const markerMs = parseTimeMs(markerTime);
+  if (markerMs === null) return -1;
+  let candidate = -1;
+  for (let index = 0; index < bars.length; index += 1) {
+    const barMs = parseTimeMs(bars[index].time);
+    if (barMs === null) continue;
+    if (barMs <= markerMs) {
+      candidate = index;
+      continue;
+    }
+    break;
+  }
+  return candidate;
+}
+
+function parseTimeMs(value: string): number | null {
+  const normalized = value.includes("T") ? value : `${value}T00:00:00Z`;
+  const ms = new Date(normalized).getTime();
+  return Number.isNaN(ms) ? null : ms;
 }
 
 function movingAverage(bars: MobileBar[], period: number): Array<number | null> {

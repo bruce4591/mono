@@ -34,6 +34,20 @@ export type MobileBar = {
   turnover: number | null;
 };
 
+export type MobileAlertMarker = {
+  mobile_alert_event_id: number;
+  time: string;
+  price: number;
+  direction: "up" | "down" | string;
+  label: string;
+  condition_type: string;
+  condition_label: string;
+  ma11: number | null;
+  volume_ratio: number | null;
+  triggered_at_utc: string;
+  body: string;
+};
+
 export type MobileInstrumentDetailPayload = {
   instrument: {
     market: string;
@@ -51,6 +65,7 @@ export type MobileInstrumentDetailPayload = {
   };
   periods: string[];
   bars: MobileBar[];
+  alert_markers: MobileAlertMarker[];
 };
 
 export type MobileAlertEvent = {

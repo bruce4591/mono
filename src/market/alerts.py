@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import operator
 import sqlite3
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Callable
@@ -26,6 +27,7 @@ class MobileTechnicalSignal:
     observed_value: float
     message: str
     dedupe_key: str
+    metadata: dict[str, object]
 
 
 DEFAULT_METRIC_RESOLVERS: dict[str, MetricResolver] = {
@@ -203,6 +205,7 @@ def evaluate_mobile_alert_rules(
                 observed_value=technical_signal.observed_value,
                 message=technical_signal.message,
                 dedupe_key=technical_signal.dedupe_key,
+                alert_metadata=technical_signal.metadata,
             )
             if event_id is None:
                 continue
@@ -274,6 +277,7 @@ def evaluate_mobile_alert_rules(
                 observed_value=observed_value,
                 message=message,
                 dedupe_key=None,
+                alert_metadata={},
             )
             if event_id is None:
                 continue
@@ -539,6 +543,16 @@ def _mobile_technical_signal_for_row(
                 f"量比 {signal['volume_ratio']:.2f}x，K线 {signal['bar_key']}"
             ),
             dedupe_key=f"{condition_type}:{market}:{symbol}:{signal['bar_key']}",
+            metadata={
+                "period": "15m",
+                "bar_time": signal["bar_key"],
+                "price": signal["close"],
+                "direction": "up",
+                "label": "15m MA11 突破",
+                "condition_label": "15m MA11 突破 + 量比 >= 1.5x",
+                "ma11": signal["ma11"],
+                "volume_ratio": signal["volume_ratio"],
+            },
         )
     if condition_type == "ma11_breakdown_15m":
         signal = _latest_intraday_ma11_cross(
@@ -560,6 +574,15 @@ def _mobile_technical_signal_for_row(
                 f"< MA11 {_format_float(signal['ma11'])}，K线 {signal['bar_key']}"
             ),
             dedupe_key=f"{condition_type}:{market}:{symbol}:{signal['bar_key']}",
+            metadata={
+                "period": "15m",
+                "bar_time": signal["bar_key"],
+                "price": signal["close"],
+                "direction": "down",
+                "label": "15m MA11 跌破",
+                "condition_label": "15m MA11 跌破",
+                "ma11": signal["ma11"],
+            },
         )
     if condition_type == "ma11_breakout_1d":
         signal = _latest_daily_ma11_cross(
@@ -579,6 +602,15 @@ def _mobile_technical_signal_for_row(
                 f"> MA11 {_format_float(signal['ma11'])}，交易日 {signal['bar_key']}"
             ),
             dedupe_key=f"{condition_type}:{market}:{symbol}:{signal['bar_key']}",
+            metadata={
+                "period": "1d",
+                "bar_time": signal["bar_key"],
+                "price": signal["close"],
+                "direction": "up",
+                "label": "1d MA11 突破",
+                "condition_label": "1d MA11 突破",
+                "ma11": signal["ma11"],
+            },
         )
     return None
 
@@ -815,6 +847,7 @@ def _insert_mobile_alert_event(
     observed_value: float,
     message: str,
     dedupe_key: str | None,
+    alert_metadata: dict[str, object],
 ) -> int | None:
     if dedupe_key is not None:
         existing = connection.execute(
@@ -837,16 +870,38 @@ def _insert_mobile_alert_event(
             observed_value,
             message,
             dedupe_key,
+            alert_metadata,
             delivery_status
         )
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         RETURNING mobile_alert_event_id
         """,
-        (rule_id, now_utc, observed_value, message, dedupe_key, "pending"),
+        (
+            rule_id,
+            now_utc,
+            observed_value,
+            message,
+            dedupe_key,
+            _serialize_alert_metadata(connection, alert_metadata),
+            "pending",
+        ),
     ).fetchone()
     if inserted_row is None:
         raise RuntimeError("mobile alert event insert did not return a row")
     return int(inserted_row["mobile_alert_event_id"])
+
+
+def _serialize_alert_metadata(
+    connection: sqlite3.Connection,
+    metadata: dict[str, object],
+) -> object:
+    if getattr(connection, "backend", "sqlite") == "postgres":
+        try:
+            from psycopg.types.json import Jsonb
+        except ImportError:
+            return json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+        return Jsonb(metadata)
+    return json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
 
 
 def _mobile_push_message_for_event(
@@ -942,6 +997,19 @@ def _ensure_mobile_alert_event_dedupe_column(connection: sqlite3.Connection) -> 
                 WHERE dedupe_key IS NOT NULL
                 """
             )
+        metadata_column = connection.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'mobile_alert_event'
+                AND column_name = 'alert_metadata'
+            LIMIT 1
+            """
+        ).fetchone()
+        if metadata_column is None:
+            connection.execute(
+                "ALTER TABLE mobile_alert_event ADD COLUMN alert_metadata JSONB NOT NULL DEFAULT '{}'::jsonb"
+            )
         return
     columns = {
         str(row["name"])
@@ -949,6 +1017,10 @@ def _ensure_mobile_alert_event_dedupe_column(connection: sqlite3.Connection) -> 
     }
     if "dedupe_key" not in columns:
         connection.execute("ALTER TABLE mobile_alert_event ADD COLUMN dedupe_key TEXT")
+    if "alert_metadata" not in columns:
+        connection.execute(
+            "ALTER TABLE mobile_alert_event ADD COLUMN alert_metadata TEXT NOT NULL DEFAULT '{}'"
+        )
     connection.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_mobile_alert_event_rule_dedupe

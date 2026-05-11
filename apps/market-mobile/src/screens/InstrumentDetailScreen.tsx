@@ -175,6 +175,7 @@ export function InstrumentDetailScreen({
       <View style={styles.chartArea}>
         <NativeKLineChart
           bars={payload?.bars ?? []}
+          alertMarkers={payload?.alert_markers ?? []}
           period={period}
           resetKey={`${route.market}:${route.symbol}:${period}`}
           onSelectedBarChange={setSelectedBar}

@@ -219,6 +219,10 @@ def _ensure_mobile_alert_event_columns(connection: sqlite3.Connection) -> None:
     }
     if "dedupe_key" not in columns:
         connection.execute("ALTER TABLE mobile_alert_event ADD COLUMN dedupe_key TEXT")
+    if "alert_metadata" not in columns:
+        connection.execute(
+            "ALTER TABLE mobile_alert_event ADD COLUMN alert_metadata TEXT NOT NULL DEFAULT '{}'"
+        )
     connection.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_mobile_alert_event_rule_dedupe

@@ -485,7 +485,10 @@ class AlertTests(unittest.TestCase):
                 )
                 events = connection.execute(
                     """
-                    SELECT mobile_alert_event.message, mobile_alert_rule.condition_type
+                    SELECT
+                        mobile_alert_event.message,
+                        mobile_alert_event.alert_metadata,
+                        mobile_alert_rule.condition_type
                     FROM mobile_alert_event
                     JOIN mobile_alert_rule
                         ON mobile_alert_rule.mobile_alert_rule_id =
@@ -499,6 +502,7 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["condition_type"], "ma11_breakout_volume_15m")
         self.assertIn("15m MA11 突破", events[0]["message"])
+        self.assertIn('"condition_label":"15m MA11 突破 + 量比 >= 1.5x"', events[0]["alert_metadata"])
 
     def test_evaluate_mobile_alert_rules_deduplicates_crypto_ranking_15m_bar(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

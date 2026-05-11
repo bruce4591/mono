@@ -1279,6 +1279,87 @@ class ApiTests(unittest.TestCase):
         self.assertIn("time", payload["bars"][0])
         self.assertIn("turnover", payload["bars"][0])
 
+    def test_get_mobile_instrument_detail_payload_returns_alert_markers_for_period(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                push_device_id = _insert_push_device(connection)
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_rule (
+                        push_device_id,
+                        symbol,
+                        market,
+                        condition_type,
+                        source_type,
+                        metric_key,
+                        operator,
+                        threshold,
+                        cooldown_seconds,
+                        enabled,
+                        created_by,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES (?, 'BTCUSDT', 'CRYPTO', 'ma11_breakout_volume_15m',
+                        'technical', 'ma11_volume_ratio', '>=', 1.5, 2700, 1,
+                        'system_crypto_ranking_ma11', ?, ?)
+                    """,
+                    (
+                        push_device_id,
+                        "2026-04-24T20:00:00Z",
+                        "2026-04-24T20:00:00Z",
+                    ),
+                )
+                rule_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_event (
+                        mobile_alert_rule_id,
+                        triggered_at_utc,
+                        observed_value,
+                        message,
+                        dedupe_key,
+                        alert_metadata,
+                        delivery_status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'sent')
+                    """,
+                    (
+                        rule_id,
+                        "2026-04-24T20:16:00Z",
+                        65000.0,
+                        "BTCUSDT 15m MA11 突破 close 65000 > MA11 64000，量比 1.80x，K线 2026-04-24T20:15:00Z",
+                        "ma11_breakout_volume_15m:CRYPTO:BTCUSDT:2026-04-24T20:15:00Z",
+                        '{"period":"15m","bar_time":"2026-04-24T20:15:00Z","price":65000.0,"direction":"up","label":"15m MA11 突破","condition_label":"15m MA11 突破 + 量比 >= 1.5x","ma11":64000.0,"volume_ratio":1.8}',
+                    ),
+                )
+
+                payload = api_module.get_mobile_instrument_detail_payload(
+                    connection,
+                    market="CRYPTO",
+                    symbol="BTCUSDT",
+                    period="15m",
+                    intraday_limit=10,
+                    allow_backfill=False,
+                )
+
+        self.assertEqual(len(payload["alert_markers"]), 1)
+        marker = payload["alert_markers"][0]
+        self.assertEqual(marker["time"], "2026-04-24T20:15:00Z")
+        self.assertEqual(marker["price"], 65000.0)
+        self.assertEqual(marker["direction"], "up")
+        self.assertEqual(marker["condition_label"], "15m MA11 突破 + 量比 >= 1.5x")
+        self.assertEqual(marker["ma11"], 64000.0)
+        self.assertEqual(marker["volume_ratio"], 1.8)
+
     def test_instrument_detail_endpoint_returns_aggregated_chart_payload(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -2320,6 +2401,30 @@ def _insert_mobile_debug_state(
         transport="sse",
         now_utc="2026-05-05T00:00:04Z",
     )
+
+
+def _insert_push_device(connection: sqlite3.Connection) -> int:
+    connection.execute(
+        """
+        INSERT INTO push_device (
+            push_token,
+            platform,
+            device_label,
+            enabled,
+            created_at_utc,
+            updated_at_utc
+        )
+        VALUES (?, ?, ?, 1, ?, ?)
+        """,
+        (
+            "ExponentPushToken[test-token]",
+            "android",
+            "OnePlus 13T",
+            "2026-05-05T00:00:00Z",
+            "2026-05-05T00:00:00Z",
+        ),
+    )
+    return int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
 
 
 def _ms(value: str) -> int:

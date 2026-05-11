@@ -239,6 +239,7 @@ CREATE TABLE IF NOT EXISTS mobile_alert_event (
     observed_value REAL NOT NULL,
     message TEXT NOT NULL,
     dedupe_key TEXT,
+    alert_metadata TEXT NOT NULL DEFAULT '{}',
     delivery_status TEXT NOT NULL,
     FOREIGN KEY (mobile_alert_rule_id) REFERENCES mobile_alert_rule(mobile_alert_rule_id)
 );

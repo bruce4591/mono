@@ -659,7 +659,75 @@ def get_mobile_instrument_detail_payload(
         },
         "periods": available_periods,
         "bars": bars,
+        "alert_markers": _get_mobile_alert_markers(
+            connection,
+            market=market,
+            symbol=symbol,
+            period=period,
+            limit=100,
+        ),
     }
+
+
+def _get_mobile_alert_markers(
+    connection: sqlite3.Connection,
+    *,
+    market: str,
+    symbol: str,
+    period: str,
+    limit: int,
+) -> list[dict[str, object]]:
+    _ensure_mobile_alert_event_metadata_columns(connection)
+    rows = connection.execute(
+        """
+        SELECT
+            mobile_alert_event.mobile_alert_event_id,
+            mobile_alert_event.triggered_at_utc,
+            mobile_alert_event.observed_value,
+            mobile_alert_event.message,
+            mobile_alert_event.alert_metadata,
+            mobile_alert_rule.condition_type
+        FROM mobile_alert_event
+        JOIN mobile_alert_rule
+            ON mobile_alert_rule.mobile_alert_rule_id =
+                mobile_alert_event.mobile_alert_rule_id
+        WHERE mobile_alert_rule.market = ?
+            AND mobile_alert_rule.symbol = ?
+            AND mobile_alert_rule.source_type = 'technical'
+            AND mobile_alert_event.alert_metadata IS NOT NULL
+        ORDER BY mobile_alert_event.triggered_at_utc DESC,
+            mobile_alert_event.mobile_alert_event_id DESC
+        LIMIT ?
+        """,
+        (market, symbol, limit),
+    ).fetchall()
+    markers = []
+    for row in rows:
+        metadata = _parse_alert_metadata(row["alert_metadata"])
+        if metadata.get("period") != period:
+            continue
+        bar_time = _optional_str(metadata.get("bar_time"))
+        price = _optional_float(metadata.get("price"))
+        if bar_time is None or price is None:
+            continue
+        markers.append(
+            {
+                "mobile_alert_event_id": int(row["mobile_alert_event_id"]),
+                "time": bar_time,
+                "price": price,
+                "direction": _optional_str(metadata.get("direction")) or "up",
+                "label": _optional_str(metadata.get("label"))
+                or _mobile_alert_title_suffix(str(row["condition_type"])),
+                "condition_type": str(row["condition_type"]),
+                "condition_label": _optional_str(metadata.get("condition_label"))
+                or str(row["condition_type"]),
+                "ma11": _optional_float(metadata.get("ma11")),
+                "volume_ratio": _optional_float(metadata.get("volume_ratio")),
+                "triggered_at_utc": str(row["triggered_at_utc"]),
+                "body": str(row["message"]),
+            }
+        )
+    return list(reversed(markers))
 
 
 def _mobile_daily_bar_payload(item: dict[str, object]) -> dict[str, object]:
@@ -2611,6 +2679,44 @@ def _optional_float(value: object) -> float | None:
     return float(value)
 
 
+def _parse_alert_metadata(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return value
+    if value is None:
+        return {}
+    try:
+        parsed = json.loads(str(value))
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _ensure_mobile_alert_event_metadata_columns(connection: sqlite3.Connection) -> None:
+    if getattr(connection, "backend", "sqlite") == "postgres":
+        column = connection.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'mobile_alert_event'
+                AND column_name = 'alert_metadata'
+            LIMIT 1
+            """
+        ).fetchone()
+        if column is None:
+            connection.execute(
+                "ALTER TABLE mobile_alert_event ADD COLUMN alert_metadata JSONB NOT NULL DEFAULT '{}'::jsonb"
+            )
+        return
+    columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(mobile_alert_event)").fetchall()
+    }
+    if "alert_metadata" not in columns:
+        connection.execute(
+            "ALTER TABLE mobile_alert_event ADD COLUMN alert_metadata TEXT NOT NULL DEFAULT '{}'"
+        )
+
+
 def _percent_change(previous: float | None, current: float | None) -> float | None:
     if previous in (None, 0) or current is None:
         return None
@@ -2747,6 +2853,12 @@ def _mobile_delivery_debug_payload(row: sqlite3.Row) -> dict[str, object]:
 
 
 def _mobile_alert_title_suffix(condition_type: str) -> str:
+    if condition_type == "ma11_breakout_volume_15m":
+        return "15m MA11 突破"
+    if condition_type == "ma11_breakdown_15m":
+        return "15m MA11 跌破"
+    if condition_type == "ma11_breakout_1d":
+        return "1d MA11 突破"
     if condition_type.startswith("change_pct_"):
         return "涨跌幅提醒"
     return "价格提醒"

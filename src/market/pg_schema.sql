@@ -236,6 +236,7 @@ CREATE TABLE IF NOT EXISTS mobile_alert_event (
     observed_value DOUBLE PRECISION NOT NULL,
     message TEXT NOT NULL,
     dedupe_key TEXT,
+    alert_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     delivery_status TEXT NOT NULL
 );
 
