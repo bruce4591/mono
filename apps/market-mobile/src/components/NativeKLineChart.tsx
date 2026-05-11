@@ -9,7 +9,7 @@ import {
   useWindowDimensions,
   View
 } from "react-native";
-import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
+import Svg, { Line, Path, Polygon, Rect, Text as SvgText } from "react-native-svg";
 
 import type { MobileAlertMarker, MobileBar } from "../api/types";
 import { theme } from "../theme";
@@ -479,16 +479,18 @@ function AlertMarkerPoint({
 }) {
   const isDown = marker.direction === "down";
   const color = isDown ? DOWN_COLOR : theme.colors.accent;
-  const labelY = clamp(marker.y + (isDown ? 18 : -10), 10, PRICE_CHART_HEIGHT - 4);
+  const size = 6;
+  const points = isDown
+    ? `${marker.x},${marker.y + size} ${marker.x - size},${marker.y - size * 0.75} ${marker.x + size},${marker.y - size * 0.75}`
+    : `${marker.x},${marker.y - size} ${marker.x - size},${marker.y + size * 0.75} ${marker.x + size},${marker.y + size * 0.75}`;
+  const labelY = clamp(marker.y + (isDown ? 20 : -12), 10, PRICE_CHART_HEIGHT - 4);
   return (
     <>
-      <Circle
-        cx={marker.x}
-        cy={marker.y}
-        r={4.2}
+      <Polygon
+        points={points}
         fill={color}
         stroke={theme.colors.background}
-        strokeWidth={1.4}
+        strokeWidth={1.2}
       />
       <SvgText
         x={marker.x + 6}

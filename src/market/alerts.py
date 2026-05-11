@@ -215,6 +215,7 @@ def evaluate_mobile_alert_rules(
                     event_id=event_id,
                     title_suffix=technical_signal.title_suffix,
                     body=technical_signal.message,
+                    metadata=technical_signal.metadata,
                 )
             )
             continue
@@ -297,18 +298,12 @@ def _sync_crypto_ranking_mobile_alert_rules(
     *,
     now_utc: str,
 ) -> None:
-    devices = connection.execute(
-        """
-        SELECT push_device_id
-        FROM push_device
-        WHERE enabled = TRUE
-        ORDER BY push_device_id
-        """
-    ).fetchall()
+    devices = _active_crypto_ranking_alert_devices(connection)
     if not devices:
         return
     instruments = _latest_crypto_ranking_instruments(connection)
     active_pairs = {(str(row["market"]), str(row["symbol"])) for row in instruments}
+    active_device_ids = {int(row["push_device_id"]) for row in devices}
     existing_system_rules = connection.execute(
         """
         SELECT mobile_alert_rule_id, push_device_id, market, symbol, condition_type
@@ -328,7 +323,10 @@ def _sync_crypto_ranking_mobile_alert_rules(
         for row in existing_system_rules
     }
     for row in existing_system_rules:
-        should_enable = (str(row["market"]), str(row["symbol"])) in active_pairs
+        should_enable = (
+            int(row["push_device_id"]) in active_device_ids
+            and (str(row["market"]), str(row["symbol"])) in active_pairs
+        )
         connection.execute(
             """
             UPDATE mobile_alert_rule
@@ -387,12 +385,37 @@ def _sync_crypto_ranking_mobile_alert_rules(
                 existing_keys.add(key)
 
 
+def _active_crypto_ranking_alert_devices(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT push_device_id
+        FROM push_device
+        WHERE enabled = TRUE
+        ORDER BY
+            CASE
+                WHEN getui_cid IS NOT NULL AND getui_cid != '' THEN 0
+                ELSE 1
+            END,
+            updated_at_utc DESC,
+            push_device_id DESC
+        LIMIT 1
+        """
+    ).fetchall()
+
+
 def _latest_crypto_ranking_instruments(
     connection: sqlite3.Connection,
-) -> list[sqlite3.Row]:
+) -> list[dict[str, str]]:
     rows = connection.execute(
         """
-        SELECT DISTINCT instrument.market, instrument.symbol
+        SELECT DISTINCT
+            instrument.market,
+            instrument.symbol,
+            ranking_snapshot.board_name,
+            CASE ranking_snapshot.board_name
+                WHEN ? THEN 0
+                ELSE 1
+            END AS board_priority
         FROM ranking_snapshot
         JOIN instrument
             ON instrument.instrument_id = ranking_snapshot.instrument_id
@@ -404,15 +427,25 @@ def _latest_crypto_ranking_instruments(
                 WHERE latest_ranking.board_name = ranking_snapshot.board_name
             )
             AND instrument.is_active = TRUE
-        ORDER BY instrument.market, instrument.symbol
+        ORDER BY instrument.symbol, board_priority, instrument.market
         """,
         (
+            CRYPTO_RANKING_ALERT_BOARDS[1],
             CRYPTO_RANKING_ALERT_BOARDS[0],
             CRYPTO_RANKING_ALERT_BOARDS[1],
             CRYPTO_RANKING_ALERT_LIMIT,
         ),
     ).fetchall()
-    return rows
+    selected: dict[str, dict[str, str]] = {}
+    for row in rows:
+        symbol = str(row["symbol"])
+        if symbol in selected:
+            continue
+        selected[symbol] = {
+            "market": str(row["market"]),
+            "symbol": symbol,
+        }
+    return list(selected.values())
 
 
 def _latest_snapshot_for_rule(
@@ -852,11 +885,10 @@ def _insert_mobile_alert_event(
             """
             SELECT mobile_alert_event_id
             FROM mobile_alert_event
-            WHERE mobile_alert_rule_id = ?
-                AND dedupe_key = ?
+            WHERE dedupe_key = ?
             LIMIT 1
             """,
-            (rule_id, dedupe_key),
+            (dedupe_key,),
         ).fetchone()
         if existing is not None:
             return None
@@ -908,7 +940,25 @@ def _mobile_push_message_for_event(
     event_id: int,
     title_suffix: str,
     body: str,
+    metadata: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    data: dict[str, object] = {
+        "mobile_alert_event_id": event_id,
+        "market": str(row["market"]),
+        "symbol": str(row["symbol"]),
+        "condition_type": str(row["condition_type"]),
+        "url": (
+            "/instrument.html?"
+            f"market={row['market']}&symbol={row['symbol']}"
+        ),
+    }
+    if metadata:
+        period = metadata.get("period")
+        bar_time = metadata.get("bar_time")
+        if isinstance(period, str) and period:
+            data["period"] = period
+        if isinstance(bar_time, str) and bar_time:
+            data["bar_time"] = bar_time
     return {
         "mobile_alert_event_id": event_id,
         "mobile_alert_rule_id": int(row["mobile_alert_rule_id"]),
@@ -921,15 +971,7 @@ def _mobile_push_message_for_event(
         "body": body,
         "sound": "default",
         "channelId": "market-alerts",
-        "data": {
-            "market": str(row["market"]),
-            "symbol": str(row["symbol"]),
-            "condition_type": str(row["condition_type"]),
-            "url": (
-                "/instrument.html?"
-                f"market={row['market']}&symbol={row['symbol']}"
-            ),
-        },
+        "data": data,
     }
 
 

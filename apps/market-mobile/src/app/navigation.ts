@@ -5,6 +5,7 @@ export type InstrumentRoute = {
   name: "instrument";
   market: string;
   symbol: string;
+  period?: string;
 };
 
 export type AlertEventsRoute = { name: "alertEvents" };

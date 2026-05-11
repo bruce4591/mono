@@ -11,10 +11,14 @@ import { theme } from "../theme";
 
 export function AlertEventsScreen({
   navigate,
-  pushToken
+  pushToken,
+  readEventIds,
+  onReadEvent
 }: {
   navigate: (route: AppRoute) => void;
   pushToken: string | null;
+  readEventIds: Set<number>;
+  onReadEvent: (eventId: number) => void;
 }) {
   const [events, setEvents] = useState<MobileAlertEvent[]>([]);
   const [loading, setLoading] = useState(Boolean(pushToken));
@@ -71,19 +75,30 @@ export function AlertEventsScreen({
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <ScrollView style={styles.list}>
         {events.length === 0 ? <EmptyState title="暂无提醒事件" /> : null}
-        {events.map((event) => (
-          <Pressable
-            key={event.mobile_alert_event_id}
-            style={styles.item}
-            onPress={() => navigate({ name: "instrument", market: event.market, symbol: event.symbol })}
-          >
-            <Text style={styles.itemTitle}>{event.title}</Text>
-            <Text style={styles.itemBody}>{event.body}</Text>
-            <Text style={styles.itemMeta}>
-              {event.market} {event.symbol} · {event.delivery_status}
-            </Text>
-          </Pressable>
-        ))}
+        {events.map((event) => {
+          const isNew = !readEventIds.has(event.mobile_alert_event_id);
+          const period = typeof event.data?.period === "string" ? event.data.period : undefined;
+          return (
+            <Pressable
+              key={event.mobile_alert_event_id}
+              style={styles.item}
+              onPress={() => {
+                onReadEvent(event.mobile_alert_event_id);
+                navigate({ name: "instrument", market: event.market, symbol: event.symbol, period });
+              }}
+            >
+              <View style={styles.itemHeader}>
+                <Text style={styles.itemTitle}>{event.title}</Text>
+                {isNew ? <Text style={styles.newBadge}>NEW</Text> : null}
+              </View>
+              <Text style={styles.itemBody}>{event.body}</Text>
+              <Text style={styles.itemMeta}>
+                {event.market} {event.symbol}
+                {period ? ` · ${period}` : ""} · {event.delivery_status}
+              </Text>
+            </Pressable>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -129,10 +144,26 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.border,
     paddingVertical: 12
   },
+  itemHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
   itemTitle: {
+    flex: 1,
     color: theme.colors.textStrong,
     fontSize: 16,
     fontWeight: "700"
+  },
+  newBadge: {
+    borderRadius: 3,
+    backgroundColor: theme.colors.accent,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    color: theme.colors.textStrong,
+    fontSize: 10,
+    fontWeight: "800",
+    overflow: "hidden"
   },
   itemBody: {
     marginTop: 5,

@@ -498,6 +498,7 @@ class AlertTests(unittest.TestCase):
 
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]["title"], "BTCUSDT 15m MA11 突破")
+        self.assertEqual(messages[0]["data"]["period"], "15m")
         self.assertIn("量比 2.00x", messages[0]["body"])
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["condition_type"], "ma11_breakout_volume_15m")
@@ -533,6 +534,115 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(len(first_messages), 1)
         self.assertEqual(second_messages, [])
         self.assertEqual(event_count, 1)
+
+    def test_evaluate_mobile_alert_rules_uses_latest_push_device_for_crypto_ranking(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instrument_id = _insert_crypto_ranking_alert_fixture(connection)
+                connection.execute(
+                    """
+                    INSERT INTO push_device (
+                        push_token,
+                        platform,
+                        device_label,
+                        enabled,
+                        getui_cid,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES (?, ?, ?, 1, ?, ?, ?)
+                    """,
+                    (
+                        "getui:latest-cid",
+                        "android",
+                        "Latest phone",
+                        "latest-cid",
+                        "2026-05-04T03:58:00Z",
+                        "2026-05-04T03:58:00Z",
+                    ),
+                )
+                latest_device_id = int(
+                    connection.execute(
+                        "SELECT push_device_id FROM push_device WHERE push_token = ?",
+                        ("getui:latest-cid",),
+                    ).fetchone()["push_device_id"]
+                )
+                _insert_intraday_bars(
+                    connection,
+                    instrument_id=instrument_id,
+                    closes=[100.0] * 20 + [99.0, 103.0],
+                    volumes=[100.0] * 21 + [200.0],
+                )
+
+                messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T05:31:00Z",
+                )
+                enabled_rule_rows = connection.execute(
+                    """
+                    SELECT DISTINCT push_device_id
+                    FROM mobile_alert_rule
+                    WHERE source_type = 'technical'
+                        AND enabled = 1
+                    """
+                ).fetchall()
+
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]["push_device_id"], latest_device_id)
+        self.assertEqual(
+            {int(row["push_device_id"]) for row in enabled_rule_rows},
+            {latest_device_id},
+        )
+
+    def test_evaluate_mobile_alert_rules_deduplicates_spot_and_futures_ranking_symbol(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                spot_id = _insert_crypto_ranking_alert_fixture(
+                    connection,
+                    market="CRYPTO",
+                    symbol="BNBUSDT",
+                    board_name="CRYPTO_TURNOVER_TOP50",
+                )
+                futures_id = _insert_crypto_ranking_alert_fixture(
+                    connection,
+                    market="CRYPTO_FUTURES",
+                    symbol="BNBUSDT",
+                    board_name="CRYPTO_FUTURES_TURNOVER_TOP50",
+                    insert_push_device=False,
+                )
+                for instrument_id in (spot_id, futures_id):
+                    _insert_intraday_bars(
+                        connection,
+                        instrument_id=instrument_id,
+                        closes=[100.0] * 20 + [101.0, 97.0],
+                        volumes=[100.0] * 22,
+                    )
+
+                messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T05:31:00Z",
+                )
+                enabled_rule_rows = connection.execute(
+                    """
+                    SELECT market, symbol
+                    FROM mobile_alert_rule
+                    WHERE source_type = 'technical'
+                        AND enabled = 1
+                    """
+                ).fetchall()
+
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]["data"]["market"], "CRYPTO_FUTURES")
+        self.assertEqual(
+            {(str(row["market"]), str(row["symbol"])) for row in enabled_rule_rows},
+            {("CRYPTO_FUTURES", "BNBUSDT")},
+        )
 
     def test_evaluate_mobile_alert_rules_triggers_crypto_ranking_15m_ma11_breakdown(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -676,38 +786,46 @@ def _insert_mobile_alert_fixture(
     return int(connection.execute("SELECT last_insert_rowid()").fetchone()[0])
 
 
-def _insert_crypto_ranking_alert_fixture(connection) -> int:
+def _insert_crypto_ranking_alert_fixture(
+    connection,
+    *,
+    market: str = "CRYPTO",
+    symbol: str = "BTCUSDT",
+    board_name: str = "CRYPTO_TURNOVER_TOP50",
+    insert_push_device: bool = True,
+) -> int:
     instrument_id = InstrumentRepository(connection).upsert(
         Instrument(
-            market="CRYPTO",
-            symbol="BTCUSDT",
-            display_name="BTC/USDT",
+            market=market,
+            symbol=symbol,
+            display_name=symbol,
             exchange="BINANCE",
             instrument_type="crypto",
             quote_currency="USDT",
             timezone="UTC",
         )
     )
-    connection.execute(
-        """
-        INSERT INTO push_device (
-            push_token,
-            platform,
-            device_label,
-            enabled,
-            created_at_utc,
-            updated_at_utc
+    if insert_push_device:
+        connection.execute(
+            """
+            INSERT INTO push_device (
+                push_token,
+                platform,
+                device_label,
+                enabled,
+                created_at_utc,
+                updated_at_utc
+            )
+            VALUES (?, ?, ?, 1, ?, ?)
+            """,
+            (
+                "ExponentPushToken[test-token]",
+                "android",
+                "OnePlus 13T",
+                "2026-05-04T02:58:00Z",
+                "2026-05-04T02:58:00Z",
+            ),
         )
-        VALUES (?, ?, ?, 1, ?, ?)
-        """,
-        (
-            "ExponentPushToken[test-token]",
-            "android",
-            "OnePlus 13T",
-            "2026-05-04T02:58:00Z",
-            "2026-05-04T02:58:00Z",
-        ),
-    )
     connection.execute(
         """
         INSERT INTO ranking_snapshot (
@@ -723,7 +841,7 @@ def _insert_crypto_ranking_alert_fixture(connection) -> int:
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "CRYPTO_TURNOVER_TOP50",
+            board_name,
             "2026-05-04T05:30:00Z",
             1,
             instrument_id,

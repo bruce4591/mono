@@ -29,7 +29,7 @@ export function InstrumentDetailScreen({
   route: InstrumentRoute;
   navigate: (route: AppRoute) => void;
 }) {
-  const [period, setPeriod] = useState("1d");
+  const [period, setPeriod] = useState(route.period ?? "1d");
   const [payload, setPayload] = useState<MobileInstrumentDetailPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,9 +67,10 @@ export function InstrumentDetailScreen({
   }, [route.market, route.symbol, period, historyLimit]);
 
   useEffect(() => {
+    setPeriod(route.period ?? "1d");
     setHistoryLimit(INITIAL_HISTORY_LIMIT);
     setSelectedBar(null);
-  }, [route.market, route.symbol]);
+  }, [route.market, route.symbol, route.period]);
 
   useEffect(() => {
     if (!loading) {

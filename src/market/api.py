@@ -1608,6 +1608,7 @@ def get_mobile_alert_events_payload(
             mobile_alert_event.observed_value,
             mobile_alert_event.message,
             mobile_alert_event.delivery_status,
+            mobile_alert_event.alert_metadata,
             mobile_alert_rule.market,
             mobile_alert_rule.symbol,
             mobile_alert_rule.condition_type,
@@ -1670,6 +1671,7 @@ def get_mobile_push_device_debug_payload(
             mobile_alert_event.observed_value,
             mobile_alert_event.message,
             mobile_alert_event.delivery_status,
+            mobile_alert_event.alert_metadata,
             mobile_alert_rule.market,
             mobile_alert_rule.symbol,
             mobile_alert_rule.condition_type,
@@ -2814,6 +2816,19 @@ def _mobile_alert_rule_payload(row: sqlite3.Row) -> dict[str, object]:
 
 def _mobile_alert_event_payload(row: sqlite3.Row) -> dict[str, object]:
     title_suffix = _mobile_alert_title_suffix(str(row["condition_type"]))
+    metadata = _parse_alert_metadata(row["alert_metadata"]) if "alert_metadata" in row.keys() else {}
+    data: dict[str, object] = {
+        "mobile_alert_event_id": int(row["mobile_alert_event_id"]),
+        "market": str(row["market"]),
+        "symbol": str(row["symbol"]),
+        "url": f"/instrument.html?market={row['market']}&symbol={row['symbol']}",
+    }
+    period = _optional_str(metadata.get("period"))
+    bar_time = _optional_str(metadata.get("bar_time"))
+    if period is not None:
+        data["period"] = period
+    if bar_time is not None:
+        data["bar_time"] = bar_time
     return {
         "mobile_alert_event_id": int(row["mobile_alert_event_id"]),
         "market": str(row["market"]),
@@ -2824,11 +2839,7 @@ def _mobile_alert_event_payload(row: sqlite3.Row) -> dict[str, object]:
         "observed_value": float(row["observed_value"]),
         "threshold": float(row["threshold"]),
         "delivery_status": str(row["delivery_status"]),
-        "data": {
-            "market": str(row["market"]),
-            "symbol": str(row["symbol"]),
-            "url": f"/instrument.html?market={row['market']}&symbol={row['symbol']}",
-        },
+        "data": data,
     }
 
 

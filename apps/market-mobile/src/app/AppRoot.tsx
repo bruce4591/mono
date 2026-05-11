@@ -26,7 +26,19 @@ export function AppRoot() {
   const [devicePushToken, setDevicePushToken] = useState<string | null>(null);
   const [getuiClientId, setGetuiClientId] = useState<string | null>(null);
   const [latestSeenAlertEventId, setLatestSeenAlertEventId] = useState(0);
+  const [readAlertEventIds, setReadAlertEventIds] = useState<Set<number>>(new Set());
   const [route, setRoute] = useState<AppRoute>(homeRoute);
+
+  function markAlertEventRead(eventId: number) {
+    setReadAlertEventIds((previous) => {
+      if (previous.has(eventId)) {
+        return previous;
+      }
+      const next = new Set(previous);
+      next.add(eventId);
+      return next;
+    });
+  }
 
   async function pullMissedAlertEvents() {
     const pushToken = devicePushTokenRef.current;
@@ -108,6 +120,15 @@ export function AppRoot() {
   useEffect(() => {
     const openNotification = (response: Notifications.NotificationResponse) => {
       const data = response.notification.request.content.data as Record<string, unknown>;
+      const eventId =
+        typeof data.mobile_alert_event_id === "number"
+          ? data.mobile_alert_event_id
+          : typeof data.mobile_alert_event_id === "string"
+            ? Number.parseInt(data.mobile_alert_event_id, 10)
+            : null;
+      if (eventId !== null && Number.isFinite(eventId)) {
+        markAlertEventRead(eventId);
+      }
       setRoute(routeFromNotificationData(data));
     };
 
@@ -129,7 +150,12 @@ export function AppRoot() {
         <InstrumentDetailScreen route={route} navigate={setRoute} />
       ) : null}
       {route.name === "alertEvents" ? (
-        <AlertEventsScreen navigate={setRoute} pushToken={devicePushToken} />
+        <AlertEventsScreen
+          navigate={setRoute}
+          pushToken={devicePushToken}
+          readEventIds={readAlertEventIds}
+          onReadEvent={markAlertEventRead}
+        />
       ) : null}
       {route.name === "alertRules" ? (
         <AlertRulesScreen navigate={setRoute} pushToken={devicePushToken} />
