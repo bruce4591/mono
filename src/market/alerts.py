@@ -19,6 +19,15 @@ class AlertEvaluationResult:
     events_created: int
 
 
+@dataclass(frozen=True)
+class MobileTechnicalSignal:
+    title_suffix: str
+    metric: str
+    observed_value: float
+    message: str
+    dedupe_key: str
+
+
 DEFAULT_METRIC_RESOLVERS: dict[str, MetricResolver] = {
     "change_pct": lambda snapshot: _optional_float(snapshot.get("change_pct")),
     "turnover_raw": lambda snapshot: _optional_float(snapshot.get("turnover_raw")),
@@ -51,6 +60,35 @@ ALERT_METRICS: tuple[dict[str, str], ...] = (
 
 CHART_INDICATORS: tuple[str, ...] = ("MA", "VOL", "MACD")
 MOBILE_ALERT_COALESCE_SECONDS = 60
+CRYPTO_RANKING_ALERT_LIMIT = 20
+CRYPTO_RANKING_ALERT_CREATED_BY = "system_crypto_ranking_ma11"
+CRYPTO_RANKING_ALERT_BOARDS = (
+    "CRYPTO_TURNOVER_TOP50",
+    "CRYPTO_FUTURES_TURNOVER_TOP50",
+)
+CRYPTO_RANKING_ALERT_CONDITIONS = (
+    {
+        "condition_type": "ma11_breakout_volume_15m",
+        "threshold": 1.5,
+        "cooldown_seconds": 45 * 60,
+        "metric_key": "ma11_volume_ratio",
+        "operator": ">=",
+    },
+    {
+        "condition_type": "ma11_breakdown_15m",
+        "threshold": 0.0,
+        "cooldown_seconds": 45 * 60,
+        "metric_key": "ma11_cross",
+        "operator": "<",
+    },
+    {
+        "condition_type": "ma11_breakout_1d",
+        "threshold": 0.0,
+        "cooldown_seconds": 24 * 60 * 60,
+        "metric_key": "ma11_cross",
+        "operator": ">",
+    },
+)
 
 OPERATORS: dict[str, Callable[[float, float], bool]] = {
     ">": operator.gt,
@@ -118,6 +156,8 @@ def evaluate_mobile_alert_rules(
     connection: sqlite3.Connection,
     now_utc: str,
 ) -> list[dict[str, object]]:
+    _ensure_mobile_alert_event_dedupe_column(connection)
+    _sync_crypto_ranking_mobile_alert_rules(connection, now_utc=now_utc)
     rows = connection.execute(
         """
         SELECT
@@ -144,6 +184,37 @@ def evaluate_mobile_alert_rules(
     ).fetchall()
     messages: list[dict[str, object]] = []
     for row in rows:
+        if str(row["source_type"]) == "technical":
+            technical_signal = _mobile_technical_signal_for_row(connection, row)
+            if technical_signal is None:
+                continue
+            rule_id = int(row["mobile_alert_rule_id"])
+            if _mobile_alert_in_cooldown(
+                connection,
+                rule_id=rule_id,
+                now_utc=now_utc,
+                cooldown_seconds=int(row["cooldown_seconds"]),
+            ):
+                continue
+            event_id = _insert_mobile_alert_event(
+                connection,
+                rule_id=rule_id,
+                now_utc=now_utc,
+                observed_value=technical_signal.observed_value,
+                message=technical_signal.message,
+                dedupe_key=technical_signal.dedupe_key,
+            )
+            if event_id is None:
+                continue
+            messages.append(
+                _mobile_push_message_for_event(
+                    row,
+                    event_id=event_id,
+                    title_suffix=technical_signal.title_suffix,
+                    body=technical_signal.message,
+                )
+            )
+            continue
         condition = _mobile_alert_condition_for_row(row)
         if condition is None:
             continue
@@ -196,47 +267,150 @@ def evaluate_mobile_alert_rules(
             message=message,
         )
         if event_id is None:
-            inserted_row = connection.execute(
-                """
-                INSERT INTO mobile_alert_event (
-                    mobile_alert_rule_id,
-                    triggered_at_utc,
-                    observed_value,
-                    message,
-                    delivery_status
-                )
-                VALUES (?, ?, ?, ?, ?)
-                RETURNING mobile_alert_event_id
-                """,
-                (rule_id, now_utc, observed_value, message, "pending"),
-            ).fetchone()
-            if inserted_row is None:
-                raise RuntimeError("mobile alert event insert did not return a row")
-            event_id = int(inserted_row["mobile_alert_event_id"])
+            event_id = _insert_mobile_alert_event(
+                connection,
+                rule_id=rule_id,
+                now_utc=now_utc,
+                observed_value=observed_value,
+                message=message,
+                dedupe_key=None,
+            )
+            if event_id is None:
+                continue
         messages.append(
-            {
-                "mobile_alert_event_id": event_id,
-                "mobile_alert_rule_id": rule_id,
-                "push_device_id": int(row["push_device_id"]),
-                "push_token": str(row["push_token"]),
-                "getui_cid": (
-                    str(row["getui_cid"]) if row["getui_cid"] is not None else None
-                ),
-                "title": f"{row['symbol']} {title_suffix}",
-                "body": message,
-                "sound": "default",
-                "channelId": "market-alerts",
-                "data": {
-                    "market": str(row["market"]),
-                    "symbol": str(row["symbol"]),
-                    "url": (
-                        "/instrument.html?"
-                        f"market={row['market']}&symbol={row['symbol']}"
-                    ),
-                },
-            }
+            _mobile_push_message_for_event(
+                row,
+                event_id=event_id,
+                title_suffix=title_suffix,
+                body=message,
+            )
         )
     return messages
+
+
+def _sync_crypto_ranking_mobile_alert_rules(
+    connection: sqlite3.Connection,
+    *,
+    now_utc: str,
+) -> None:
+    devices = connection.execute(
+        """
+        SELECT push_device_id
+        FROM push_device
+        WHERE enabled = TRUE
+        ORDER BY push_device_id
+        """
+    ).fetchall()
+    if not devices:
+        return
+    instruments = _latest_crypto_ranking_instruments(connection)
+    active_pairs = {(str(row["market"]), str(row["symbol"])) for row in instruments}
+    existing_system_rules = connection.execute(
+        """
+        SELECT mobile_alert_rule_id, push_device_id, market, symbol, condition_type
+        FROM mobile_alert_rule
+        WHERE source_type = 'technical'
+            AND created_by = ?
+        """,
+        (CRYPTO_RANKING_ALERT_CREATED_BY,),
+    ).fetchall()
+    existing_keys = {
+        (
+            int(row["push_device_id"]),
+            str(row["market"]),
+            str(row["symbol"]),
+            str(row["condition_type"]),
+        )
+        for row in existing_system_rules
+    }
+    for row in existing_system_rules:
+        should_enable = (str(row["market"]), str(row["symbol"])) in active_pairs
+        connection.execute(
+            """
+            UPDATE mobile_alert_rule
+            SET enabled = ?, updated_at_utc = ?
+            WHERE mobile_alert_rule_id = ?
+                AND enabled != ?
+            """,
+            (
+                int(should_enable),
+                now_utc,
+                int(row["mobile_alert_rule_id"]),
+                int(should_enable),
+            ),
+        )
+    for device in devices:
+        push_device_id = int(device["push_device_id"])
+        for instrument in instruments:
+            market = str(instrument["market"])
+            symbol = str(instrument["symbol"])
+            for condition in CRYPTO_RANKING_ALERT_CONDITIONS:
+                condition_type = str(condition["condition_type"])
+                key = (push_device_id, market, symbol, condition_type)
+                if key in existing_keys:
+                    continue
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_rule (
+                        push_device_id,
+                        symbol,
+                        market,
+                        condition_type,
+                        source_type,
+                        metric_key,
+                        operator,
+                        threshold,
+                        cooldown_seconds,
+                        enabled,
+                        created_by,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES (?, ?, ?, ?, 'technical', ?, ?, ?, ?, TRUE, ?, ?, ?)
+                    """,
+                    (
+                        push_device_id,
+                        symbol,
+                        market,
+                        condition_type,
+                        str(condition["metric_key"]),
+                        str(condition["operator"]),
+                        float(condition["threshold"]),
+                        int(condition["cooldown_seconds"]),
+                        CRYPTO_RANKING_ALERT_CREATED_BY,
+                        now_utc,
+                        now_utc,
+                    ),
+                )
+                existing_keys.add(key)
+
+
+def _latest_crypto_ranking_instruments(
+    connection: sqlite3.Connection,
+) -> list[sqlite3.Row]:
+    rows = connection.execute(
+        """
+        SELECT DISTINCT instrument.market, instrument.symbol
+        FROM ranking_snapshot
+        JOIN instrument
+            ON instrument.instrument_id = ranking_snapshot.instrument_id
+        WHERE ranking_snapshot.board_name IN (?, ?)
+            AND ranking_snapshot.rank <= ?
+            AND ranking_snapshot.snapshot_ts_utc = (
+                SELECT MAX(latest_ranking.snapshot_ts_utc)
+                FROM ranking_snapshot AS latest_ranking
+                WHERE latest_ranking.board_name = ranking_snapshot.board_name
+            )
+            AND instrument.is_active = TRUE
+        ORDER BY instrument.market, instrument.symbol
+        """,
+        (
+            CRYPTO_RANKING_ALERT_BOARDS[0],
+            CRYPTO_RANKING_ALERT_BOARDS[1],
+            CRYPTO_RANKING_ALERT_LIMIT,
+        ),
+    ).fetchall()
+    return rows
 
 
 def _latest_snapshot_for_rule(
@@ -335,6 +509,201 @@ def _latest_mobile_indicator_value(
     if row is None:
         return None
     return dict(row)
+
+
+def _mobile_technical_signal_for_row(
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+) -> MobileTechnicalSignal | None:
+    condition_type = str(row["condition_type"])
+    market = str(row["market"])
+    symbol = str(row["symbol"])
+    if condition_type == "ma11_breakout_volume_15m":
+        signal = _latest_intraday_ma11_cross(
+            connection,
+            market=market,
+            symbol=symbol,
+            interval="15m",
+            direction="up",
+            volume_multiplier=float(row["threshold"]),
+        )
+        if signal is None:
+            return None
+        return MobileTechnicalSignal(
+            title_suffix="15m MA11 突破",
+            metric="ma11_volume_ratio",
+            observed_value=signal["close"],
+            message=(
+                f"{symbol} 15m MA11 突破 close {_format_float(signal['close'])} "
+                f"> MA11 {_format_float(signal['ma11'])}，"
+                f"量比 {signal['volume_ratio']:.2f}x，K线 {signal['bar_key']}"
+            ),
+            dedupe_key=f"{condition_type}:{market}:{symbol}:{signal['bar_key']}",
+        )
+    if condition_type == "ma11_breakdown_15m":
+        signal = _latest_intraday_ma11_cross(
+            connection,
+            market=market,
+            symbol=symbol,
+            interval="15m",
+            direction="down",
+            volume_multiplier=None,
+        )
+        if signal is None:
+            return None
+        return MobileTechnicalSignal(
+            title_suffix="15m MA11 跌破",
+            metric="ma11_cross",
+            observed_value=signal["close"],
+            message=(
+                f"{symbol} 15m MA11 跌破 close {_format_float(signal['close'])} "
+                f"< MA11 {_format_float(signal['ma11'])}，K线 {signal['bar_key']}"
+            ),
+            dedupe_key=f"{condition_type}:{market}:{symbol}:{signal['bar_key']}",
+        )
+    if condition_type == "ma11_breakout_1d":
+        signal = _latest_daily_ma11_cross(
+            connection,
+            market=market,
+            symbol=symbol,
+            direction="up",
+        )
+        if signal is None:
+            return None
+        return MobileTechnicalSignal(
+            title_suffix="1d MA11 突破",
+            metric="ma11_cross",
+            observed_value=signal["close"],
+            message=(
+                f"{symbol} 1d MA11 突破 close {_format_float(signal['close'])} "
+                f"> MA11 {_format_float(signal['ma11'])}，交易日 {signal['bar_key']}"
+            ),
+            dedupe_key=f"{condition_type}:{market}:{symbol}:{signal['bar_key']}",
+        )
+    return None
+
+
+def _latest_intraday_ma11_cross(
+    connection: sqlite3.Connection,
+    *,
+    market: str,
+    symbol: str,
+    interval: str,
+    direction: str,
+    volume_multiplier: float | None,
+) -> dict[str, float | str] | None:
+    rows = connection.execute(
+        """
+        SELECT
+            bar_intraday.bar_end_ts_utc,
+            bar_intraday.close,
+            bar_intraday.volume_raw
+        FROM instrument
+        JOIN bar_intraday
+            ON bar_intraday.instrument_id = instrument.instrument_id
+        WHERE instrument.market = ?
+            AND instrument.symbol = ?
+            AND instrument.is_active = TRUE
+            AND bar_intraday.interval = ?
+            AND bar_intraday.is_closed_bar = TRUE
+            AND bar_intraday.close IS NOT NULL
+        ORDER BY bar_intraday.bar_start_ts_utc DESC
+        LIMIT 31
+        """,
+        (market, symbol, interval),
+    ).fetchall()
+    bars = list(reversed(rows))
+    if len(bars) < 12:
+        return None
+    closes = [_optional_float(row["close"]) for row in bars]
+    if any(close is None for close in closes):
+        return None
+    close_values = [float(close) for close in closes if close is not None]
+    previous_close = close_values[-2]
+    latest_close = close_values[-1]
+    previous_ma11 = _mean(close_values[-12:-1])
+    latest_ma11 = _mean(close_values[-11:])
+    if previous_ma11 is None or latest_ma11 is None:
+        return None
+    if direction == "up" and not (
+        previous_close <= previous_ma11 and latest_close > latest_ma11
+    ):
+        return None
+    if direction == "down" and not (
+        previous_close >= previous_ma11 and latest_close < latest_ma11
+    ):
+        return None
+    volume_ratio = 0.0
+    if volume_multiplier is not None:
+        previous_volumes = [
+            float(volume)
+            for volume in (_optional_float(row["volume_raw"]) for row in bars[-21:-1])
+            if volume is not None
+        ]
+        latest_volume = _optional_float(bars[-1]["volume_raw"])
+        previous_volume_average = _mean(previous_volumes)
+        if (
+            latest_volume is None
+            or previous_volume_average is None
+            or previous_volume_average <= 0
+        ):
+            return None
+        volume_ratio = latest_volume / previous_volume_average
+        if volume_ratio < volume_multiplier:
+            return None
+    return {
+        "close": latest_close,
+        "ma11": latest_ma11,
+        "volume_ratio": volume_ratio,
+        "bar_key": _format_row_temporal_key(bars[-1]["bar_end_ts_utc"]),
+    }
+
+
+def _latest_daily_ma11_cross(
+    connection: sqlite3.Connection,
+    *,
+    market: str,
+    symbol: str,
+    direction: str,
+) -> dict[str, float | str] | None:
+    rows = connection.execute(
+        """
+        SELECT bar_daily.trade_date, bar_daily.close
+        FROM instrument
+        JOIN bar_daily
+            ON bar_daily.instrument_id = instrument.instrument_id
+        WHERE instrument.market = ?
+            AND instrument.symbol = ?
+            AND instrument.is_active = TRUE
+            AND bar_daily.close IS NOT NULL
+        ORDER BY bar_daily.trade_date DESC
+        LIMIT 12
+        """,
+        (market, symbol),
+    ).fetchall()
+    bars = list(reversed(rows))
+    if len(bars) < 12:
+        return None
+    closes = [_optional_float(row["close"]) for row in bars]
+    if any(close is None for close in closes):
+        return None
+    close_values = [float(close) for close in closes if close is not None]
+    previous_close = close_values[-2]
+    latest_close = close_values[-1]
+    previous_ma11 = _mean(close_values[-12:-1])
+    latest_ma11 = _mean(close_values[-11:])
+    if previous_ma11 is None or latest_ma11 is None:
+        return None
+    if direction == "up" and not (
+        previous_close <= previous_ma11 and latest_close > latest_ma11
+    ):
+        return None
+    return {
+        "close": latest_close,
+        "ma11": latest_ma11,
+        "volume_ratio": 0.0,
+        "bar_key": _format_row_temporal_key(bars[-1]["trade_date"]),
+    }
 
 
 def _mobile_alert_condition_for_row(
@@ -438,6 +807,79 @@ def _coalesce_recent_mobile_alert_event(
     return event_id
 
 
+def _insert_mobile_alert_event(
+    connection: sqlite3.Connection,
+    *,
+    rule_id: int,
+    now_utc: str,
+    observed_value: float,
+    message: str,
+    dedupe_key: str | None,
+) -> int | None:
+    if dedupe_key is not None:
+        existing = connection.execute(
+            """
+            SELECT mobile_alert_event_id
+            FROM mobile_alert_event
+            WHERE mobile_alert_rule_id = ?
+                AND dedupe_key = ?
+            LIMIT 1
+            """,
+            (rule_id, dedupe_key),
+        ).fetchone()
+        if existing is not None:
+            return None
+    inserted_row = connection.execute(
+        """
+        INSERT INTO mobile_alert_event (
+            mobile_alert_rule_id,
+            triggered_at_utc,
+            observed_value,
+            message,
+            dedupe_key,
+            delivery_status
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        RETURNING mobile_alert_event_id
+        """,
+        (rule_id, now_utc, observed_value, message, dedupe_key, "pending"),
+    ).fetchone()
+    if inserted_row is None:
+        raise RuntimeError("mobile alert event insert did not return a row")
+    return int(inserted_row["mobile_alert_event_id"])
+
+
+def _mobile_push_message_for_event(
+    row: sqlite3.Row,
+    *,
+    event_id: int,
+    title_suffix: str,
+    body: str,
+) -> dict[str, object]:
+    return {
+        "mobile_alert_event_id": event_id,
+        "mobile_alert_rule_id": int(row["mobile_alert_rule_id"]),
+        "push_device_id": int(row["push_device_id"]),
+        "push_token": str(row["push_token"]),
+        "getui_cid": (
+            str(row["getui_cid"]) if row["getui_cid"] is not None else None
+        ),
+        "title": f"{row['symbol']} {title_suffix}",
+        "body": body,
+        "sound": "default",
+        "channelId": "market-alerts",
+        "data": {
+            "market": str(row["market"]),
+            "symbol": str(row["symbol"]),
+            "condition_type": str(row["condition_type"]),
+            "url": (
+                "/instrument.html?"
+                f"market={row['market']}&symbol={row['symbol']}"
+            ),
+        },
+    }
+
+
 def _mobile_alert_metric_for_row(row: sqlite3.Row) -> str | None:
     if str(row["source_type"]) == "custom_indicator":
         return "indicator_value"
@@ -464,5 +906,53 @@ def _optional_float(value: object) -> float | None:
     return float(value)
 
 
+def _mean(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+def _format_row_temporal_key(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return str(value)
+
+
 def _parse_utc(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+
+
+def _ensure_mobile_alert_event_dedupe_column(connection: sqlite3.Connection) -> None:
+    if getattr(connection, "backend", "sqlite") == "postgres":
+        column = connection.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = 'mobile_alert_event'
+                AND column_name = 'dedupe_key'
+            LIMIT 1
+            """
+        ).fetchone()
+        if column is None:
+            connection.execute("ALTER TABLE mobile_alert_event ADD COLUMN dedupe_key TEXT")
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_mobile_alert_event_rule_dedupe
+                ON mobile_alert_event (mobile_alert_rule_id, dedupe_key)
+                WHERE dedupe_key IS NOT NULL
+                """
+            )
+        return
+    columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(mobile_alert_event)").fetchall()
+    }
+    if "dedupe_key" not in columns:
+        connection.execute("ALTER TABLE mobile_alert_event ADD COLUMN dedupe_key TEXT")
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_mobile_alert_event_rule_dedupe
+        ON mobile_alert_event (mobile_alert_rule_id, dedupe_key)
+        WHERE dedupe_key IS NOT NULL
+        """
+    )

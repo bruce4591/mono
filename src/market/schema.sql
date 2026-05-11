@@ -238,9 +238,14 @@ CREATE TABLE IF NOT EXISTS mobile_alert_event (
     triggered_at_utc TEXT NOT NULL,
     observed_value REAL NOT NULL,
     message TEXT NOT NULL,
+    dedupe_key TEXT,
     delivery_status TEXT NOT NULL,
     FOREIGN KEY (mobile_alert_rule_id) REFERENCES mobile_alert_rule(mobile_alert_rule_id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mobile_alert_event_rule_dedupe
+    ON mobile_alert_event (mobile_alert_rule_id, dedupe_key)
+    WHERE dedupe_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS mobile_alert_delivery (
     mobile_alert_delivery_id INTEGER PRIMARY KEY AUTOINCREMENT,

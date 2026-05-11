@@ -164,6 +164,7 @@ def init_database(db_path: Path | str) -> None:
         connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         _ensure_push_device_columns(connection)
         _ensure_mobile_alert_rule_columns(connection)
+        _ensure_mobile_alert_event_columns(connection)
         apply_sqlite_migrations(connection)
 
 
@@ -209,3 +210,19 @@ def _ensure_mobile_alert_rule_columns(connection: sqlite3.Connection) -> None:
     for column, definition in additions.items():
         if column not in columns:
             connection.execute(f"ALTER TABLE mobile_alert_rule ADD COLUMN {column} {definition}")
+
+
+def _ensure_mobile_alert_event_columns(connection: sqlite3.Connection) -> None:
+    columns = {
+        str(row["name"])
+        for row in connection.execute("PRAGMA table_info(mobile_alert_event)").fetchall()
+    }
+    if "dedupe_key" not in columns:
+        connection.execute("ALTER TABLE mobile_alert_event ADD COLUMN dedupe_key TEXT")
+    connection.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_mobile_alert_event_rule_dedupe
+        ON mobile_alert_event (mobile_alert_rule_id, dedupe_key)
+        WHERE dedupe_key IS NOT NULL
+        """
+    )
