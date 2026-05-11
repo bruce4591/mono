@@ -1321,6 +1321,34 @@ class ApiTests(unittest.TestCase):
                 rule_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
                 connection.execute(
                     """
+                    INSERT INTO mobile_alert_rule (
+                        push_device_id,
+                        symbol,
+                        market,
+                        condition_type,
+                        source_type,
+                        metric_key,
+                        operator,
+                        threshold,
+                        cooldown_seconds,
+                        enabled,
+                        created_by,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES (?, 'BTCUSDT', 'CRYPTO', 'ma11_breakout_volume_15m',
+                        'technical', 'ma11_volume_ratio', '>=', 1.5, 2700, 1,
+                        'system_crypto_ranking_ma11', ?, ?)
+                    """,
+                    (
+                        push_device_id,
+                        "2026-04-24T20:00:00Z",
+                        "2026-04-24T20:00:00Z",
+                    ),
+                )
+                duplicate_rule_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+                connection.execute(
+                    """
                     INSERT INTO mobile_alert_event (
                         mobile_alert_rule_id,
                         triggered_at_utc,
@@ -1338,6 +1366,28 @@ class ApiTests(unittest.TestCase):
                         65000.0,
                         "BTCUSDT 15m MA11 突破 close 65000 > MA11 64000，量比 1.80x，K线 2026-04-24T20:15:00Z",
                         "ma11_breakout_volume_15m:CRYPTO:BTCUSDT:2026-04-24T20:15:00Z",
+                        '{"period":"15m","bar_time":"2026-04-24T20:15:00Z","price":65000.0,"direction":"up","label":"15m MA11 突破","condition_label":"15m MA11 突破 + 量比 >= 1.5x","ma11":64000.0,"volume_ratio":1.8}',
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_event (
+                        mobile_alert_rule_id,
+                        triggered_at_utc,
+                        observed_value,
+                        message,
+                        dedupe_key,
+                        alert_metadata,
+                        delivery_status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'sent')
+                    """,
+                    (
+                        duplicate_rule_id,
+                        "2026-04-24T20:17:00Z",
+                        65000.0,
+                        "duplicate marker",
+                        "duplicate-existing-rule:2026-04-24T20:15:00Z",
                         '{"period":"15m","bar_time":"2026-04-24T20:15:00Z","price":65000.0,"direction":"up","label":"15m MA11 突破","condition_label":"15m MA11 突破 + 量比 >= 1.5x","ma11":64000.0,"volume_ratio":1.8}',
                     ),
                 )

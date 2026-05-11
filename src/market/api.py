@@ -702,6 +702,7 @@ def _get_mobile_alert_markers(
         (market, symbol, limit),
     ).fetchall()
     markers = []
+    seen_marker_keys: set[tuple[str, str, str]] = set()
     for row in rows:
         metadata = _parse_alert_metadata(row["alert_metadata"])
         if metadata.get("period") != period:
@@ -710,6 +711,10 @@ def _get_mobile_alert_markers(
         price = _optional_float(metadata.get("price"))
         if bar_time is None or price is None:
             continue
+        marker_key = (period, bar_time, str(row["condition_type"]))
+        if marker_key in seen_marker_keys:
+            continue
+        seen_marker_keys.add(marker_key)
         markers.append(
             {
                 "mobile_alert_event_id": int(row["mobile_alert_event_id"]),

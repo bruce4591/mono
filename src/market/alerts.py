@@ -4,7 +4,7 @@ import operator
 import sqlite3
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Callable
 
 from market.models import AlertEvent, AlertRule
@@ -175,7 +175,8 @@ def evaluate_mobile_alert_rules(
             mobile_alert_rule.threshold,
             mobile_alert_rule.cooldown_seconds,
             push_device.push_token,
-            push_device.getui_cid
+            push_device.getui_cid,
+            mobile_alert_rule.created_at_utc
         FROM mobile_alert_rule
         JOIN push_device
             ON push_device.push_device_id = mobile_alert_rule.push_device_id
@@ -189,6 +190,8 @@ def evaluate_mobile_alert_rules(
         if str(row["source_type"]) == "technical":
             technical_signal = _mobile_technical_signal_for_row(connection, row)
             if technical_signal is None:
+                continue
+            if not _technical_signal_is_after_rule_creation(row, technical_signal):
                 continue
             rule_id = int(row["mobile_alert_rule_id"])
             if _mobile_alert_in_cooldown(
@@ -644,6 +647,27 @@ def _mobile_technical_signal_for_row(
             },
         )
     return None
+
+
+def _technical_signal_is_after_rule_creation(
+    row: sqlite3.Row,
+    signal: MobileTechnicalSignal,
+) -> bool:
+    created_at = _parse_utc(str(row["created_at_utc"]))
+    signal_time = _parse_technical_signal_time(signal.metadata)
+    if signal_time is None:
+        return True
+    return signal_time > created_at
+
+
+def _parse_technical_signal_time(metadata: dict[str, object]) -> datetime | None:
+    period = metadata.get("period")
+    bar_time = metadata.get("bar_time")
+    if not isinstance(bar_time, str) or not bar_time:
+        return None
+    if period == "1d" and "T" not in bar_time:
+        return datetime.fromisoformat(bar_time).replace(tzinfo=UTC) + timedelta(days=1)
+    return _parse_utc(bar_time)
 
 
 def _latest_intraday_ma11_cross(

@@ -472,6 +472,10 @@ class AlertTests(unittest.TestCase):
 
             with connect(db_path) as connection:
                 instrument_id = _insert_crypto_ranking_alert_fixture(connection)
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T04:00:00Z",
+                )
                 _insert_intraday_bars(
                     connection,
                     instrument_id=instrument_id,
@@ -512,6 +516,10 @@ class AlertTests(unittest.TestCase):
 
             with connect(db_path) as connection:
                 instrument_id = _insert_crypto_ranking_alert_fixture(connection)
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T04:00:00Z",
+                )
                 _insert_intraday_bars(
                     connection,
                     instrument_id=instrument_id,
@@ -534,6 +542,40 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(len(first_messages), 1)
         self.assertEqual(second_messages, [])
         self.assertEqual(event_count, 1)
+
+    def test_evaluate_mobile_alert_rules_skips_crypto_ranking_bar_before_rule_creation(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instrument_id = _insert_crypto_ranking_alert_fixture(connection)
+                _insert_intraday_bars(
+                    connection,
+                    instrument_id=instrument_id,
+                    closes=[100.0] * 20 + [99.0, 103.0],
+                    volumes=[100.0] * 21 + [200.0],
+                )
+
+                messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T05:31:00Z",
+                )
+                event_count = connection.execute(
+                    "SELECT COUNT(*) FROM mobile_alert_event"
+                ).fetchone()[0]
+                enabled_rule_count = connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM mobile_alert_rule
+                    WHERE source_type = 'technical'
+                        AND enabled = 1
+                    """
+                ).fetchone()[0]
+
+        self.assertEqual(messages, [])
+        self.assertEqual(event_count, 0)
+        self.assertGreater(enabled_rule_count, 0)
 
     def test_evaluate_mobile_alert_rules_uses_latest_push_device_for_crypto_ranking(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -569,6 +611,10 @@ class AlertTests(unittest.TestCase):
                         "SELECT push_device_id FROM push_device WHERE push_token = ?",
                         ("getui:latest-cid",),
                     ).fetchone()["push_device_id"]
+                )
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T04:00:00Z",
                 )
                 _insert_intraday_bars(
                     connection,
@@ -616,6 +662,10 @@ class AlertTests(unittest.TestCase):
                     board_name="CRYPTO_FUTURES_TURNOVER_TOP50",
                     insert_push_device=False,
                 )
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T04:00:00Z",
+                )
                 for instrument_id in (spot_id, futures_id):
                     _insert_intraday_bars(
                         connection,
@@ -651,6 +701,10 @@ class AlertTests(unittest.TestCase):
 
             with connect(db_path) as connection:
                 instrument_id = _insert_crypto_ranking_alert_fixture(connection)
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T04:00:00Z",
+                )
                 _insert_intraday_bars(
                     connection,
                     instrument_id=instrument_id,
@@ -674,6 +728,10 @@ class AlertTests(unittest.TestCase):
 
             with connect(db_path) as connection:
                 instrument_id = _insert_crypto_ranking_alert_fixture(connection)
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T00:00:00Z",
+                )
                 _insert_daily_bars(
                     connection,
                     instrument_id=instrument_id,
@@ -682,11 +740,11 @@ class AlertTests(unittest.TestCase):
 
                 first_messages = evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T23:01:00Z",
+                    now_utc="2026-05-05T00:01:00Z",
                 )
                 second_messages = evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T23:30:00Z",
+                    now_utc="2026-05-05T00:30:00Z",
                 )
                 event_count = connection.execute(
                     "SELECT COUNT(*) FROM mobile_alert_event"
