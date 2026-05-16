@@ -14,10 +14,16 @@ export function MarketListItem({
   item: MobileBoardItem;
   navigate: (route: AppRoute) => void;
 }) {
+  const canOpenDetail = item.market !== "FX" && item.market !== "MACRO_RATE";
   return (
     <Pressable
-      style={styles.row}
-      onPress={() => navigate({ name: "instrument", market: item.market, symbol: item.symbol })}
+      disabled={!canOpenDetail}
+      style={[styles.row, !canOpenDetail ? styles.staticRow : null]}
+      onPress={() => {
+        if (canOpenDetail) {
+          navigate({ name: "instrument", market: item.market, symbol: item.symbol });
+        }
+      }}
     >
       <View style={styles.left}>
         <Text style={styles.symbol}>{item.symbol}</Text>
@@ -27,19 +33,21 @@ export function MarketListItem({
         <DataTimeBadge value={item.data_time} />
       </View>
       <View style={styles.right}>
-        <Text style={styles.price}>{formatNumber(item.last_price)}</Text>
+        <Text style={styles.price}>{formatNumber(item.last_price, item.unit)}</Text>
         <PriceChange value={item.change_pct} />
-        <Text style={styles.metric}>{formatMarketMetric(item.turnover ?? item.volume)}</Text>
+        <Text style={styles.metric}>{item.metric_label ?? formatMarketMetric(item.turnover ?? item.volume)}</Text>
       </View>
     </Pressable>
   );
 }
 
-function formatNumber(value: number | null): string {
+function formatNumber(value: number | null, unit?: string | null): string {
   if (value === null) return "--";
-  return value.toLocaleString(undefined, {
-    maximumFractionDigits: value >= 100 ? 2 : 4
+  const maximumFractionDigits = unit === "%" ? 3 : value >= 100 ? 2 : 4;
+  const formatted = value.toLocaleString(undefined, {
+    maximumFractionDigits
   });
+  return unit ? `${formatted}${unit}` : formatted;
 }
 
 function formatMarketMetric(value: number | null): string {
@@ -60,6 +68,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
     paddingVertical: 10
+  },
+  staticRow: {
+    opacity: 1
   },
   left: {
     flex: 1,

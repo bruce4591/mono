@@ -9,6 +9,8 @@ export type MobileBoardItem = {
   rank: number | null;
   rank_change: number | null;
   data_time: string | null;
+  unit?: string | null;
+  metric_label?: string | null;
 };
 
 export type MobileBoard = {

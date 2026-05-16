@@ -39,6 +39,7 @@ from market.collectors.base import CollectorResult, run_collector_job
 from market.crypto_gaps import fill_binance_1m_gaps
 from market.crypto_gaps import fill_binance_futures_1m_gaps
 from market.db import connect, connect_database_url, init_database, init_postgres_database
+from market.macro import sync_macro_boards
 from market.models import AlertRule, WatchlistEntry
 from market.parquet_export import export_bars_to_parquet
 from market.push import deliver_mobile_alert_pushes, send_auto_push_message
@@ -361,6 +362,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Watchlist config to import before syncing; can be provided multiple times",
     )
     sync_akshare_focus.add_argument("--dry-run", action="store_true")
+
+    sync_macro_boards_parser = subparsers.add_parser(
+        "sync-macro-boards",
+        help="Sync treasury yield and major FX snapshots for the mobile home macro boards",
+    )
+    sync_macro_boards_parser.add_argument("--db-path", type=Path, default=None)
+    sync_macro_boards_parser.add_argument("--snapshot-ts-utc", default=None)
+    sync_macro_boards_parser.add_argument("--dry-run", action="store_true")
 
     sync_alpaca_focus = subparsers.add_parser(
         "sync-alpaca-focus",
@@ -711,6 +720,30 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "crypto futures boards synced: "
             f"{result.items_synced} tickers, snapshot={snapshot_ts_utc}"
+        )
+        return 0
+
+    if args.command == "sync-macro-boards":
+        now = datetime.now(tz=UTC)
+        snapshot_ts_utc = args.snapshot_ts_utc or now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if args.dry_run:
+            print(f"macro boards sync ready: snapshot={snapshot_ts_utc}")
+            return 0
+        with open_database() as connection:
+            result = run_collector_job(
+                connection,
+                job_name="sync-macro-boards",
+                source_name="macro_akshare",
+                checkpoint=f"rates_fx:{snapshot_ts_utc}",
+                started_at_utc=snapshot_ts_utc,
+                operation=lambda: sync_macro_boards(
+                    connection,
+                    snapshot_ts_utc=snapshot_ts_utc,
+                ),
+            )
+        print(
+            "macro boards synced: "
+            f"{result.items_synced} snapshots, snapshot={snapshot_ts_utc}"
         )
         return 0
 

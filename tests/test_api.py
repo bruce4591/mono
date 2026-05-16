@@ -39,9 +39,10 @@ from market.binance_futures import binance_futures_symbol_to_instrument
 from market.db import connect, init_database
 from market.collectors.base import CollectorResult
 from market.repositories import InstrumentRepository, IntradayBarRepository, RankingRepository
-from market.models import AlertRule, IntradayBar
+from market.models import AlertRule, Instrument, IntradayBar, MarketSnapshot
 from market.repositories import AlertEventRepository, AlertRuleRepository
 from market.models import AlertEvent
+from market.repositories import MarketSnapshotRepository
 from market.sample_data import seed_sample_data
 from market.watchlists import sync_watchlist_from_file
 
@@ -1080,6 +1081,74 @@ class ApiTests(unittest.TestCase):
             self.assertIn("name", first_item)
             self.assertIn("last_price", first_item)
             self.assertIn("data_time", first_item)
+
+    def test_get_mobile_home_payload_returns_macro_rates_and_fx_boards(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instruments = InstrumentRepository(connection)
+                snapshots = MarketSnapshotRepository(connection)
+                us10y_id = instruments.upsert(
+                    Instrument(
+                        market="MACRO_RATE",
+                        symbol="US10Y",
+                        display_name="US Treasury 10Y",
+                        exchange="AKSHARE",
+                        instrument_type="yield",
+                        quote_currency="PCT",
+                        timezone="UTC",
+                    )
+                )
+                usdcny_id = instruments.upsert(
+                    Instrument(
+                        market="FX",
+                        symbol="USDCNY",
+                        display_name="USD/CNY",
+                        exchange="SAFE",
+                        instrument_type="fx",
+                        quote_currency="CNY",
+                        timezone="Asia/Shanghai",
+                    )
+                )
+                snapshots.upsert(
+                    MarketSnapshot(
+                        instrument_id=us10y_id,
+                        snapshot_ts_utc="2026-05-15T21:00:00Z",
+                        trade_date_local="2026-05-15",
+                        last_price=4.441,
+                        change_pct=0.18,
+                        volume_raw=None,
+                        turnover_raw=1.0,
+                        quote_currency="PCT",
+                        source="macro",
+                    )
+                )
+                snapshots.upsert(
+                    MarketSnapshot(
+                        instrument_id=usdcny_id,
+                        snapshot_ts_utc="2026-05-16T01:00:00Z",
+                        trade_date_local="2026-05-16",
+                        last_price=7.2195,
+                        change_pct=-0.04,
+                        volume_raw=None,
+                        turnover_raw=1.0,
+                        quote_currency="CNY",
+                        source="macro",
+                    )
+                )
+                payload = api_module.get_mobile_home_payload(connection)
+
+        boards = {board["key"]: board for board in payload["boards"]}
+        self.assertIn("RATES_FOCUS", boards)
+        self.assertIn("FX_FOCUS", boards)
+        self.assertEqual(boards["RATES_FOCUS"]["title"], "Rates")
+        self.assertEqual(boards["FX_FOCUS"]["title"], "FX")
+        self.assertEqual(boards["RATES_FOCUS"]["items"][0]["symbol"], "US10Y")
+        self.assertEqual(boards["RATES_FOCUS"]["items"][0]["unit"], "%")
+        self.assertEqual(boards["FX_FOCUS"]["items"][0]["symbol"], "USDCNY")
+        self.assertIsNone(boards["FX_FOCUS"]["items"][0]["unit"])
 
     def test_mobile_home_endpoint_returns_boards(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

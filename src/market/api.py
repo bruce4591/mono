@@ -41,6 +41,7 @@ from market.crypto_gaps import (
     fill_binance_futures_1m_gaps,
 )
 from market.db import connect, create_database_connector
+from market.macro import FX_INSTRUMENTS, RATE_INSTRUMENTS, list_macro_board_payload
 from market.models import DailyBar, Instrument, IntradayBar
 from market.repositories import (
     AlertEventRepository,
@@ -234,6 +235,22 @@ def get_mobile_home_payload(connection: sqlite3.Connection) -> dict[str, object]
         "boards": [
             _mobile_board_payload(get_board_payload(connection, board_name), title, market)
             for board_name, title, market in MOBILE_HOME_BOARDS
+        ]
+        + [
+            list_macro_board_payload(
+                connection,
+                key="RATES_FOCUS",
+                title="Rates",
+                market="MACRO_RATE",
+                instruments=RATE_INSTRUMENTS,
+            ),
+            list_macro_board_payload(
+                connection,
+                key="FX_FOCUS",
+                title="FX",
+                market="FX",
+                instruments=FX_INSTRUMENTS,
+            ),
         ],
     }
 
@@ -260,6 +277,8 @@ def _mobile_board_payload(
                 "rank": item.get("rank"),
                 "rank_change": item.get("rank_change"),
                 "data_time": data_time,
+                "unit": item.get("unit"),
+                "metric_label": item.get("metric_label"),
             }
         )
     return {
