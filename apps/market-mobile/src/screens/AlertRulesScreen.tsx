@@ -2,9 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { homeRoute, type AppRoute } from "../app/navigation";
-import { fetchMobileAlertRulesPayload, patchMobileAlertRulePayload } from "../api/alerts";
 import { fetchMobileStrategiesPayload } from "../api/strategies";
-import type { MobileAlertRule, MobileStrategy } from "../api/types";
+import type { MobileStrategy } from "../api/types";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
@@ -17,7 +16,6 @@ export function AlertRulesScreen({
   navigate: (route: AppRoute) => void;
   pushToken: string | null;
 }) {
-  const [rules, setRules] = useState<MobileAlertRule[]>([]);
   const [strategies, setStrategies] = useState<MobileStrategy[]>([]);
   const [loading, setLoading] = useState(Boolean(pushToken));
   const [error, setError] = useState<string | null>(null);
@@ -27,30 +25,12 @@ export function AlertRulesScreen({
     setLoading(true);
     setError(null);
     try {
-      const payload = await fetchMobileAlertRulesPayload({ pushToken });
-      setRules(payload.rules);
       const strategyPayload = await fetchMobileStrategiesPayload();
       setStrategies(strategyPayload.strategies);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "提醒规则加载失败");
+      setError(err instanceof Error ? err.message : "策略提醒加载失败");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function toggleRule(rule: MobileAlertRule) {
-    try {
-      const nextRule = await patchMobileAlertRulePayload({
-        ruleId: rule.mobile_alert_rule_id,
-        enabled: !rule.enabled
-      });
-      setRules((current) =>
-        current.map((item) =>
-          item.mobile_alert_rule_id === nextRule.mobile_alert_rule_id ? nextRule : item
-        )
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "规则更新失败");
     }
   }
 
@@ -69,11 +49,11 @@ export function AlertRulesScreen({
     );
   }
 
-  if (loading && rules.length === 0) {
-    return <LoadingState label="加载提醒规则" />;
+  if (loading && strategies.length === 0) {
+    return <LoadingState label="加载策略提醒" />;
   }
 
-  if (error && rules.length === 0) {
+  if (error && strategies.length === 0) {
     return <ErrorState message={error} onRetry={() => void loadRules()} />;
   }
 
@@ -87,11 +67,11 @@ export function AlertRulesScreen({
           <Text style={styles.refresh}>{loading ? "刷新中" : "刷新"}</Text>
         </Pressable>
       </View>
-      <Text style={styles.title}>提醒规则</Text>
+      <Text style={styles.title}>策略提醒</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <ScrollView style={styles.list}>
         <View style={styles.strategySection}>
-          <Text style={styles.sectionTitle}>后台策略</Text>
+          <Text style={styles.sectionTitle}>后台运行策略</Text>
           {strategies.length === 0 ? (
             <Text style={styles.itemMeta}>暂无后台策略</Text>
           ) : null}
@@ -113,21 +93,6 @@ export function AlertRulesScreen({
             </Pressable>
           ))}
         </View>
-        {rules.length === 0 ? <EmptyState title="暂无提醒规则" /> : null}
-        {rules.map((rule) => (
-          <View key={rule.mobile_alert_rule_id} style={styles.item}>
-            <Text style={styles.itemTitle}>
-              {rule.market} {rule.symbol}
-            </Text>
-            <Text style={styles.itemBody}>
-              {rule.condition_type} {rule.threshold}
-            </Text>
-            <Text style={styles.itemMeta}>冷却 {rule.cooldown_seconds ?? "--"} 秒</Text>
-            <Pressable style={styles.toggle} onPress={() => void toggleRule(rule)}>
-              <Text style={styles.toggleText}>{rule.enabled ? "停用" : "启用"}</Text>
-            </Pressable>
-          </View>
-        ))}
       </ScrollView>
     </View>
   );
@@ -200,17 +165,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "900"
   },
-  item: {
-    minHeight: 100,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.border,
-    paddingVertical: 12
-  },
-  itemTitle: {
-    color: theme.colors.textStrong,
-    fontSize: 16,
-    fontWeight: "700"
-  },
   itemBody: {
     marginTop: 5,
     color: theme.colors.text,
@@ -220,18 +174,5 @@ const styles = StyleSheet.create({
     marginTop: 7,
     color: theme.colors.textMuted,
     fontSize: 12
-  },
-  toggle: {
-    alignSelf: "flex-start",
-    marginTop: 10,
-    borderRadius: 8,
-    backgroundColor: theme.colors.accent,
-    paddingHorizontal: 14,
-    paddingVertical: 8
-  },
-  toggleText: {
-    color: theme.colors.text,
-    fontSize: 14,
-    fontWeight: "800"
   }
 });

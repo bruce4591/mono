@@ -3,7 +3,13 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { homeRoute, type AppRoute, type InstrumentRoute } from "../app/navigation";
 import { fetchMobileInstrumentDetail } from "../api/market";
-import type { MobileBar, MobileInstrumentDetailPayload } from "../api/types";
+import { fetchMobileStrategiesPayload } from "../api/strategies";
+import type {
+  MobileBar,
+  MobileInstrumentDetailPayload,
+  MobileStrategy,
+  MobileStrategySymbol
+} from "../api/types";
 import { getCached } from "../cache/queryCache";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
@@ -33,6 +39,7 @@ export function InstrumentDetailScreen({
   const [payload, setPayload] = useState<MobileInstrumentDetailPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [strategies, setStrategies] = useState<MobileStrategy[]>([]);
   const [historyLimit, setHistoryLimit] = useState(INITIAL_HISTORY_LIMIT);
   const [selectedBar, setSelectedBar] = useState<MobileBar | null>(null);
   const historyRequestInFlightRef = useRef(false);
@@ -65,6 +72,12 @@ export function InstrumentDetailScreen({
   useEffect(() => {
     void loadDetail();
   }, [route.market, route.symbol, period, historyLimit]);
+
+  useEffect(() => {
+    fetchMobileStrategiesPayload()
+      .then((nextPayload) => setStrategies(nextPayload.strategies))
+      .catch(() => undefined);
+  }, [route.market, route.symbol]);
 
   useEffect(() => {
     setPeriod(route.period ?? "1d");
@@ -112,6 +125,7 @@ export function InstrumentDetailScreen({
   const priceLabel = isCryptoContract(route.market, payload?.instrument.asset_class ?? null)
     ? "标记"
     : "最新";
+  const strategyMatch = findStrategyForInstrument(strategies, route.market, route.symbol);
 
   return (
     <View style={styles.root}>
@@ -142,6 +156,24 @@ export function InstrumentDetailScreen({
         <SummaryCell label="低" value={formatCompactPrice(displayBar?.low ?? null)} />
         <SummaryCell label="收" value={formatCompactPrice(displayBar?.close ?? null)} />
       </View>
+      {strategyMatch ? (
+        <Pressable style={styles.strategyBar} onPress={() => navigate({ name: "strategies" })}>
+          <View style={styles.strategyBarHeader}>
+            <Text style={styles.strategyLabel}>策略</Text>
+            <Text style={styles.strategyName} numberOfLines={1}>
+              {strategyMatch.strategy.name}
+            </Text>
+            <Text style={styles.strategyState}>
+              {strategyMatch.strategy.enabled ? "后台运行" : "已暂停"}
+            </Text>
+          </View>
+          <Text style={styles.strategyMeta} numberOfLines={1}>
+            {formatStrategyPosition(strategyMatch.symbol)} ·{" "}
+            {strategyMatch.strategy.execution_mode.toUpperCase()} · 最近{" "}
+            {strategyMatch.symbol.last_trade?.action ?? "--"}
+          </Text>
+        </Pressable>
+      ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <View style={styles.periodBar}>
         <ScrollView
@@ -185,6 +217,32 @@ export function InstrumentDetailScreen({
       </View>
     </View>
   );
+}
+
+function findStrategyForInstrument(
+  strategies: MobileStrategy[],
+  market: string,
+  symbol: string
+): { strategy: MobileStrategy; symbol: MobileStrategySymbol } | null {
+  for (const strategy of strategies) {
+    const matchedSymbol = strategy.symbols.find(
+      (item) => item.market === market && item.symbol === symbol
+    );
+    if (matchedSymbol) {
+      return { strategy, symbol: matchedSymbol };
+    }
+  }
+  return null;
+}
+
+function formatStrategyPosition(item: MobileStrategySymbol): string {
+  if (item.position_status === "open") {
+    return `持仓中 ${formatPercent(item.unrealized_return_pct)}`;
+  }
+  if (item.position_status === "closed") {
+    return `已平仓 ${formatPercent(item.realized_return_pct)}`;
+  }
+  return "空仓";
 }
 
 function SummaryCell({ label, value }: { label: string; value: string }) {
@@ -362,6 +420,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 15,
     fontWeight: "800"
+  },
+  strategyBar: {
+    minHeight: 44,
+    justifyContent: "center",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 6
+  },
+  strategyBarHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7
+  },
+  strategyLabel: {
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "800"
+  },
+  strategyName: {
+    flex: 1,
+    color: theme.colors.textStrong,
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  strategyState: {
+    color: theme.colors.positive,
+    fontSize: 11,
+    fontWeight: "900"
+  },
+  strategyMeta: {
+    marginTop: 3,
+    color: theme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700"
   },
   error: {
     paddingHorizontal: 18,
