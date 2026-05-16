@@ -50,11 +50,11 @@ export function HomeScreen({
   }, []);
 
   useEffect(() => {
-    if (route.group && route.group !== selectedGroup) {
+    if (route.group) {
       setSelectedGroup(route.group);
-      setSelectedBoardKey(null);
+      setSelectedBoardKey(route.boardKey ?? null);
     }
-  }, [route.group, selectedGroup]);
+  }, [route.group, route.boardKey]);
 
   const visibleBoards = useMemo(
     () =>
