@@ -43,10 +43,29 @@ class DeployConfigTests(unittest.TestCase):
         self.assertIn("--gap-fill-on-reconnect", script)
         self.assertIn("MARKET_DATABASE_URL", script)
 
+    def test_pin_strategy_futures_ws_service_is_configurable(self):
+        service = (
+            REPO_ROOT / "deploy" / "systemd" / "market-pin-strategy-futures-ws.service"
+        ).read_text(encoding="utf-8")
+        script = (
+            REPO_ROOT / "deploy" / "scripts" / "market-run-pin-strategy-futures-ws.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("EnvironmentFile=-/home/ubuntu/github/mono/.market.env", service)
+        self.assertIn("market-run-pin-strategy-futures-ws.sh", service)
+        self.assertNotIn("Environment=MARKET_DB_PATH=", service)
+        self.assertIn("run-pin-strategy-futures-ws", script)
+        self.assertIn("MARKET_DATABASE_URL", script)
+        self.assertIn("MARKET_PIN_STRATEGY_SYMBOLS", script)
+        self.assertIn("MARKET_PIN_STRATEGY_DRY_RUN", script)
+        self.assertIn("MARKET_PIN_ENABLE_KLINE_CURVE_CANDIDATES", script)
+        self.assertIn("--archive-dir", script)
+
     def test_deploy_scripts_used_by_systemd_are_executable(self):
         scripts = [
             REPO_ROOT / "deploy" / "scripts" / "market-run-binance-kline-ws.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-run-binance-futures-kline-ws.sh",
+            REPO_ROOT / "deploy" / "scripts" / "market-run-pin-strategy-futures-ws.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-sync-crypto.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-sync-akshare-focus.sh",
             REPO_ROOT / "deploy" / "scripts" / "market-sync-crypto-futures.sh",

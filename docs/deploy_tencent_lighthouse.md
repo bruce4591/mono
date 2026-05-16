@@ -59,6 +59,34 @@ sudo systemctl enable --now market-binance-futures-kline-ws.service
 sudo systemctl status market-binance-futures-kline-ws.service
 ```
 
+## Run Pin Paper Strategy WebSocket With systemd
+
+The Pin paper strategy worker consumes Binance USD-M futures `aggTrade` and
+`depth20@100ms` streams, writes simulated `paper_position` / `paper_trade`
+records, creates mobile alert events, and archives raw websocket payloads under
+`data/ws_archive/binance_futures_trade_book/`. It defaults to `BTCUSDT` and
+`ETHUSDT`.
+
+Optional `.market.env` overrides:
+
+```bash
+MARKET_PIN_STRATEGY_SYMBOLS="BTCUSDT ETHUSDT"
+MARKET_PIN_ENABLE_KLINE_CURVE_CANDIDATES=0
+MARKET_PIN_DOWN_WICK_THRESHOLDS_JSON=/home/ubuntu/github/mono/data/pin/down_wick_thresholds.json
+MARKET_PIN_UP_WICK_THRESHOLDS_JSON=/home/ubuntu/github/mono/data/pin/up_wick_thresholds.json
+MARKET_PIN_TREND_BREAK_THRESHOLDS_JSON=/home/ubuntu/github/mono/data/pin/trend_break_thresholds.json
+```
+
+Install and start:
+
+```bash
+chmod +x deploy/scripts/market-run-pin-strategy-futures-ws.sh
+sudo cp deploy/systemd/market-pin-strategy-futures-ws.service /etc/systemd/system/market-pin-strategy-futures-ws.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now market-pin-strategy-futures-ws.service
+sudo systemctl status market-pin-strategy-futures-ws.service
+```
+
 ## Sync Crypto Every 15 Minutes
 
 This job refreshes 24h snapshots and the turnover board only. It runs
@@ -149,6 +177,7 @@ git pull
 sudo systemctl restart market-api.service
 sudo systemctl restart market-binance-kline-ws.service
 sudo systemctl restart market-binance-futures-kline-ws.service
+sudo systemctl restart market-pin-strategy-futures-ws.service
 ```
 
 ## PostgreSQL Cutover

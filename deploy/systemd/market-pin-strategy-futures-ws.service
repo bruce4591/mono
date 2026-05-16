@@ -1,0 +1,17 @@
+[Unit]
+Description=Market Pin paper strategy futures WebSocket worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/github/mono
+EnvironmentFile=-/home/ubuntu/github/mono/.market.env
+Environment=MARKET_APP_DIR=/home/ubuntu/github/mono
+ExecStart=/home/ubuntu/github/mono/deploy/scripts/market-run-pin-strategy-futures-ws.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
