@@ -474,7 +474,7 @@ class AlertTests(unittest.TestCase):
                 instrument_id = _insert_crypto_ranking_alert_fixture(connection)
                 evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T00:00:00Z",
+                    now_utc="2026-05-03T00:00:00Z",
                 )
                 _insert_daily_bars(
                     connection,
@@ -528,7 +528,7 @@ class AlertTests(unittest.TestCase):
                 instrument_id = _insert_crypto_ranking_alert_fixture(connection)
                 evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T00:00:00Z",
+                    now_utc="2026-05-03T00:00:00Z",
                 )
                 _insert_daily_bars(
                     connection,
@@ -586,6 +586,34 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(event_count, 0)
         self.assertGreater(enabled_rule_count, 0)
 
+    def test_evaluate_mobile_alert_rules_skips_daily_bar_from_rule_creation_date(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instrument_id = _insert_crypto_ranking_alert_fixture(connection)
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T06:00:00Z",
+                )
+                _insert_daily_bars(
+                    connection,
+                    instrument_id=instrument_id,
+                    closes=[100.0] * 10 + [99.0, 103.0],
+                )
+
+                messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-04T06:01:00Z",
+                )
+                event_count = connection.execute(
+                    "SELECT COUNT(*) FROM mobile_alert_event"
+                ).fetchone()[0]
+
+        self.assertEqual(messages, [])
+        self.assertEqual(event_count, 0)
+
     def test_evaluate_mobile_alert_rules_uses_latest_push_device_for_crypto_ranking(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
@@ -623,7 +651,7 @@ class AlertTests(unittest.TestCase):
                 )
                 evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T00:00:00Z",
+                    now_utc="2026-05-03T00:00:00Z",
                 )
                 _insert_daily_bars(
                     connection,
@@ -672,7 +700,7 @@ class AlertTests(unittest.TestCase):
                 )
                 evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T00:00:00Z",
+                    now_utc="2026-05-03T00:00:00Z",
                 )
                 for instrument_id in (spot_id, futures_id):
                     _insert_daily_bars(
@@ -735,7 +763,7 @@ class AlertTests(unittest.TestCase):
                 instrument_id = _insert_crypto_ranking_alert_fixture(connection)
                 evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T00:00:00Z",
+                    now_utc="2026-05-03T00:00:00Z",
                 )
                 _insert_daily_bars(
                     connection,

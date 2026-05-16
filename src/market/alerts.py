@@ -4,7 +4,7 @@ import operator
 import sqlite3
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Callable
 
 from market.models import AlertEvent, AlertRule
@@ -652,7 +652,7 @@ def _parse_technical_signal_time(metadata: dict[str, object]) -> datetime | None
     if not isinstance(bar_time, str) or not bar_time:
         return None
     if period == "1d" and "T" not in bar_time:
-        return datetime.fromisoformat(bar_time).replace(tzinfo=UTC) + timedelta(days=1)
+        return datetime.fromisoformat(bar_time).replace(tzinfo=UTC)
     return _parse_utc(bar_time)
 
 
