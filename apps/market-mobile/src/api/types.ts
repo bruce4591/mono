@@ -106,3 +106,39 @@ export type MobileAlertRule = {
 export type MobileAlertRulesPayload = {
   rules: MobileAlertRule[];
 };
+
+export type MobileStrategyTrade = {
+  action: string;
+  price: number | null;
+  event_time_utc: string;
+  realized_return_pct: number | null;
+};
+
+export type MobileStrategySymbol = {
+  market: string;
+  symbol: string;
+  position_status: string;
+  side: string | null;
+  entry_price: number | null;
+  exit_price: number | null;
+  current_price: number | null;
+  opened_at_utc: string | null;
+  closed_at_utc: string | null;
+  realized_return_pct: number | null;
+  unrealized_return_pct: number | null;
+  last_trade: MobileStrategyTrade | null;
+};
+
+export type MobileStrategy = {
+  strategy_id: string;
+  name: string;
+  description: string;
+  execution_mode: string;
+  enabled: boolean;
+  updated_at_utc: string;
+  symbols: MobileStrategySymbol[];
+};
+
+export type MobileStrategiesPayload = {
+  strategies: MobileStrategy[];
+};

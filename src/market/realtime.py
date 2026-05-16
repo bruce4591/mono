@@ -29,6 +29,23 @@ class BinanceTickerEvent:
     quote_currency: str
 
 
+@dataclass(frozen=True)
+class BinanceFuturesTradeEvent:
+    symbol: str
+    timestamp: float
+    price: float
+    size: float
+    side: str
+
+
+@dataclass(frozen=True)
+class BinanceFuturesDepthEvent:
+    symbol: str
+    timestamp: float
+    bids: list[tuple[str, str]]
+    asks: list[tuple[str, str]]
+
+
 def parse_binance_ticker_event(payload: dict[str, Any]) -> BinanceTickerEvent:
     data = payload.get("data", payload)
     if not isinstance(data, dict):
@@ -49,6 +66,40 @@ def parse_binance_ticker_event(payload: dict[str, Any]) -> BinanceTickerEvent:
         volume_raw=_optional_float(data.get("v")),
         turnover_raw=_optional_float(data.get("q")),
         quote_currency=instrument.quote_currency,
+    )
+
+
+def parse_binance_futures_trade_event(payload: dict[str, Any]) -> BinanceFuturesTradeEvent:
+    data = payload.get("data", payload)
+    if not isinstance(data, dict):
+        raise ValueError("Binance futures trade payload must be an object")
+    if str(data.get("e")) != "aggTrade":
+        raise ValueError("Binance futures trade payload must be aggTrade")
+    trade_time_ms = int(data.get("T") or data["E"])
+    maker_is_buyer = bool(data.get("m"))
+    return BinanceFuturesTradeEvent(
+        symbol=str(data["s"]).upper(),
+        timestamp=trade_time_ms / 1000.0,
+        price=float(data["p"]),
+        size=float(data["q"]),
+        side="Sell" if maker_is_buyer else "Buy",
+    )
+
+
+def parse_binance_futures_depth_event(payload: dict[str, Any]) -> BinanceFuturesDepthEvent:
+    data = payload.get("data", payload)
+    if not isinstance(data, dict):
+        raise ValueError("Binance futures depth payload must be an object")
+    event_time_ms = int(data.get("T") or data["E"])
+    bids = data.get("b")
+    asks = data.get("a")
+    if not isinstance(bids, list) or not isinstance(asks, list):
+        raise ValueError("Binance futures depth payload must include bids and asks")
+    return BinanceFuturesDepthEvent(
+        symbol=str(data["s"]).upper(),
+        timestamp=event_time_ms / 1000.0,
+        bids=[(str(price), str(quantity)) for price, quantity in bids],
+        asks=[(str(price), str(quantity)) for price, quantity in asks],
     )
 
 

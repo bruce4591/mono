@@ -10,6 +10,7 @@ export type InstrumentRoute = {
 
 export type AlertEventsRoute = { name: "alertEvents" };
 export type AlertRulesRoute = { name: "alertRules" };
+export type StrategiesRoute = { name: "strategies" };
 export type SettingsRoute = { name: "settings" };
 
 export type AppRoute =
@@ -17,6 +18,7 @@ export type AppRoute =
   | InstrumentRoute
   | AlertEventsRoute
   | AlertRulesRoute
+  | StrategiesRoute
   | SettingsRoute;
 
 export const homeRoute: HomeRoute = { name: "home" };

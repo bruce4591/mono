@@ -1410,6 +1410,113 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(marker["ma11"], 64000.0)
         self.assertIsNone(marker["volume_ratio"])
 
+    def test_get_mobile_instrument_detail_payload_returns_strategy_markers_on_chart_period(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instrument_id = InstrumentRepository(connection).upsert(
+                    binance_futures_symbol_to_instrument({"symbol": "BTCUSDT"})
+                )
+                IntradayBarRepository(connection).upsert(
+                    IntradayBar(
+                        instrument_id=instrument_id,
+                        interval="1m",
+                        bar_start_ts_utc="2026-04-12T13:21:00Z",
+                        bar_end_ts_utc="2026-04-12T13:21:59Z",
+                        trade_date_local="2026-04-12",
+                        open=63950.0,
+                        high=64050.0,
+                        low=63900.0,
+                        close=64000.0,
+                        volume_raw=12.0,
+                        turnover_raw=768000.0,
+                        is_closed_bar=True,
+                        source="binance_futures_ws",
+                    )
+                )
+                push_device_id = _insert_push_device(connection)
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_rule (
+                        push_device_id,
+                        symbol,
+                        market,
+                        condition_type,
+                        source_type,
+                        metric_key,
+                        operator,
+                        threshold,
+                        cooldown_seconds,
+                        enabled,
+                        created_by,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES (?, 'BTCUSDT', 'CRYPTO_FUTURES', 'paper_strategy_pin',
+                        'strategy', 'paper_trade', 'event', 0.0, 0, 1,
+                        'system_strategy_crypto_pin_rebound_v1', ?, ?)
+                    """,
+                    (
+                        push_device_id,
+                        "2026-04-12T13:20:00Z",
+                        "2026-04-12T13:20:00Z",
+                    ),
+                )
+                rule_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_event (
+                        mobile_alert_rule_id,
+                        triggered_at_utc,
+                        observed_value,
+                        message,
+                        dedupe_key,
+                        alert_metadata,
+                        delivery_status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'sent')
+                    """,
+                    (
+                        rule_id,
+                        "2026-04-12T13:21:05Z",
+                        64000.0,
+                        "BTCUSDT Pin 模拟开多 成交价 64000",
+                        "paper_strategy_pin:crypto_pin_rebound_v1:1",
+                        json.dumps(
+                            {
+                                "chart_period": "1m",
+                                "bar_time": "2026-04-12T13:21:05Z",
+                                "price": 64000.0,
+                                "direction": "up",
+                                "label": "Pin 模拟开多",
+                                "condition_label": "Pin 模拟开多",
+                                "signal_timeframe": "realtime",
+                                "strategy_id": "crypto_pin_rebound_v1",
+                            }
+                        ),
+                    ),
+                )
+
+                payload = api_module.get_mobile_instrument_detail_payload(
+                    connection,
+                    market="CRYPTO_FUTURES",
+                    symbol="BTCUSDT",
+                    period="1m",
+                    intraday_limit=5,
+                    allow_backfill=False,
+                )
+
+        assert payload is not None
+        self.assertEqual(len(payload["alert_markers"]), 1)
+        marker = payload["alert_markers"][0]
+        self.assertEqual(marker["time"], "2026-04-12T13:21:05Z")
+        self.assertEqual(marker["price"], 64000.0)
+        self.assertEqual(marker["direction"], "up")
+        self.assertEqual(marker["condition_type"], "paper_strategy_pin")
+        self.assertEqual(marker["condition_label"], "Pin 模拟开多")
+
     def test_instrument_detail_endpoint_returns_aggregated_chart_payload(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

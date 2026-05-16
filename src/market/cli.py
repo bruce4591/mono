@@ -31,7 +31,10 @@ from market.collectors.alpaca import ALPACA_DEFAULT_REQUEST_TIMEOUT_SECONDS
 from market.collectors.akshare import AkshareCollector
 from market.collectors.akshare import AKSHARE_DEFAULT_REQUEST_TIMEOUT_SECONDS
 from market.collectors.binance import BinanceCollector
-from market.collectors.binance_ws import BinanceKlineWebSocketCollector
+from market.collectors.binance_ws import (
+    BinanceFuturesTradeBookWebSocketCollector,
+    BinanceKlineWebSocketCollector,
+)
 from market.collectors.base import CollectorResult, run_collector_job
 from market.crypto_gaps import fill_binance_1m_gaps
 from market.crypto_gaps import fill_binance_futures_1m_gaps
@@ -50,6 +53,11 @@ from market.repositories import (
 )
 from market.sample_data import seed_sample_data
 from market.settings import load_settings
+from market.strategy.pin_realtime import RealtimePinPaperStrategyEngine
+from market.trade.pin_label_backtest import (
+    build_candidate_signal_scorer_from_args,
+    build_kline_curve_candidate_config_from_args,
+)
 from market.watchlists import sync_watchlist_from_file
 
 
@@ -418,6 +426,39 @@ def build_parser() -> argparse.ArgumentParser:
     run_futures_kline_ws.add_argument("--top-usdt-limit", type=int, default=60)
     run_futures_kline_ws.add_argument("--gap-fill-on-reconnect", action="store_true")
     run_futures_kline_ws.add_argument("--dry-run", action="store_true")
+
+    run_pin_strategy_futures_ws = subparsers.add_parser(
+        "run-pin-strategy-futures-ws",
+        help="Run BTC/ETH futures aggTrade/depth streams for the Pin paper strategy",
+    )
+    run_pin_strategy_futures_ws.add_argument("--db-path", type=Path, default=None)
+    run_pin_strategy_futures_ws.add_argument(
+        "--symbol",
+        action="append",
+        default=[],
+        help="Futures symbol to subscribe; defaults to BTCUSDT and ETHUSDT",
+    )
+    run_pin_strategy_futures_ws.add_argument("--max-streams-per-connection", type=int, default=100)
+    run_pin_strategy_futures_ws.add_argument(
+        "--archive-dir",
+        type=Path,
+        default=REPO_ROOT / "data" / "ws_archive" / "binance_futures_trade_book",
+        help="Directory for daily gzip JSONL websocket archives",
+    )
+    run_pin_strategy_futures_ws.add_argument("--down-wick-signal-thresholds-json")
+    run_pin_strategy_futures_ws.add_argument("--up-wick-signal-thresholds-json")
+    run_pin_strategy_futures_ws.add_argument("--trend-break-filter-thresholds-json")
+    run_pin_strategy_futures_ws.add_argument("--min-candidate-signal-score", type=float, default=1.0)
+    run_pin_strategy_futures_ws.add_argument("--min-trend-filter-score", type=float, default=1.0)
+    run_pin_strategy_futures_ws.add_argument("--enable-kline-curve-candidates", action="store_true")
+    run_pin_strategy_futures_ws.add_argument("--kline-candidate-windows", default="1,15")
+    run_pin_strategy_futures_ws.add_argument("--kline-candidate-directions", default="down_flush")
+    run_pin_strategy_futures_ws.add_argument("--kline-candidate-min-curve-score", type=float, default=0.80)
+    run_pin_strategy_futures_ws.add_argument("--kline-candidate-lookahead-seconds", type=float, default=180.0)
+    run_pin_strategy_futures_ws.add_argument("--kline-candidate-history-size", type=int, default=240)
+    run_pin_strategy_futures_ws.add_argument("--kline-candidate-cluster-seconds", type=float, default=900.0)
+    run_pin_strategy_futures_ws.add_argument("--kline-candidate-min-cluster-score", type=float, default=0.50)
+    run_pin_strategy_futures_ws.add_argument("--dry-run", action="store_true")
 
     add_alert_rule = subparsers.add_parser(
         "add-alert-rule", help="Create or update a threshold alert rule"
@@ -1078,6 +1119,41 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "binance futures kline ws stopped: "
             f"{result.items_synced} messages, interval={args.interval}"
+        )
+        return 0
+
+    if args.command == "run-pin-strategy-futures-ws":
+        normalized_symbols = [symbol.upper() for symbol in (args.symbol or ["BTCUSDT", "ETHUSDT"])]
+        candidate_signal_scorer = build_candidate_signal_scorer_from_args(args)
+        kline_curve_candidate_config = build_kline_curve_candidate_config_from_args(args)
+        if args.dry_run:
+            print(
+                "pin strategy futures ws ready: "
+                f"{','.join(normalized_symbols)} strategy=crypto_pin_rebound_v1 "
+                f"candidate_scorer={candidate_signal_scorer is not None} "
+                f"kline_curve={kline_curve_candidate_config is not None}"
+            )
+            return 0
+        engine = RealtimePinPaperStrategyEngine(
+            symbols=normalized_symbols,
+            candidate_signal_scorer=candidate_signal_scorer,
+            kline_curve_candidate_config=kline_curve_candidate_config,
+        )
+        collector = BinanceFuturesTradeBookWebSocketCollector(
+            db_path=db_path if command_database_url.startswith("sqlite:///") else None,
+            database_url=command_database_url,
+            symbols=normalized_symbols,
+            engine=engine,
+            max_streams_per_connection=args.max_streams_per_connection,
+            ws_base_url="wss://fstream.binance.com/market",
+            archive_dir=args.archive_dir,
+            include_kline_stream=kline_curve_candidate_config is not None,
+        )
+        result = collector.run_forever()
+        print(
+            "pin strategy futures ws stopped: "
+            f"{result.items_synced} messages, "
+            f"strategy_events={result.metadata.get('strategy_events', 0)}"
         )
         return 0
 

@@ -1013,6 +1013,89 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(created[0]["ws_base_url"], "wss://fstream.binance.com/market")
 
+    def test_run_pin_strategy_futures_ws_defaults_to_btc_and_eth(self):
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout):
+            exit_code = main(
+                [
+                    "run-pin-strategy-futures-ws",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--dry-run",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("BTCUSDT,ETHUSDT", stdout.getvalue())
+
+    def test_run_pin_strategy_futures_ws_uses_trade_book_collector(self):
+        created = []
+
+        class FakeCollector:
+            def __init__(self, **kwargs):
+                created.append(kwargs)
+
+            def run_forever(self):
+                return CollectorResult(
+                    source_name="binance_futures_trade_book_ws",
+                    items_synced=0,
+                    metadata={"strategy_events": 0},
+                )
+
+        with patch("market.cli.BinanceFuturesTradeBookWebSocketCollector", FakeCollector):
+            exit_code = main(
+                [
+                    "run-pin-strategy-futures-ws",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--symbol",
+                    "BTCUSDT",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(created[0]["symbols"], ["BTCUSDT"])
+        self.assertEqual(created[0]["ws_base_url"], "wss://fstream.binance.com/market")
+        self.assertEqual(
+            created[0]["archive_dir"],
+            Path.cwd() / "data" / "ws_archive" / "binance_futures_trade_book",
+        )
+
+    def test_run_pin_strategy_futures_ws_enables_kline_curve_stream(self):
+        created = []
+
+        class FakeCollector:
+            def __init__(self, **kwargs):
+                created.append(kwargs)
+
+            def run_forever(self):
+                return CollectorResult(
+                    source_name="binance_futures_trade_book_ws",
+                    items_synced=0,
+                    metadata={"strategy_events": 0},
+                )
+
+        with patch("market.cli.BinanceFuturesTradeBookWebSocketCollector", FakeCollector):
+            exit_code = main(
+                [
+                    "run-pin-strategy-futures-ws",
+                    "--db-path",
+                    "./data/market.sqlite3",
+                    "--symbol",
+                    "BTCUSDT",
+                    "--enable-kline-curve-candidates",
+                    "--kline-candidate-windows",
+                    "1",
+                    "--kline-candidate-min-cluster-score",
+                    "0",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(created[0]["include_kline_stream"])
+        self.assertIsNotNone(created[0]["engine"].kline_curve_candidate_config)
+
     def test_run_binance_kline_ws_can_use_top_usdt_symbols(self):
         stdout = io.StringIO()
 

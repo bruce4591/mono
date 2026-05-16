@@ -95,6 +95,9 @@ export function HomeScreen({
           <Pressable onPress={() => navigate({ name: "alertRules" })}>
             <Text style={styles.link}>Rules</Text>
           </Pressable>
+          <Pressable onPress={() => navigate({ name: "strategies" })}>
+            <Text style={styles.link}>Strategies</Text>
+          </Pressable>
           <Pressable onPress={() => navigate({ name: "settings" })}>
             <Text style={styles.link}>Settings</Text>
           </Pressable>

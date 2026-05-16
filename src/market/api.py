@@ -693,7 +693,7 @@ def _get_mobile_alert_markers(
                 mobile_alert_event.mobile_alert_rule_id
         WHERE mobile_alert_rule.market = ?
             AND mobile_alert_rule.symbol = ?
-            AND mobile_alert_rule.source_type = 'technical'
+            AND mobile_alert_rule.source_type IN ('technical', 'strategy')
             AND mobile_alert_event.alert_metadata IS NOT NULL
         ORDER BY mobile_alert_event.triggered_at_utc DESC,
             mobile_alert_event.mobile_alert_event_id DESC
@@ -705,9 +705,10 @@ def _get_mobile_alert_markers(
     seen_marker_keys: set[tuple[str, str, str]] = set()
     for row in rows:
         metadata = _parse_alert_metadata(row["alert_metadata"])
-        if metadata.get("period") != period:
+        marker_period = metadata.get("chart_period") or metadata.get("period")
+        if marker_period != period:
             continue
-        if str(row["condition_type"]) != "ma11_breakout_1d":
+        if str(row["condition_type"]) not in {"ma11_breakout_1d", "paper_strategy_pin"}:
             continue
         bar_time = _optional_str(metadata.get("bar_time"))
         price = _optional_float(metadata.get("price"))
@@ -1633,6 +1634,49 @@ def get_mobile_alert_events_payload(
     return {"events": [_mobile_alert_event_payload(row) for row in rows]}
 
 
+def get_mobile_strategy_payload(connection: sqlite3.Connection) -> dict[str, object]:
+    _ensure_mobile_strategy_tables(connection)
+    strategy_rows = connection.execute(
+        """
+        SELECT strategy_id, name, description, execution_mode, enabled, updated_at_utc
+        FROM strategy_definition
+        ORDER BY strategy_id
+        """
+    ).fetchall()
+    strategies: list[dict[str, object]] = []
+    for strategy in strategy_rows:
+        symbol_rows = connection.execute(
+            """
+            SELECT DISTINCT market, symbol
+            FROM paper_position
+            WHERE strategy_id = ?
+            ORDER BY symbol
+            """,
+            (strategy["strategy_id"],),
+        ).fetchall()
+        symbols = [
+            _mobile_strategy_symbol_payload(
+                connection,
+                strategy_id=str(strategy["strategy_id"]),
+                market=str(symbol_row["market"]),
+                symbol=str(symbol_row["symbol"]),
+            )
+            for symbol_row in symbol_rows
+        ]
+        strategies.append(
+            {
+                "strategy_id": str(strategy["strategy_id"]),
+                "name": str(strategy["name"]),
+                "description": str(strategy["description"]),
+                "execution_mode": str(strategy["execution_mode"]),
+                "enabled": bool(strategy["enabled"]),
+                "updated_at_utc": str(strategy["updated_at_utc"]),
+                "symbols": symbols,
+            }
+        )
+    return {"strategies": strategies}
+
+
 def get_mobile_push_device_debug_payload(
     connection: sqlite3.Connection,
     *,
@@ -2053,6 +2097,12 @@ def _make_handler(
                         after_id=after_id,
                         limit=limit,
                     )
+                self._write_json(payload)
+                return
+
+            if parsed.path == "/api/mobile/strategies":
+                with open_connection() as connection:
+                    payload = get_mobile_strategy_payload(connection)
                 self._write_json(payload)
                 return
 
@@ -2848,6 +2898,196 @@ def _mobile_alert_event_payload(row: sqlite3.Row) -> dict[str, object]:
         "delivery_status": str(row["delivery_status"]),
         "data": data,
     }
+
+
+def _mobile_strategy_symbol_payload(
+    connection: sqlite3.Connection,
+    *,
+    strategy_id: str,
+    market: str,
+    symbol: str,
+) -> dict[str, object]:
+    position = connection.execute(
+        """
+        SELECT
+            paper_position_id,
+            side,
+            status,
+            entry_price,
+            exit_price,
+            opened_at_utc,
+            closed_at_utc,
+            realized_return_pct
+        FROM paper_position
+        WHERE strategy_id = ?
+            AND market = ?
+            AND symbol = ?
+        ORDER BY
+            CASE status WHEN 'open' THEN 0 ELSE 1 END,
+            paper_position_id DESC
+        LIMIT 1
+        """,
+        (strategy_id, market, symbol),
+    ).fetchone()
+    trade = connection.execute(
+        """
+        SELECT action, price, event_time_utc, realized_return_pct
+        FROM paper_trade
+        JOIN instrument
+            ON instrument.instrument_id = paper_trade.instrument_id
+        WHERE paper_trade.strategy_id = ?
+            AND instrument.market = ?
+            AND instrument.symbol = ?
+        ORDER BY paper_trade.event_time_utc DESC, paper_trade.paper_trade_id DESC
+        LIMIT 1
+        """,
+        (strategy_id, market, symbol),
+    ).fetchone()
+    snapshot = connection.execute(
+        """
+        SELECT latest_market_snapshot.last_price, latest_market_snapshot.snapshot_ts_utc
+        FROM latest_market_snapshot
+        JOIN instrument
+            ON instrument.instrument_id = latest_market_snapshot.instrument_id
+        WHERE instrument.market = ?
+            AND instrument.symbol = ?
+        LIMIT 1
+        """,
+        (market, symbol),
+    ).fetchone()
+    entry_price = _optional_float(position["entry_price"]) if position else None
+    current_price = _optional_float(snapshot["last_price"]) if snapshot else None
+    unrealized_return_pct = None
+    if position and str(position["status"]) == "open" and entry_price not in (None, 0) and current_price is not None:
+        unrealized_return_pct = ((current_price - entry_price) / entry_price) * 100
+    return {
+        "market": market,
+        "symbol": symbol,
+        "position_status": str(position["status"]) if position else "none",
+        "side": str(position["side"]) if position else None,
+        "entry_price": entry_price,
+        "exit_price": _optional_float(position["exit_price"]) if position else None,
+        "current_price": current_price,
+        "opened_at_utc": str(position["opened_at_utc"]) if position else None,
+        "closed_at_utc": str(position["closed_at_utc"]) if position and position["closed_at_utc"] is not None else None,
+        "realized_return_pct": _optional_float(position["realized_return_pct"]) if position else None,
+        "unrealized_return_pct": unrealized_return_pct,
+        "last_trade": (
+            {
+                "action": str(trade["action"]),
+                "price": _optional_float(trade["price"]),
+                "event_time_utc": str(trade["event_time_utc"]),
+                "realized_return_pct": _optional_float(trade["realized_return_pct"]),
+            }
+            if trade
+            else None
+        ),
+    }
+
+
+def _ensure_mobile_strategy_tables(connection: sqlite3.Connection) -> None:
+    if getattr(connection, "backend", "sqlite") == "postgres":
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS strategy_definition (
+                strategy_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                execution_mode TEXT NOT NULL DEFAULT 'paper',
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at_utc TIMESTAMPTZ NOT NULL,
+                updated_at_utc TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_position (
+                paper_position_id BIGSERIAL PRIMARY KEY,
+                strategy_id TEXT NOT NULL REFERENCES strategy_definition(strategy_id),
+                instrument_id BIGINT NOT NULL REFERENCES instrument(instrument_id),
+                market TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                status TEXT NOT NULL,
+                entry_price DOUBLE PRECISION NOT NULL,
+                exit_price DOUBLE PRECISION,
+                opened_at_utc TIMESTAMPTZ NOT NULL,
+                closed_at_utc TIMESTAMPTZ,
+                realized_return_pct DOUBLE PRECISION,
+                signal_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at_utc TIMESTAMPTZ NOT NULL,
+                updated_at_utc TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS paper_trade (
+                paper_trade_id BIGSERIAL PRIMARY KEY,
+                strategy_id TEXT NOT NULL REFERENCES strategy_definition(strategy_id),
+                paper_position_id BIGINT NOT NULL REFERENCES paper_position(paper_position_id),
+                instrument_id BIGINT NOT NULL REFERENCES instrument(instrument_id),
+                action TEXT NOT NULL,
+                price DOUBLE PRECISION NOT NULL,
+                event_time_utc TIMESTAMPTZ NOT NULL,
+                realized_return_pct DOUBLE PRECISION,
+                signal_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                created_at_utc TIMESTAMPTZ NOT NULL
+            )
+            """
+        )
+        return
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS strategy_definition (
+            strategy_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            execution_mode TEXT NOT NULL DEFAULT 'paper',
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at_utc TEXT NOT NULL,
+            updated_at_utc TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS paper_position (
+            paper_position_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy_id TEXT NOT NULL,
+            instrument_id INTEGER NOT NULL,
+            market TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            status TEXT NOT NULL,
+            entry_price REAL NOT NULL,
+            exit_price REAL,
+            opened_at_utc TEXT NOT NULL,
+            closed_at_utc TEXT,
+            realized_return_pct REAL,
+            signal_payload TEXT NOT NULL DEFAULT '{}',
+            created_at_utc TEXT NOT NULL,
+            updated_at_utc TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS paper_trade (
+            paper_trade_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            strategy_id TEXT NOT NULL,
+            paper_position_id INTEGER NOT NULL,
+            instrument_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            price REAL NOT NULL,
+            event_time_utc TEXT NOT NULL,
+            realized_return_pct REAL,
+            signal_payload TEXT NOT NULL DEFAULT '{}',
+            created_at_utc TEXT NOT NULL
+        )
+        """
+    )
 
 
 def _mobile_delivery_debug_payload(row: sqlite3.Row) -> dict[str, object]:

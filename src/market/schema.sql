@@ -248,6 +248,63 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_mobile_alert_event_rule_dedupe
     ON mobile_alert_event (mobile_alert_rule_id, dedupe_key)
     WHERE dedupe_key IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS strategy_definition (
+    strategy_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    execution_mode TEXT NOT NULL DEFAULT 'paper',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at_utc TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS paper_position (
+    paper_position_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy_id TEXT NOT NULL,
+    instrument_id INTEGER NOT NULL,
+    market TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    status TEXT NOT NULL,
+    entry_price REAL NOT NULL,
+    entry_notional REAL,
+    quantity REAL,
+    entry_fee REAL,
+    exit_price REAL,
+    exit_notional REAL,
+    exit_fee REAL,
+    opened_at_utc TEXT NOT NULL,
+    closed_at_utc TEXT,
+    realized_pnl REAL,
+    realized_return_pct REAL,
+    signal_payload TEXT NOT NULL DEFAULT '{}',
+    created_at_utc TEXT NOT NULL,
+    updated_at_utc TEXT NOT NULL,
+    FOREIGN KEY (instrument_id) REFERENCES instrument(instrument_id)
+);
+
+CREATE TABLE IF NOT EXISTS paper_trade (
+    paper_trade_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy_id TEXT NOT NULL,
+    paper_position_id INTEGER NOT NULL,
+    instrument_id INTEGER NOT NULL,
+    action TEXT NOT NULL,
+    price REAL NOT NULL,
+    notional REAL,
+    quantity REAL,
+    fee REAL,
+    event_time_utc TEXT NOT NULL,
+    realized_pnl REAL,
+    realized_return_pct REAL,
+    signal_payload TEXT NOT NULL DEFAULT '{}',
+    created_at_utc TEXT NOT NULL,
+    FOREIGN KEY (paper_position_id) REFERENCES paper_position(paper_position_id),
+    FOREIGN KEY (instrument_id) REFERENCES instrument(instrument_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_paper_trade_strategy_time
+    ON paper_trade (strategy_id, event_time_utc DESC, paper_trade_id DESC);
+
 CREATE TABLE IF NOT EXISTS mobile_alert_delivery (
     mobile_alert_delivery_id INTEGER PRIMARY KEY AUTOINCREMENT,
     mobile_alert_event_id INTEGER NOT NULL,

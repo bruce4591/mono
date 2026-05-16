@@ -244,6 +244,60 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_mobile_alert_event_rule_dedupe
     ON mobile_alert_event (mobile_alert_rule_id, dedupe_key)
     WHERE dedupe_key IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS strategy_definition (
+    strategy_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    execution_mode TEXT NOT NULL DEFAULT 'paper',
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at_utc TIMESTAMPTZ NOT NULL,
+    updated_at_utc TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS paper_position (
+    paper_position_id BIGSERIAL PRIMARY KEY,
+    strategy_id TEXT NOT NULL REFERENCES strategy_definition(strategy_id),
+    instrument_id BIGINT NOT NULL REFERENCES instrument(instrument_id),
+    market TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL,
+    status TEXT NOT NULL,
+    entry_price DOUBLE PRECISION NOT NULL,
+    entry_notional DOUBLE PRECISION,
+    quantity DOUBLE PRECISION,
+    entry_fee DOUBLE PRECISION,
+    exit_price DOUBLE PRECISION,
+    exit_notional DOUBLE PRECISION,
+    exit_fee DOUBLE PRECISION,
+    opened_at_utc TIMESTAMPTZ NOT NULL,
+    closed_at_utc TIMESTAMPTZ,
+    realized_pnl DOUBLE PRECISION,
+    realized_return_pct DOUBLE PRECISION,
+    signal_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at_utc TIMESTAMPTZ NOT NULL,
+    updated_at_utc TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS paper_trade (
+    paper_trade_id BIGSERIAL PRIMARY KEY,
+    strategy_id TEXT NOT NULL REFERENCES strategy_definition(strategy_id),
+    paper_position_id BIGINT NOT NULL REFERENCES paper_position(paper_position_id),
+    instrument_id BIGINT NOT NULL REFERENCES instrument(instrument_id),
+    action TEXT NOT NULL,
+    price DOUBLE PRECISION NOT NULL,
+    notional DOUBLE PRECISION,
+    quantity DOUBLE PRECISION,
+    fee DOUBLE PRECISION,
+    event_time_utc TIMESTAMPTZ NOT NULL,
+    realized_pnl DOUBLE PRECISION,
+    realized_return_pct DOUBLE PRECISION,
+    signal_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at_utc TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_paper_trade_strategy_time
+    ON paper_trade (strategy_id, event_time_utc DESC, paper_trade_id DESC);
+
 CREATE TABLE IF NOT EXISTS mobile_alert_delivery (
     mobile_alert_delivery_id BIGSERIAL PRIMARY KEY,
     mobile_alert_event_id BIGINT NOT NULL REFERENCES mobile_alert_event(mobile_alert_event_id),

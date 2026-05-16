@@ -77,6 +77,10 @@ CRYPTO_RANKING_ALERT_CONDITIONS = (
         "operator": ">",
     },
 )
+PIN_PAPER_STRATEGY_ID = "crypto_pin_rebound_v1"
+PIN_PAPER_STRATEGY_CREATED_BY = "system_strategy_crypto_pin_rebound_v1"
+PIN_PAPER_STRATEGY_MARKET = "CRYPTO_FUTURES"
+PIN_PAPER_STRATEGY_SYMBOLS = ("BTCUSDT", "ETHUSDT")
 
 OPERATORS: dict[str, Callable[[float, float], bool]] = {
     ">": operator.gt,
@@ -146,6 +150,7 @@ def evaluate_mobile_alert_rules(
 ) -> list[dict[str, object]]:
     _ensure_mobile_alert_event_dedupe_column(connection)
     _sync_crypto_ranking_mobile_alert_rules(connection, now_utc=now_utc)
+    _sync_pin_paper_strategy_mobile_alert_rules(connection, now_utc=now_utc)
     rows = connection.execute(
         """
         SELECT
@@ -173,6 +178,34 @@ def evaluate_mobile_alert_rules(
     ).fetchall()
     messages: list[dict[str, object]] = []
     for row in rows:
+        if str(row["source_type"]) == "strategy":
+            strategy_signal = _mobile_strategy_signal_for_row(connection, row)
+            if strategy_signal is None:
+                continue
+            rule_id = int(row["mobile_alert_rule_id"])
+            event_time_utc = strategy_signal.metadata.get("event_time_utc")
+            event_now_utc = event_time_utc if isinstance(event_time_utc, str) and event_time_utc else now_utc
+            event_id = _insert_mobile_alert_event(
+                connection,
+                rule_id=rule_id,
+                now_utc=event_now_utc,
+                observed_value=strategy_signal.observed_value,
+                message=strategy_signal.message,
+                dedupe_key=strategy_signal.dedupe_key,
+                alert_metadata=strategy_signal.metadata,
+            )
+            if event_id is None:
+                continue
+            messages.append(
+                _mobile_push_message_for_event(
+                    row,
+                    event_id=event_id,
+                    title_suffix=strategy_signal.title_suffix,
+                    body=strategy_signal.message,
+                    metadata=strategy_signal.metadata,
+                )
+            )
+            continue
         if str(row["source_type"]) == "technical":
             technical_signal = _mobile_technical_signal_for_row(connection, row)
             if technical_signal is None:
@@ -390,6 +423,79 @@ def _active_crypto_ranking_alert_devices(connection: sqlite3.Connection) -> list
         LIMIT 1
         """
     ).fetchall()
+
+
+def _sync_pin_paper_strategy_mobile_alert_rules(
+    connection: sqlite3.Connection,
+    *,
+    now_utc: str,
+) -> None:
+    devices = _active_crypto_ranking_alert_devices(connection)
+    if not devices:
+        return
+    existing_rows = connection.execute(
+        """
+        SELECT mobile_alert_rule_id, push_device_id, symbol
+        FROM mobile_alert_rule
+        WHERE source_type = 'strategy'
+            AND created_by = ?
+        """,
+        (PIN_PAPER_STRATEGY_CREATED_BY,),
+    ).fetchall()
+    existing = {
+        (int(row["push_device_id"]), str(row["symbol"]))
+        for row in existing_rows
+    }
+    active_device_ids = {int(row["push_device_id"]) for row in devices}
+    for row in existing_rows:
+        connection.execute(
+            """
+            UPDATE mobile_alert_rule
+            SET enabled = ?, updated_at_utc = ?
+            WHERE mobile_alert_rule_id = ?
+            """,
+            (
+                int(row["push_device_id"]) in active_device_ids
+                and str(row["symbol"]) in PIN_PAPER_STRATEGY_SYMBOLS,
+                now_utc,
+                int(row["mobile_alert_rule_id"]),
+            ),
+        )
+    for device in devices:
+        push_device_id = int(device["push_device_id"])
+        for symbol in PIN_PAPER_STRATEGY_SYMBOLS:
+            key = (push_device_id, symbol)
+            if key in existing:
+                continue
+            connection.execute(
+                """
+                INSERT INTO mobile_alert_rule (
+                    push_device_id,
+                    symbol,
+                    market,
+                    condition_type,
+                    source_type,
+                    metric_key,
+                    operator,
+                    threshold,
+                    cooldown_seconds,
+                    enabled,
+                    created_by,
+                    created_at_utc,
+                    updated_at_utc
+                )
+                VALUES (?, ?, ?, 'paper_strategy_pin', 'strategy', 'paper_trade', 'event', 0, 0, TRUE, ?, ?, ?)
+                """,
+                (
+                    push_device_id,
+                    symbol,
+                    PIN_PAPER_STRATEGY_MARKET,
+                    PIN_PAPER_STRATEGY_CREATED_BY,
+                    now_utc,
+                    now_utc,
+                ),
+            )
+            existing.add(key)
 
 
 def _latest_crypto_ranking_instruments(
@@ -633,6 +739,86 @@ def _mobile_technical_signal_for_row(
             },
         )
     return None
+
+
+def _mobile_strategy_signal_for_row(
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+) -> MobileTechnicalSignal | None:
+    strategy_id = PIN_PAPER_STRATEGY_ID
+    trade = connection.execute(
+        """
+        SELECT
+            paper_trade.paper_trade_id,
+            paper_trade.action,
+            paper_trade.price,
+            paper_trade.event_time_utc,
+            paper_trade.realized_return_pct,
+            paper_trade.signal_payload
+        FROM paper_trade
+        JOIN instrument
+            ON instrument.instrument_id = paper_trade.instrument_id
+        WHERE paper_trade.strategy_id = ?
+            AND instrument.market = ?
+            AND instrument.symbol = ?
+        ORDER BY paper_trade.event_time_utc DESC, paper_trade.paper_trade_id DESC
+        LIMIT 1
+        """,
+        (strategy_id, str(row["market"]), str(row["symbol"])),
+    ).fetchone()
+    if trade is None:
+        return None
+    action = str(trade["action"])
+    price = float(trade["price"])
+    return_pct = _optional_float(trade["realized_return_pct"])
+    event_time = _format_row_temporal_key(trade["event_time_utc"])
+    signal_payload = _parse_json_object(trade["signal_payload"])
+    chart_period = (
+        signal_payload.get("chart_period")
+        if isinstance(signal_payload.get("chart_period"), str)
+        else "1m"
+    )
+    signal_timeframe = (
+        signal_payload.get("signal_timeframe")
+        if isinstance(signal_payload.get("signal_timeframe"), str)
+        else "realtime"
+    )
+    if action == "open_long":
+        title_suffix = "Pin 模拟开多"
+        message = f"{row['symbol']} Pin 模拟开多 成交价 {_format_float(price)}"
+        direction = "up"
+    elif action == "close_long":
+        title_suffix = "Pin 模拟平多"
+        pct_text = f" 收益率 {return_pct:+.2f}%" if return_pct is not None else ""
+        message = f"{row['symbol']} Pin 模拟平多 成交价 {_format_float(price)}{pct_text}"
+        direction = "down"
+    else:
+        title_suffix = "Pin 策略事件"
+        message = f"{row['symbol']} Pin 策略事件 {action} @ {_format_float(price)}"
+        direction = "up"
+    metadata: dict[str, object] = {
+        "chart_period": chart_period,
+        "signal_timeframe": signal_timeframe,
+        "bar_time": event_time,
+        "price": price,
+        "direction": direction,
+        "label": title_suffix,
+        "condition_label": title_suffix,
+        "strategy_id": strategy_id,
+        "action": action,
+        "event_time_utc": event_time,
+        "paper_trade_id": int(trade["paper_trade_id"]),
+    }
+    if return_pct is not None:
+        metadata["realized_return_pct"] = return_pct
+    return MobileTechnicalSignal(
+        title_suffix=title_suffix,
+        metric="paper_trade",
+        observed_value=price,
+        message=message,
+        dedupe_key=f"paper_strategy_pin:{strategy_id}:{trade['paper_trade_id']}",
+        metadata=metadata,
+    )
 
 
 def _technical_signal_is_after_rule_creation(
@@ -963,7 +1149,7 @@ def _mobile_push_message_for_event(
         ),
     }
     if metadata:
-        period = metadata.get("period")
+        period = metadata.get("chart_period") or metadata.get("period")
         bar_time = metadata.get("bar_time")
         if isinstance(period, str) and period:
             data["period"] = period
@@ -973,6 +1159,8 @@ def _mobile_push_message_for_event(
         "mobile_alert_event_id": event_id,
         "mobile_alert_rule_id": int(row["mobile_alert_rule_id"]),
         "push_device_id": int(row["push_device_id"]),
+        "market": str(row["market"]),
+        "symbol": str(row["symbol"]),
         "push_token": str(row["push_token"]),
         "getui_cid": (
             str(row["getui_cid"]) if row["getui_cid"] is not None else None
@@ -1021,6 +1209,18 @@ def _format_row_temporal_key(value: object) -> str:
     if isinstance(value, datetime):
         return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     return str(value)
+
+
+def _parse_json_object(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _parse_utc(value: str) -> datetime:

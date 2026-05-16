@@ -17,6 +17,7 @@ import { AlertRulesScreen } from "../screens/AlertRulesScreen";
 import { HomeScreen } from "../screens/HomeScreen";
 import { InstrumentDetailScreen } from "../screens/InstrumentDetailScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
+import { StrategiesScreen } from "../screens/StrategiesScreen";
 import { theme } from "../theme";
 
 export function AppRoot() {
@@ -160,6 +161,7 @@ export function AppRoot() {
       {route.name === "alertRules" ? (
         <AlertRulesScreen navigate={setRoute} pushToken={devicePushToken} />
       ) : null}
+      {route.name === "strategies" ? <StrategiesScreen navigate={setRoute} /> : null}
       {route.name === "settings" ? (
         <SettingsScreen
           navigate={setRoute}
