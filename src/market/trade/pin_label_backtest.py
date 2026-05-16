@@ -548,7 +548,8 @@ def select_kline_curve_cluster_row(
                 candidate_row = apply_candidate_signal_scorer(candidate_row, scorer)
                 if not candidate_row.get("candidate_signal_passed"):
                     continue
-            cluster_score = kline_cluster_row_score(candidate_row, candidate, max_notional)
+            score_components = kline_cluster_score_components(candidate_row, candidate, max_notional)
+            cluster_score = score_components["total_score"]
             if cluster_score < candidate_config.min_cluster_score:
                 continue
             candidate_row.update(
@@ -557,6 +558,10 @@ def select_kline_curve_cluster_row(
                     "candidate_cluster_ended_at": isoformat_seconds(cluster.ended_at),
                     "candidate_cluster_size": len(cluster.candidates),
                     "candidate_cluster_score": cluster_score,
+                    "candidate_cluster_curve_score": score_components["curve_score"],
+                    "candidate_cluster_trade_ob_score": score_components["trade_ob_score"],
+                    "candidate_cluster_price_score": score_components["price_score"],
+                    "candidate_cluster_activity_score": score_components["activity_score"],
                     "candidate_cluster_max_trade_notional": max_notional,
                 }
             )
@@ -604,17 +609,39 @@ def kline_cluster_row_score(
     candidate: KlineCurveCandidate,
     max_notional: float,
 ) -> float:
+    return kline_cluster_score_components(row, candidate, max_notional)["total_score"]
+
+
+def kline_cluster_score_components(
+    row: dict[str, object],
+    candidate: KlineCurveCandidate,
+    max_notional: float,
+) -> dict[str, float]:
     price = positive_float(row.get("price")) or candidate.close
     trade_notional = positive_float(row.get("trade_notional")) or 0.0
-    volume_score = trade_notional / max_notional if max_notional > 0.0 else 0.0
-    signal_score = min(positive_float(row.get("candidate_signal_score")) or 0.0, 2.0) / 2.0
+    activity_score = trade_notional / max_notional if max_notional > 0.0 else 0.0
+    trade_ob_score = kline_cluster_trade_ob_score(row)
     price_score = kline_cluster_price_score(price, candidate)
-    return clamp01(
-        0.35 * candidate.curve_score
-        + 0.25 * signal_score
-        + 0.25 * price_score
-        + 0.15 * min(volume_score, 1.0)
+    curve_score = clamp01(candidate.curve_score)
+    total_score = clamp01(
+        0.35 * curve_score
+        + 0.30 * trade_ob_score
+        + 0.20 * price_score
+        + 0.15 * min(activity_score, 1.0)
     )
+    return {
+        "curve_score": curve_score,
+        "trade_ob_score": trade_ob_score,
+        "price_score": price_score,
+        "activity_score": min(activity_score, 1.0),
+        "total_score": total_score,
+    }
+
+
+def kline_cluster_trade_ob_score(row: dict[str, object]) -> float:
+    learned_signal_score = min(positive_float(row.get("candidate_signal_score")) or 0.0, 2.0) / 2.0
+    realtime_strength_score = clamp01(positive_float(row.get("strength")) or 0.0)
+    return max(learned_signal_score, realtime_strength_score)
 
 
 def kline_cluster_price_score(price: float, candidate: KlineCurveCandidate) -> float:

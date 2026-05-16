@@ -13,8 +13,20 @@ from market.realtime import parse_binance_futures_depth_event, parse_binance_fut
 from market.strategy.pin_realtime import RealtimePinPaperStrategyEngine
 from market.strategy.paper import PaperStrategyResult, evaluate_pin_paper_strategy
 from market.strategy.paper import evaluate_pin_paper_strategy_events
-from market.trade.pin_label_backtest import CandidateSignalScorer, KlineCurveCandidateConfig
-from market.trade.pin_stage_replay import EntryOrderPlan, PinStageConfig, Stage, StageEvent
+from market.trade.pin_label_backtest import (
+    CandidateSignalScorer,
+    KlineCurveCandidate,
+    KlineCurveCandidateConfig,
+    append_kline_curve_candidate_rows,
+    kline_cluster_score_components,
+)
+from market.trade.pin_stage_replay import (
+    EntryOrderPlan,
+    PinStageConfig,
+    Stage,
+    StageEvent,
+    isoformat_seconds,
+)
 from market.collectors.binance_ws import (
     BinanceFuturesTradeBookWebSocketCollector,
     build_combined_futures_trade_book_stream_urls,
@@ -355,6 +367,98 @@ class RealtimeTradeStrategyTests(unittest.TestCase):
         self.assertEqual(trade["action"], "open_long")
         self.assertEqual(float(trade["price"]), 98.5)
         self.assertIn("kline_curve", str(trade["signal_payload"]))
+
+    def test_kline_cluster_score_uses_curve_trade_ob_price_and_relative_activity(self):
+        candidate = KlineCurveCandidate(
+            timestamp=1_777_000_000.0,
+            ended_at=1_777_000_060.0,
+            window_minutes=15,
+            direction="down_flush",
+            stage="down_wick",
+            open=100.0,
+            high=100.2,
+            low=98.0,
+            close=99.5,
+            adverse_move_pct=0.02,
+            cumulative_move_pct=-0.005,
+            cumulative_abs_move_pct=0.03,
+            rebound_ratio=0.68,
+            curve_score=0.84,
+            percentile_score=0.90,
+            path_efficiency=0.70,
+        )
+        row = {
+            "price": 98.4,
+            "strength": 0.72,
+            "candidate_signal_score": 1.6,
+            "trade_notional": 25_000.0,
+        }
+
+        components = kline_cluster_score_components(row, candidate, max_notional=25_000.0)
+
+        self.assertAlmostEqual(components["curve_score"], 0.84)
+        self.assertAlmostEqual(components["trade_ob_score"], 0.80)
+        self.assertGreater(components["price_score"], 0.0)
+        self.assertEqual(components["activity_score"], 1.0)
+        self.assertGreater(components["total_score"], 0.70)
+
+    def test_kline_curve_candidate_row_records_cluster_score_components(self):
+        ts = 1_777_000_000.0
+        rows = [
+            {
+                "timestamp": isoformat_seconds(ts + 121.0),
+                "price": 98.4,
+            },
+        ]
+        rows[0].update(
+            {
+                "strength": 0.70,
+                "candidate_signal_score": 1.5,
+                "trade_notional": 50_000.0,
+            }
+        )
+        candidates = [
+            KlineCurveCandidate(
+                timestamp=ts,
+                ended_at=ts + 60.0,
+                window_minutes=15,
+                direction="down_flush",
+                stage="down_wick",
+                open=100.0,
+                high=100.2,
+                low=98.0,
+                close=99.5,
+                adverse_move_pct=0.02,
+                cumulative_move_pct=-0.005,
+                cumulative_abs_move_pct=0.03,
+                rebound_ratio=0.68,
+                curve_score=0.84,
+                percentile_score=0.90,
+                path_efficiency=0.70,
+            )
+        ]
+
+        output = append_kline_curve_candidate_rows(
+            rows,
+            candidates,
+            config=PinStageConfig(min_entry_order_notional=1_000.0, max_entry_order_notional=2_000.0),
+            candidate_config=KlineCurveCandidateConfig(
+                windows_minutes=(15,),
+                lookahead_seconds=300.0,
+                min_cluster_score=0.0,
+            ),
+        )
+        candidate_rows = [row for row in output if row.get("candidate_source") == "kline_curve"]
+
+        self.assertEqual(len(candidate_rows), 1)
+        for key in (
+            "candidate_cluster_curve_score",
+            "candidate_cluster_trade_ob_score",
+            "candidate_cluster_price_score",
+            "candidate_cluster_activity_score",
+        ):
+            self.assertIn(key, candidate_rows[0])
+        self.assertEqual(candidate_rows[0]["candidate_cluster_activity_score"], 1.0)
 
     def test_paper_strategy_trade_is_sent_through_mobile_alert_pipeline(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
