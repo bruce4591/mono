@@ -465,7 +465,7 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(messages[0]["title"], "BTCUSDT 自定义指标提醒")
         self.assertEqual(messages[0]["body"], "BTCUSDT indicator_value 3.1 > 2.5")
 
-    def test_evaluate_mobile_alert_rules_triggers_crypto_ranking_15m_ma11_breakout_volume(self):
+    def test_evaluate_mobile_alert_rules_syncs_only_daily_crypto_ranking_ma11_alerts(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
             init_database(db_path)
@@ -474,18 +474,17 @@ class AlertTests(unittest.TestCase):
                 instrument_id = _insert_crypto_ranking_alert_fixture(connection)
                 evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T04:00:00Z",
+                    now_utc="2026-05-04T00:00:00Z",
                 )
-                _insert_intraday_bars(
+                _insert_daily_bars(
                     connection,
                     instrument_id=instrument_id,
-                    closes=[100.0] * 20 + [99.0, 103.0],
-                    volumes=[100.0] * 21 + [200.0],
+                    closes=[100.0] * 10 + [99.0, 103.0],
                 )
 
                 messages = evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T05:31:00Z",
+                    now_utc="2026-05-05T00:01:00Z",
                 )
                 events = connection.execute(
                     """
@@ -499,17 +498,28 @@ class AlertTests(unittest.TestCase):
                             mobile_alert_event.mobile_alert_rule_id
                     """
                 ).fetchall()
+                enabled_conditions = {
+                    str(row["condition_type"])
+                    for row in connection.execute(
+                        """
+                        SELECT DISTINCT condition_type
+                        FROM mobile_alert_rule
+                        WHERE source_type = 'technical'
+                            AND enabled = 1
+                        """
+                    ).fetchall()
+                }
 
         self.assertEqual(len(messages), 1)
-        self.assertEqual(messages[0]["title"], "BTCUSDT 15m MA11 突破")
-        self.assertEqual(messages[0]["data"]["period"], "15m")
-        self.assertIn("量比 2.00x", messages[0]["body"])
+        self.assertEqual(messages[0]["title"], "BTCUSDT 1d MA11 突破")
+        self.assertEqual(messages[0]["data"]["period"], "1d")
+        self.assertEqual(enabled_conditions, {"ma11_breakout_1d"})
         self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]["condition_type"], "ma11_breakout_volume_15m")
-        self.assertIn("15m MA11 突破", events[0]["message"])
-        self.assertIn('"condition_label":"15m MA11 突破 + 量比 >= 1.5x"', events[0]["alert_metadata"])
+        self.assertEqual(events[0]["condition_type"], "ma11_breakout_1d")
+        self.assertIn("1d MA11 突破", events[0]["message"])
+        self.assertIn('"condition_label":"1d MA11 突破"', events[0]["alert_metadata"])
 
-    def test_evaluate_mobile_alert_rules_deduplicates_crypto_ranking_15m_bar(self):
+    def test_evaluate_mobile_alert_rules_deduplicates_crypto_ranking_daily_bar(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
             init_database(db_path)
@@ -518,22 +528,21 @@ class AlertTests(unittest.TestCase):
                 instrument_id = _insert_crypto_ranking_alert_fixture(connection)
                 evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T04:00:00Z",
+                    now_utc="2026-05-04T00:00:00Z",
                 )
-                _insert_intraday_bars(
+                _insert_daily_bars(
                     connection,
                     instrument_id=instrument_id,
-                    closes=[100.0] * 20 + [99.0, 103.0],
-                    volumes=[100.0] * 21 + [200.0],
+                    closes=[100.0] * 10 + [99.0, 103.0],
                 )
 
                 first_messages = evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T05:31:00Z",
+                    now_utc="2026-05-05T00:01:00Z",
                 )
                 second_messages = evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T05:32:00Z",
+                    now_utc="2026-05-05T00:30:00Z",
                 )
                 event_count = connection.execute(
                     "SELECT COUNT(*) FROM mobile_alert_event"
@@ -614,18 +623,17 @@ class AlertTests(unittest.TestCase):
                 )
                 evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T04:00:00Z",
+                    now_utc="2026-05-04T00:00:00Z",
                 )
-                _insert_intraday_bars(
+                _insert_daily_bars(
                     connection,
                     instrument_id=instrument_id,
-                    closes=[100.0] * 20 + [99.0, 103.0],
-                    volumes=[100.0] * 21 + [200.0],
+                    closes=[100.0] * 10 + [99.0, 103.0],
                 )
 
                 messages = evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T05:31:00Z",
+                    now_utc="2026-05-05T00:01:00Z",
                 )
                 enabled_rule_rows = connection.execute(
                     """
@@ -664,19 +672,18 @@ class AlertTests(unittest.TestCase):
                 )
                 evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T04:00:00Z",
+                    now_utc="2026-05-04T00:00:00Z",
                 )
                 for instrument_id in (spot_id, futures_id):
-                    _insert_intraday_bars(
+                    _insert_daily_bars(
                         connection,
                         instrument_id=instrument_id,
-                        closes=[100.0] * 20 + [101.0, 97.0],
-                        volumes=[100.0] * 22,
+                        closes=[100.0] * 10 + [99.0, 103.0],
                     )
 
                 messages = evaluate_mobile_alert_rules(
                     connection,
-                    now_utc="2026-05-04T05:31:00Z",
+                    now_utc="2026-05-05T00:01:00Z",
                 )
                 enabled_rule_rows = connection.execute(
                     """
@@ -694,7 +701,7 @@ class AlertTests(unittest.TestCase):
             {("CRYPTO_FUTURES", "BNBUSDT")},
         )
 
-    def test_evaluate_mobile_alert_rules_triggers_crypto_ranking_15m_ma11_breakdown(self):
+    def test_evaluate_mobile_alert_rules_does_not_trigger_crypto_ranking_15m_ma11_breakdown(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"
             init_database(db_path)
@@ -717,9 +724,7 @@ class AlertTests(unittest.TestCase):
                     now_utc="2026-05-04T05:31:00Z",
                 )
 
-        self.assertEqual(len(messages), 1)
-        self.assertEqual(messages[0]["title"], "BTCUSDT 15m MA11 跌破")
-        self.assertIn("15m MA11 跌破", messages[0]["body"])
+        self.assertEqual(messages, [])
 
     def test_evaluate_mobile_alert_rules_triggers_crypto_ranking_1d_ma11_once_per_day(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

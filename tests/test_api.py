@@ -1308,8 +1308,8 @@ class ApiTests(unittest.TestCase):
                         created_at_utc,
                         updated_at_utc
                     )
-                    VALUES (?, 'BTCUSDT', 'CRYPTO', 'ma11_breakout_volume_15m',
-                        'technical', 'ma11_volume_ratio', '>=', 1.5, 2700, 1,
+                    VALUES (?, 'BTCUSDT', 'CRYPTO', 'ma11_breakout_1d',
+                        'technical', 'ma11_cross', '>', 0.0, 86400, 1,
                         'system_crypto_ranking_ma11', ?, ?)
                     """,
                     (
@@ -1336,8 +1336,8 @@ class ApiTests(unittest.TestCase):
                         created_at_utc,
                         updated_at_utc
                     )
-                    VALUES (?, 'BTCUSDT', 'CRYPTO', 'ma11_breakout_volume_15m',
-                        'technical', 'ma11_volume_ratio', '>=', 1.5, 2700, 1,
+                    VALUES (?, 'BTCUSDT', 'CRYPTO', 'ma11_breakout_1d',
+                        'technical', 'ma11_cross', '>', 0.0, 86400, 1,
                         'system_crypto_ranking_ma11', ?, ?)
                     """,
                     (
@@ -1364,9 +1364,9 @@ class ApiTests(unittest.TestCase):
                         rule_id,
                         "2026-04-24T20:16:00Z",
                         65000.0,
-                        "BTCUSDT 15m MA11 突破 close 65000 > MA11 64000，量比 1.80x，K线 2026-04-24T20:15:00Z",
-                        "ma11_breakout_volume_15m:CRYPTO:BTCUSDT:2026-04-24T20:15:00Z",
-                        '{"period":"15m","bar_time":"2026-04-24T20:15:00Z","price":65000.0,"direction":"up","label":"15m MA11 突破","condition_label":"15m MA11 突破 + 量比 >= 1.5x","ma11":64000.0,"volume_ratio":1.8}',
+                        "BTCUSDT 1d MA11 突破 close 65000 > MA11 64000，交易日 2026-04-24",
+                        "ma11_breakout_1d:CRYPTO:BTCUSDT:2026-04-24",
+                        '{"period":"1d","bar_time":"2026-04-24","price":65000.0,"direction":"up","label":"1d MA11 突破","condition_label":"1d MA11 突破","ma11":64000.0}',
                     ),
                 )
                 connection.execute(
@@ -1387,8 +1387,8 @@ class ApiTests(unittest.TestCase):
                         "2026-04-24T20:17:00Z",
                         65000.0,
                         "duplicate marker",
-                        "duplicate-existing-rule:2026-04-24T20:15:00Z",
-                        '{"period":"15m","bar_time":"2026-04-24T20:15:00Z","price":65000.0,"direction":"up","label":"15m MA11 突破","condition_label":"15m MA11 突破 + 量比 >= 1.5x","ma11":64000.0,"volume_ratio":1.8}',
+                        "duplicate-existing-rule:2026-04-24",
+                        '{"period":"1d","bar_time":"2026-04-24","price":65000.0,"direction":"up","label":"1d MA11 突破","condition_label":"1d MA11 突破","ma11":64000.0}',
                     ),
                 )
 
@@ -1396,19 +1396,19 @@ class ApiTests(unittest.TestCase):
                     connection,
                     market="CRYPTO",
                     symbol="BTCUSDT",
-                    period="15m",
+                    period="1d",
                     intraday_limit=10,
                     allow_backfill=False,
                 )
 
         self.assertEqual(len(payload["alert_markers"]), 1)
         marker = payload["alert_markers"][0]
-        self.assertEqual(marker["time"], "2026-04-24T20:15:00Z")
+        self.assertEqual(marker["time"], "2026-04-24")
         self.assertEqual(marker["price"], 65000.0)
         self.assertEqual(marker["direction"], "up")
-        self.assertEqual(marker["condition_label"], "15m MA11 突破 + 量比 >= 1.5x")
+        self.assertEqual(marker["condition_label"], "1d MA11 突破")
         self.assertEqual(marker["ma11"], 64000.0)
-        self.assertEqual(marker["volume_ratio"], 1.8)
+        self.assertIsNone(marker["volume_ratio"])
 
     def test_instrument_detail_endpoint_returns_aggregated_chart_payload(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -70,20 +70,6 @@ CRYPTO_RANKING_ALERT_BOARDS = (
 )
 CRYPTO_RANKING_ALERT_CONDITIONS = (
     {
-        "condition_type": "ma11_breakout_volume_15m",
-        "threshold": 1.5,
-        "cooldown_seconds": 45 * 60,
-        "metric_key": "ma11_volume_ratio",
-        "operator": ">=",
-    },
-    {
-        "condition_type": "ma11_breakdown_15m",
-        "threshold": 0.0,
-        "cooldown_seconds": 45 * 60,
-        "metric_key": "ma11_cross",
-        "operator": "<",
-    },
-    {
         "condition_type": "ma11_breakout_1d",
         "threshold": 0.0,
         "cooldown_seconds": 24 * 60 * 60,

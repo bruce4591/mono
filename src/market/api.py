@@ -707,6 +707,8 @@ def _get_mobile_alert_markers(
         metadata = _parse_alert_metadata(row["alert_metadata"])
         if metadata.get("period") != period:
             continue
+        if str(row["condition_type"]) != "ma11_breakout_1d":
+            continue
         bar_time = _optional_str(metadata.get("bar_time"))
         price = _optional_float(metadata.get("price"))
         if bar_time is None or price is None:
