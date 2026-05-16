@@ -230,28 +230,35 @@ def get_board_payload(
 
 
 def get_mobile_home_payload(connection: sqlite3.Connection) -> dict[str, object]:
+    macro_boards = [
+        list_macro_board_payload(
+            connection,
+            key="RATES_FOCUS",
+            title="Rates",
+            market="MACRO_RATE",
+            instruments=RATE_INSTRUMENTS,
+        ),
+        list_macro_board_payload(
+            connection,
+            key="FX_FOCUS",
+            title="FX",
+            market="FX",
+            instruments=FX_INSTRUMENTS,
+        ),
+    ]
+    tradefi_boards = [
+        _mobile_board_payload(get_board_payload(connection, board_name), title, market)
+        for board_name, title, market in MOBILE_HOME_BOARDS
+        if not board_name.startswith("CRYPTO")
+    ]
+    crypto_boards = [
+        _mobile_board_payload(get_board_payload(connection, board_name), title, market)
+        for board_name, title, market in MOBILE_HOME_BOARDS
+        if board_name.startswith("CRYPTO")
+    ]
     return {
         "server_time": datetime.now(tz=UTC).isoformat(),
-        "boards": [
-            _mobile_board_payload(get_board_payload(connection, board_name), title, market)
-            for board_name, title, market in MOBILE_HOME_BOARDS
-        ]
-        + [
-            list_macro_board_payload(
-                connection,
-                key="RATES_FOCUS",
-                title="Rates",
-                market="MACRO_RATE",
-                instruments=RATE_INSTRUMENTS,
-            ),
-            list_macro_board_payload(
-                connection,
-                key="FX_FOCUS",
-                title="FX",
-                market="FX",
-                instruments=FX_INSTRUMENTS,
-            ),
-        ],
+        "boards": macro_boards + tradefi_boards + crypto_boards,
     }
 
 

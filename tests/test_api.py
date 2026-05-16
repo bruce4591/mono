@@ -1149,6 +1149,8 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(boards["RATES_FOCUS"]["items"][0]["unit"], "%")
         self.assertEqual(boards["FX_FOCUS"]["items"][0]["symbol"], "USDCNY")
         self.assertIsNone(boards["FX_FOCUS"]["items"][0]["unit"])
+        self.assertEqual(payload["boards"][0]["key"], "RATES_FOCUS")
+        self.assertEqual(payload["boards"][1]["key"], "FX_FOCUS")
 
     def test_mobile_home_endpoint_returns_boards(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
