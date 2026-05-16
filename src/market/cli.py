@@ -1145,7 +1145,7 @@ def main(argv: list[str] | None = None) -> int:
             symbols=normalized_symbols,
             engine=engine,
             max_streams_per_connection=args.max_streams_per_connection,
-            ws_base_url="wss://fstream.binance.com/market",
+            ws_base_url="wss://fstream.binance.com",
             archive_dir=args.archive_dir,
             include_kline_stream=kline_curve_candidate_config is not None,
         )

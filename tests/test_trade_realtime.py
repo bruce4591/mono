@@ -25,13 +25,12 @@ class RealtimeTradeStrategyTests(unittest.TestCase):
     def test_build_combined_futures_trade_book_stream_urls(self):
         urls = build_combined_futures_trade_book_stream_urls(
             ["BTCUSDT", "ETHUSDT"],
-            base_url="wss://fstream.binance.com/market",
         )
 
         self.assertEqual(
             urls,
             [
-                "wss://fstream.binance.com/market/stream?streams="
+                "wss://fstream.binance.com/stream?streams="
                 "btcusdt@aggTrade/btcusdt@depth20@100ms/"
                 "ethusdt@aggTrade/ethusdt@depth20@100ms"
             ],
@@ -40,14 +39,13 @@ class RealtimeTradeStrategyTests(unittest.TestCase):
     def test_build_combined_futures_trade_book_stream_urls_can_include_kline_streams(self):
         urls = build_combined_futures_trade_book_stream_urls(
             ["BTCUSDT"],
-            base_url="wss://fstream.binance.com/market",
             include_kline_1m=True,
         )
 
         self.assertEqual(
             urls,
             [
-                "wss://fstream.binance.com/market/stream?streams="
+                "wss://fstream.binance.com/stream?streams="
                 "btcusdt@aggTrade/btcusdt@depth20@100ms/btcusdt@kline_1m"
             ],
         )

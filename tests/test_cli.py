@@ -1056,7 +1056,7 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(created[0]["symbols"], ["BTCUSDT"])
-        self.assertEqual(created[0]["ws_base_url"], "wss://fstream.binance.com/market")
+        self.assertEqual(created[0]["ws_base_url"], "wss://fstream.binance.com")
         self.assertEqual(
             created[0]["archive_dir"],
             Path.cwd() / "data" / "ws_archive" / "binance_futures_trade_book",

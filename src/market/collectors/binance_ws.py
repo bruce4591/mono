@@ -267,7 +267,7 @@ class BinanceFuturesTradeBookWebSocketCollector:
         sleep: Callable[[float], None] = default_sleep,
         ping_interval_seconds: int = 0,
         ping_timeout_seconds: int | None = None,
-        ws_base_url: str = "wss://fstream.binance.com/market",
+        ws_base_url: str = "wss://fstream.binance.com",
         engine: RealtimePinPaperStrategyEngine | None = None,
         archive_dir: Path | str | None = None,
         push_deliverer=deliver_mobile_alert_pushes,
@@ -459,7 +459,7 @@ def build_combined_kline_stream_urls(
 def build_combined_futures_trade_book_stream_urls(
     symbols: list[str],
     *,
-    base_url: str = "wss://fstream.binance.com/market",
+    base_url: str = "wss://fstream.binance.com",
     max_streams_per_connection: int = 100,
     include_kline_1m: bool = False,
 ) -> list[str]:
