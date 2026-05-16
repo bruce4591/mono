@@ -760,6 +760,60 @@ class RealtimeTradeStrategyTests(unittest.TestCase):
 
         self.assertEqual(delivered, ["2026-04-12T13:21:05Z", "2026-04-12T13:21:05Z"])
 
+    def test_futures_trade_book_collector_builds_closed_1m_candles_from_trades(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+            candles = []
+
+            class FakeEngine:
+                def on_trade(self, connection, payload):
+                    return []
+
+                def on_depth(self, connection, payload):
+                    return None
+
+                def on_kline_bar(self, symbol, candle):
+                    candles.append((symbol, candle))
+
+            collector = BinanceFuturesTradeBookWebSocketCollector(
+                db_path=db_path,
+                symbols=["BTCUSDT"],
+                engine=FakeEngine(),
+                include_kline_stream=True,
+            )
+
+            for event_time_ms, price, size in [
+                (1_776_000_000_100, "64000.0", "2.0"),
+                (1_776_000_030_100, "64010.0", "1.0"),
+                (1_776_000_060_100, "64020.0", "3.0"),
+            ]:
+                collector._on_message(
+                    None,
+                    json.dumps(
+                        {
+                            "stream": "btcusdt@aggTrade",
+                            "data": {
+                                "e": "aggTrade",
+                                "E": event_time_ms,
+                                "T": event_time_ms,
+                                "s": "BTCUSDT",
+                                "p": price,
+                                "q": size,
+                                "m": True,
+                            },
+                        }
+                    ),
+                )
+
+        self.assertEqual(len(candles), 1)
+        self.assertEqual(candles[0][0], "BTCUSDT")
+        self.assertEqual(candles[0][1]["open"], 64000.0)
+        self.assertEqual(candles[0][1]["high"], 64010.0)
+        self.assertEqual(candles[0][1]["low"], 64000.0)
+        self.assertEqual(candles[0][1]["close"], 64010.0)
+        self.assertEqual(candles[0][1]["volume"], 3.0)
+
 
 def _stage_event(
     *,

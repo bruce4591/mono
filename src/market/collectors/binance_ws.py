@@ -16,6 +16,7 @@ from market.realtime import (
     apply_binance_futures_kline_event,
     apply_binance_kline_event,
     parse_binance_kline_event,
+    parse_binance_futures_trade_event,
 )
 from market.strategy.pin_realtime import RealtimePinPaperStrategyEngine
 
@@ -297,6 +298,7 @@ class BinanceFuturesTradeBookWebSocketCollector:
         self.items_synced = 0
         self.strategy_events = 0
         self.last_error: str | None = None
+        self._trade_candles_1m: dict[str, dict[str, float]] = {}
 
     def run_once(self) -> CollectorResult:
         for url in build_combined_futures_trade_book_stream_urls(
@@ -358,6 +360,8 @@ class BinanceFuturesTradeBookWebSocketCollector:
                 if event_type == "depthUpdate":
                     self.engine.on_depth(connection, payload)
                 elif event_type == "aggTrade":
+                    if self.include_kline_stream:
+                        self._update_trade_candle(connection, payload)
                     raw_result = self.engine.on_trade(connection, payload)
                     results = raw_result if isinstance(raw_result, list) else [raw_result]
                 elif event_type == "kline":
@@ -429,6 +433,31 @@ class BinanceFuturesTradeBookWebSocketCollector:
 
     def _log(self, message: str) -> None:
         self.logger(f"binance futures trade book ws {message}")
+
+    def _update_trade_candle(self, connection, payload: dict[str, object]) -> None:
+        event = parse_binance_futures_trade_event(payload)
+        minute_start = float(int(event.timestamp // 60) * 60)
+        candle = self._trade_candles_1m.get(event.symbol)
+        if candle is not None and candle["timestamp"] < minute_start:
+            self.engine.on_kline_bar(event.symbol, candle)
+            candle = None
+        quote_volume = event.price * event.size
+        if candle is None:
+            self._trade_candles_1m[event.symbol] = {
+                "timestamp": minute_start,
+                "open": event.price,
+                "high": event.price,
+                "low": event.price,
+                "close": event.price,
+                "volume": event.size,
+                "quote_volume": quote_volume,
+            }
+            return
+        candle["high"] = max(candle["high"], event.price)
+        candle["low"] = min(candle["low"], event.price)
+        candle["close"] = event.price
+        candle["volume"] += event.size
+        candle["quote_volume"] += quote_volume
 
     def _archive_message(self, payload: dict[str, object]) -> None:
         if self.archive_dir is None:
