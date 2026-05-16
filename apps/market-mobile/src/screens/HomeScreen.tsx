@@ -12,16 +12,20 @@ import { theme } from "../theme";
 
 export function HomeScreen({
   route,
-  navigate
+  navigate,
+  onRouteStateChange
 }: {
   route: HomeRoute;
   navigate: (route: AppRoute) => void;
+  onRouteStateChange?: (route: HomeRoute) => void;
 }) {
   const [payload, setPayload] = useState<MobileHomePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<BoardGroup>(route.group ?? "tradfi");
-  const [selectedBoardKey, setSelectedBoardKey] = useState<string | null>(null);
+  const [selectedBoardKey, setSelectedBoardKey] = useState<string | null>(
+    route.boardKey ?? null
+  );
 
   async function loadHome(force = false) {
     setLoading(true);
@@ -70,6 +74,14 @@ export function HomeScreen({
 
   const selectedBoard =
     visibleBoards.find((board) => board.key === selectedBoardKey) ?? visibleBoards[0] ?? null;
+
+  useEffect(() => {
+    onRouteStateChange?.({
+      name: "home",
+      group: selectedGroup,
+      boardKey: selectedBoard?.key ?? selectedBoardKey
+    });
+  }, [onRouteStateChange, selectedBoard?.key, selectedBoardKey, selectedGroup]);
 
   if (loading && !payload) {
     return <LoadingState label="加载排行榜" />;

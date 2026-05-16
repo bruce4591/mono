@@ -59,8 +59,9 @@ export function StrategiesScreen({ navigate }: { navigate: (route: AppRoute) => 
               <Text style={styles.badge}>{strategy.execution_mode.toUpperCase()}</Text>
             </View>
             <Text style={styles.strategyMeta}>
-              {strategy.enabled ? "运行中" : "已暂停"} · {strategy.strategy_id}
+              {strategy.enabled ? "后台运行" : "已暂停"} · {strategy.strategy_id}
             </Text>
+            <Text style={styles.strategyDescription}>{strategy.description}</Text>
             {strategy.symbols.map((item) => (
               <StrategySymbolRow key={`${item.market}:${item.symbol}`} item={item} navigate={navigate} />
             ))}
@@ -173,6 +174,12 @@ const styles = StyleSheet.create({
     marginTop: 5,
     color: theme.colors.textMuted,
     fontSize: 12
+  },
+  strategyDescription: {
+    marginTop: 8,
+    color: theme.colors.text,
+    fontSize: 13,
+    lineHeight: 18
   },
   symbolRow: {
     marginTop: 12,

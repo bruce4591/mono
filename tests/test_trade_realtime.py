@@ -495,6 +495,25 @@ class RealtimeTradeStrategyTests(unittest.TestCase):
         self.assertEqual(payload["strategies"][0]["symbols"][0]["position_status"], "open")
         self.assertEqual(payload["strategies"][0]["symbols"][0]["entry_price"], 64000.0)
 
+    def test_mobile_strategy_payload_lists_configured_pin_symbols_before_trades(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                payload = get_mobile_strategy_payload(connection)
+
+        self.assertEqual(payload["strategies"][0]["strategy_id"], "crypto_pin_rebound_v1")
+        self.assertTrue(payload["strategies"][0]["enabled"])
+        self.assertEqual(
+            [item["symbol"] for item in payload["strategies"][0]["symbols"]],
+            ["BTCUSDT", "ETHUSDT"],
+        )
+        self.assertEqual(
+            [item["position_status"] for item in payload["strategies"][0]["symbols"]],
+            ["none", "none"],
+        )
+
     def test_futures_trade_book_collector_archives_raw_messages_by_day(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

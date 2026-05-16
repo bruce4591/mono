@@ -116,7 +116,7 @@ export function InstrumentDetailScreen({
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
-        <Pressable style={styles.iconButton} onPress={() => navigate(homeRoute)}>
+        <Pressable style={styles.iconButton} onPress={() => navigate(route.returnTo ?? homeRoute)}>
           <Text style={styles.iconText}>‹</Text>
         </Pressable>
         <View style={styles.titleBlock}>

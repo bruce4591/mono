@@ -13,7 +13,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from market.alerts import ALERT_METRICS, CHART_INDICATORS
+from market.alerts import (
+    ALERT_METRICS,
+    CHART_INDICATORS,
+    PIN_PAPER_STRATEGY_ID,
+    PIN_PAPER_STRATEGY_MARKET,
+    PIN_PAPER_STRATEGY_SYMBOLS,
+)
 from market.binance import (
     InstrumentMetadataFetcher,
     RangeKlineFetcher,
@@ -1636,6 +1642,7 @@ def get_mobile_alert_events_payload(
 
 def get_mobile_strategy_payload(connection: sqlite3.Connection) -> dict[str, object]:
     _ensure_mobile_strategy_tables(connection)
+    _ensure_default_mobile_strategy_definitions(connection)
     strategy_rows = connection.execute(
         """
         SELECT strategy_id, name, description, execution_mode, enabled, updated_at_utc
@@ -1654,6 +1661,21 @@ def get_mobile_strategy_payload(connection: sqlite3.Connection) -> dict[str, obj
             """,
             (strategy["strategy_id"],),
         ).fetchall()
+        if str(strategy["strategy_id"]) == PIN_PAPER_STRATEGY_ID:
+            seen_symbols = {
+                (str(symbol_row["market"]), str(symbol_row["symbol"]))
+                for symbol_row in symbol_rows
+            }
+            symbol_rows = list(symbol_rows)
+            for symbol in PIN_PAPER_STRATEGY_SYMBOLS:
+                key = (PIN_PAPER_STRATEGY_MARKET, symbol)
+                if key not in seen_symbols:
+                    symbol_rows.append(
+                        {
+                            "market": PIN_PAPER_STRATEGY_MARKET,
+                            "symbol": symbol,
+                        }
+                    )
         symbols = [
             _mobile_strategy_symbol_payload(
                 connection,
@@ -1675,6 +1697,27 @@ def get_mobile_strategy_payload(connection: sqlite3.Connection) -> dict[str, obj
             }
         )
     return {"strategies": strategies}
+
+
+def _ensure_default_mobile_strategy_definitions(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        INSERT INTO strategy_definition (
+            strategy_id, name, description, execution_mode, enabled, created_at_utc, updated_at_utc
+        )
+        VALUES (?, ?, ?, 'paper', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(strategy_id) DO UPDATE SET
+            name = excluded.name,
+            description = excluded.description,
+            execution_mode = excluded.execution_mode,
+            enabled = excluded.enabled
+        """,
+        (
+            PIN_PAPER_STRATEGY_ID,
+            "Crypto Pin Rebound v1",
+            "后台常驻：BTCUSDT/ETHUSDT futures trade + depth 实时插针策略，内部模拟开平仓并推送提醒。",
+        ),
+    )
 
 
 def get_mobile_push_device_debug_payload(

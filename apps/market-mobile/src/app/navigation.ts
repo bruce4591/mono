@@ -1,11 +1,12 @@
 export type BoardGroup = "tradfi" | "crypto";
-export type HomeRoute = { name: "home"; group?: BoardGroup };
+export type HomeRoute = { name: "home"; group?: BoardGroup; boardKey?: string | null };
 
 export type InstrumentRoute = {
   name: "instrument";
   market: string;
   symbol: string;
   period?: string;
+  returnTo?: HomeRoute;
 };
 
 export type AlertEventsRoute = { name: "alertEvents" };

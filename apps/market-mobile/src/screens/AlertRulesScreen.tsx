@@ -3,7 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { homeRoute, type AppRoute } from "../app/navigation";
 import { fetchMobileAlertRulesPayload, patchMobileAlertRulePayload } from "../api/alerts";
-import type { MobileAlertRule } from "../api/types";
+import { fetchMobileStrategiesPayload } from "../api/strategies";
+import type { MobileAlertRule, MobileStrategy } from "../api/types";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
@@ -17,6 +18,7 @@ export function AlertRulesScreen({
   pushToken: string | null;
 }) {
   const [rules, setRules] = useState<MobileAlertRule[]>([]);
+  const [strategies, setStrategies] = useState<MobileStrategy[]>([]);
   const [loading, setLoading] = useState(Boolean(pushToken));
   const [error, setError] = useState<string | null>(null);
 
@@ -27,6 +29,8 @@ export function AlertRulesScreen({
     try {
       const payload = await fetchMobileAlertRulesPayload({ pushToken });
       setRules(payload.rules);
+      const strategyPayload = await fetchMobileStrategiesPayload();
+      setStrategies(strategyPayload.strategies);
     } catch (err) {
       setError(err instanceof Error ? err.message : "提醒规则加载失败");
     } finally {
@@ -86,6 +90,29 @@ export function AlertRulesScreen({
       <Text style={styles.title}>提醒规则</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <ScrollView style={styles.list}>
+        <View style={styles.strategySection}>
+          <Text style={styles.sectionTitle}>后台策略</Text>
+          {strategies.length === 0 ? (
+            <Text style={styles.itemMeta}>暂无后台策略</Text>
+          ) : null}
+          {strategies.map((strategy) => (
+            <Pressable
+              key={strategy.strategy_id}
+              style={styles.strategySummary}
+              onPress={() => navigate({ name: "strategies" })}
+            >
+              <View style={styles.strategySummaryHeader}>
+                <Text style={styles.strategyName}>{strategy.name}</Text>
+                <Text style={styles.strategyBadge}>{strategy.enabled ? "后台运行" : "已暂停"}</Text>
+              </View>
+              <Text style={styles.itemBody}>{strategy.description}</Text>
+              <Text style={styles.itemMeta}>
+                {strategy.symbols.map((item) => item.symbol).join(" / ") || "--"} ·{" "}
+                {strategy.execution_mode.toUpperCase()}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
         {rules.length === 0 ? <EmptyState title="暂无提醒规则" /> : null}
         {rules.map((rule) => (
           <View key={rule.mobile_alert_rule_id} style={styles.item}>
@@ -139,6 +166,39 @@ const styles = StyleSheet.create({
   },
   list: {
     marginTop: 18
+  },
+  strategySection: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.borderStrong,
+    paddingBottom: 14
+  },
+  sectionTitle: {
+    color: theme.colors.textStrong,
+    fontSize: 16,
+    fontWeight: "800"
+  },
+  strategySummary: {
+    marginTop: 10,
+    borderRadius: 8,
+    backgroundColor: theme.colors.surface,
+    padding: 12
+  },
+  strategySummaryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8
+  },
+  strategyName: {
+    flex: 1,
+    color: theme.colors.textStrong,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  strategyBadge: {
+    color: theme.colors.positive,
+    fontSize: 12,
+    fontWeight: "900"
   },
   item: {
     minHeight: 100,

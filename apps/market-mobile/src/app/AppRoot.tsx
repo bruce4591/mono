@@ -2,7 +2,7 @@ import * as Notifications from "expo-notifications";
 import React, { useEffect, useRef, useState } from "react";
 import { AppState, StatusBar, StyleSheet, View } from "react-native";
 
-import { homeRoute, type AppRoute } from "./navigation";
+import { homeRoute, type AppRoute, type HomeRoute } from "./navigation";
 import {
   acknowledgeMobileAlertEvents,
   displayNewAlertEvents,
@@ -28,7 +28,27 @@ export function AppRoot() {
   const [getuiClientId, setGetuiClientId] = useState<string | null>(null);
   const [latestSeenAlertEventId, setLatestSeenAlertEventId] = useState(0);
   const [readAlertEventIds, setReadAlertEventIds] = useState<Set<number>>(new Set());
+  const lastHomeRouteRef = useRef<HomeRoute>(homeRoute);
   const [route, setRoute] = useState<AppRoute>(homeRoute);
+
+  function updateLastHomeRoute(nextRoute: HomeRoute) {
+    lastHomeRouteRef.current = nextRoute;
+  }
+
+  function navigate(nextRoute: AppRoute) {
+    if (nextRoute.name === "home") {
+      const targetRoute =
+        nextRoute.group || nextRoute.boardKey !== undefined ? nextRoute : lastHomeRouteRef.current;
+      updateLastHomeRoute(targetRoute);
+      setRoute(targetRoute);
+      return;
+    }
+    if (nextRoute.name === "instrument" && !nextRoute.returnTo) {
+      setRoute({ ...nextRoute, returnTo: lastHomeRouteRef.current });
+      return;
+    }
+    setRoute(nextRoute);
+  }
 
   function markAlertEventRead(eventId: number) {
     setReadAlertEventIds((previous) => {
@@ -130,7 +150,7 @@ export function AppRoot() {
       if (eventId !== null && Number.isFinite(eventId)) {
         markAlertEventRead(eventId);
       }
-      setRoute(routeFromNotificationData(data));
+      navigate(routeFromNotificationData(data));
     };
 
     const lastResponse = Notifications.getLastNotificationResponse();
@@ -146,25 +166,31 @@ export function AppRoot() {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background} />
-      {route.name === "home" ? <HomeScreen route={route} navigate={setRoute} /> : null}
+      {route.name === "home" ? (
+        <HomeScreen
+          route={route}
+          navigate={navigate}
+          onRouteStateChange={updateLastHomeRoute}
+        />
+      ) : null}
       {route.name === "instrument" ? (
-        <InstrumentDetailScreen route={route} navigate={setRoute} />
+        <InstrumentDetailScreen route={route} navigate={navigate} />
       ) : null}
       {route.name === "alertEvents" ? (
         <AlertEventsScreen
-          navigate={setRoute}
+          navigate={navigate}
           pushToken={devicePushToken}
           readEventIds={readAlertEventIds}
           onReadEvent={markAlertEventRead}
         />
       ) : null}
       {route.name === "alertRules" ? (
-        <AlertRulesScreen navigate={setRoute} pushToken={devicePushToken} />
+        <AlertRulesScreen navigate={navigate} pushToken={devicePushToken} />
       ) : null}
-      {route.name === "strategies" ? <StrategiesScreen navigate={setRoute} /> : null}
+      {route.name === "strategies" ? <StrategiesScreen navigate={navigate} /> : null}
       {route.name === "settings" ? (
         <SettingsScreen
-          navigate={setRoute}
+          navigate={navigate}
           pushToken={devicePushToken}
           getuiClientId={getuiClientId}
           latestSeenAlertEventId={latestSeenAlertEventId}
