@@ -68,13 +68,30 @@ class MacroTests(unittest.TestCase):
                     ORDER BY instrument.market, instrument.symbol
                     """
                 ).fetchall()
+                bar_rows = connection.execute(
+                    """
+                    SELECT instrument.market, instrument.symbol, bar_daily.trade_date, bar_daily.close
+                    FROM instrument
+                    JOIN bar_daily
+                        ON bar_daily.instrument_id = instrument.instrument_id
+                    WHERE instrument.market IN ('MACRO_RATE', 'FX')
+                    ORDER BY instrument.market, instrument.symbol, bar_daily.trade_date
+                    """
+                ).fetchall()
 
+        bar_values = {
+            (row["market"], row["symbol"], row["trade_date"]): row["close"]
+            for row in bar_rows
+        }
         values = {(row["market"], row["symbol"]): row["last_price"] for row in rows}
         self.assertEqual(result.items_synced, 12)
         self.assertAlmostEqual(values[("MACRO_RATE", "US10Y")], 4.55)
         self.assertAlmostEqual(values[("FX", "USDCNY")], 7.21)
         self.assertAlmostEqual(values[("FX", "USDJPY")], 721.00 / 4.85)
         self.assertAlmostEqual(values[("FX", "EURUSD")], 829.15 / 721.00)
+        self.assertAlmostEqual(bar_values[("MACRO_RATE", "US10Y", "2026-05-16")], 4.55)
+        self.assertAlmostEqual(bar_values[("FX", "USDCNY", "2026-05-16")], 7.21)
+        self.assertAlmostEqual(bar_values[("FX", "USDJPY", "2026-05-16")], 721.00 / 4.85)
 
 
 if __name__ == "__main__":

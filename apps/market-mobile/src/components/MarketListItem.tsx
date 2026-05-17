@@ -14,15 +14,11 @@ export function MarketListItem({
   item: MobileBoardItem;
   navigate: (route: AppRoute) => void;
 }) {
-  const canOpenDetail = item.market !== "FX" && item.market !== "MACRO_RATE";
   return (
     <Pressable
-      disabled={!canOpenDetail}
-      style={[styles.row, !canOpenDetail ? styles.staticRow : null]}
+      style={styles.row}
       onPress={() => {
-        if (canOpenDetail) {
-          navigate({ name: "instrument", market: item.market, symbol: item.symbol });
-        }
+        navigate({ name: "instrument", market: item.market, symbol: item.symbol });
       }}
     >
       <View style={styles.left}>
@@ -68,9 +64,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
     paddingVertical: 10
-  },
-  staticRow: {
-    opacity: 1
   },
   left: {
     flex: 1,

@@ -1350,6 +1350,75 @@ class ApiTests(unittest.TestCase):
         self.assertIn("time", payload["bars"][0])
         self.assertIn("turnover", payload["bars"][0])
 
+    def test_mobile_macro_detail_backfills_daily_trend_on_open(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            def fake_sync_macro_boards(connection, **kwargs):
+                from market.macro import sync_macro_boards
+
+                return sync_macro_boards(
+                    connection,
+                    snapshot_ts_utc="2026-05-16T12:00:00Z",
+                    bond_rate_frame=[
+                        {
+                            "日期": "2026-05-15",
+                            "美国国债收益率2年": 4.40,
+                            "美国国债收益率5年": 4.20,
+                            "美国国债收益率10年": 4.50,
+                            "美国国债收益率30年": 4.70,
+                            "中国国债收益率10年": 1.75,
+                            "中国国债收益率30年": 2.05,
+                        },
+                        {
+                            "日期": "2026-05-16",
+                            "美国国债收益率2年": 4.42,
+                            "美国国债收益率5年": 4.23,
+                            "美国国债收益率10年": 4.55,
+                            "美国国债收益率30年": 4.74,
+                            "中国国债收益率10年": 1.77,
+                            "中国国债收益率30年": 2.08,
+                        },
+                    ],
+                    fx_safe_frame=[
+                        {
+                            "日期": "2026-05-15",
+                            "美元": 720.00,
+                            "欧元": 828.00,
+                            "日元": 4.80,
+                            "英镑": 960.00,
+                            "澳元": 468.00,
+                            "加元": 525.00,
+                        },
+                        {
+                            "日期": "2026-05-16",
+                            "美元": 721.00,
+                            "欧元": 829.15,
+                            "日元": 4.85,
+                            "英镑": 962.00,
+                            "澳元": 470.00,
+                            "加元": 524.00,
+                        },
+                    ],
+                )
+
+            with connect(db_path) as connection:
+                with patch("market.api.sync_macro_boards", fake_sync_macro_boards):
+                    payload = api_module.get_mobile_instrument_detail_payload(
+                        connection,
+                        market="MACRO_RATE",
+                        symbol="US10Y",
+                        period="1d",
+                        daily_limit=5,
+                    )
+
+        self.assertEqual(payload["instrument"]["symbol"], "US10Y")
+        self.assertEqual(payload["periods"], ["1d"])
+        self.assertEqual(len(payload["bars"]), 2)
+        self.assertEqual(payload["bars"][-1]["time"], "2026-05-16")
+        self.assertEqual(payload["bars"][-1]["close"], 4.55)
+
     def test_get_mobile_instrument_detail_payload_returns_alert_markers_for_period(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

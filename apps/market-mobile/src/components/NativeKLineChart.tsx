@@ -47,6 +47,7 @@ export function NativeKLineChart({
   bars,
   alertMarkers,
   period,
+  mode = "candles",
   resetKey,
   onSelectedBarChange,
   onReachStart
@@ -54,6 +55,7 @@ export function NativeKLineChart({
   bars: MobileBar[];
   alertMarkers?: MobileAlertMarker[];
   period: string;
+  mode?: "candles" | "trend";
   resetKey?: string;
   onSelectedBarChange?: (bar: MobileBar | null) => void;
   onReachStart?: () => void;
@@ -158,6 +160,12 @@ export function NativeKLineChart({
     range,
     slotWidth
   );
+  const trendPath = buildLinePath(
+    visibleBars.map((bar) => bar.close),
+    high,
+    range,
+    slotWidth
+  );
 
   function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
     const nextScrollX = event.nativeEvent.contentOffset.x;
@@ -178,6 +186,110 @@ export function NativeKLineChart({
     const nextBar = visibleBars[nextIndex] ?? chartBar;
     setSelectedTime(nextBar.time);
     onSelectedBarChange?.(nextBar);
+  }
+
+  if (mode === "trend") {
+    return (
+      <View style={styles.root}>
+        <View style={styles.legendRow}>
+          <Text style={[styles.legendText, { color: theme.colors.accent }]}>
+            Daily {formatOptionalPrice(chartBar.close)}
+          </Text>
+          <Text style={[styles.legendText, { color: AXIS_COLOR }]}>
+            {chartBar.time}
+          </Text>
+        </View>
+        <View style={styles.chartViewport}>
+          <ScrollView
+            horizontal
+            ref={scrollRef}
+            bounces={false}
+            showsHorizontalScrollIndicator={false}
+            scrollEventThrottle={32}
+            onScroll={handleScroll}
+            onContentSizeChange={() => {
+              if (autoScrolledRef.current) return;
+              scrollRef.current?.scrollToEnd({ animated: false });
+              setScrollX(maxScrollX);
+              autoScrolledRef.current = true;
+            }}
+          >
+            <View style={styles.chartPanel}>
+              <Svg width={plotWidth} height={PRICE_CHART_HEIGHT + X_AXIS_HEIGHT} onPress={handlePriceChartPress}>
+                {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+                  const y = ratio * PRICE_CHART_HEIGHT;
+                  return (
+                    <Line
+                      key={`trend-grid:${ratio}`}
+                      x1={0}
+                      y1={y}
+                      x2={plotWidth}
+                      y2={y}
+                      stroke={GRID_COLOR}
+                      strokeWidth={StyleSheet.hairlineWidth}
+                    />
+                  );
+                })}
+                {trendPath ? (
+                  <Path d={trendPath} stroke={theme.colors.accent} strokeWidth={2} fill="none" />
+                ) : null}
+                <Line
+                  x1={selectedX}
+                  y1={0}
+                  x2={selectedX}
+                  y2={PRICE_CHART_HEIGHT}
+                  stroke={theme.colors.text}
+                  strokeWidth={1}
+                  strokeDasharray="4 4"
+                  opacity={0.42}
+                />
+                <Line
+                  x1={0}
+                  y1={PRICE_CHART_HEIGHT}
+                  x2={plotWidth}
+                  y2={PRICE_CHART_HEIGHT}
+                  stroke={GRID_COLOR}
+                  strokeWidth={StyleSheet.hairlineWidth}
+                />
+                {xLabels.map((label) => (
+                  <SvgText
+                    key={`${label.text}:${label.x}`}
+                    x={label.x}
+                    y={PRICE_CHART_HEIGHT + 18}
+                    fill={AXIS_COLOR}
+                    fontSize="10"
+                    fontWeight="700"
+                    textAnchor={label.anchor}
+                  >
+                    {label.text}
+                  </SvgText>
+                ))}
+              </Svg>
+            </View>
+          </ScrollView>
+          <View pointerEvents="none" style={styles.priceAxisOverlay}>
+            <Svg width={RIGHT_PADDING} height={PRICE_CHART_HEIGHT}>
+              <Rect x={0} y={0} width={RIGHT_PADDING} height={PRICE_CHART_HEIGHT} fill={theme.colors.background} opacity={0.96} />
+              {priceMarks.map((mark, index) => {
+                const y = yForPrice(mark, high, range);
+                return (
+                  <SvgText
+                    key={`trend-price-axis:${index}`}
+                    x={6}
+                    y={clamp(y + 4, 12, PRICE_CHART_HEIGHT - 4)}
+                    fill={AXIS_COLOR}
+                    fontSize="11"
+                    fontWeight="800"
+                  >
+                    {formatPrice(mark)}
+                  </SvgText>
+                );
+              })}
+            </Svg>
+          </View>
+        </View>
+      </View>
+    );
   }
 
   return (

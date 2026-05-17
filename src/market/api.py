@@ -41,7 +41,7 @@ from market.crypto_gaps import (
     fill_binance_futures_1m_gaps,
 )
 from market.db import connect, create_database_connector
-from market.macro import FX_INSTRUMENTS, RATE_INSTRUMENTS, list_macro_board_payload
+from market.macro import FX_INSTRUMENTS, RATE_INSTRUMENTS, list_macro_board_payload, sync_macro_boards
 from market.models import DailyBar, Instrument, IntradayBar
 from market.repositories import (
     AlertEventRepository,
@@ -557,6 +557,10 @@ def get_instrument_detail_payload(
     include_funding: bool = True,
     allow_backfill: bool = True,
 ) -> dict[str, object] | None:
+    if allow_backfill and market in {"MACRO_RATE", "FX"}:
+        existing = InstrumentRepository(connection).get_by_market_symbol(market, symbol)
+        if existing is None:
+            _ensure_macro_daily_window(connection)
     instrument = get_instrument_payload(
         connection,
         market,
@@ -843,6 +847,11 @@ def get_daily_bars_payload(
     instrument_repository = InstrumentRepository(connection)
     instrument = instrument_repository.get_by_market_symbol(market, symbol)
     resolved_limit = _clamp_limit(limit) if limit is not None else None
+    if allow_backfill and market in {"MACRO_RATE", "FX"} and (
+        instrument is None or instrument.instrument_id is None
+    ):
+        _ensure_macro_daily_window(connection)
+        instrument = instrument_repository.get_by_market_symbol(market, symbol)
     if allow_backfill and market == "CRYPTO_FUTURES" and (
         instrument is None or instrument.instrument_id is None
     ):
@@ -864,6 +873,14 @@ def get_daily_bars_payload(
         before_trade_date=before_trade_date,
         limit=resolved_limit,
     )
+    if allow_backfill and market in {"MACRO_RATE", "FX"} and not bars:
+        _ensure_macro_daily_window(connection)
+        bars = _list_daily_window(
+            connection,
+            instrument_id=instrument.instrument_id,
+            before_trade_date=before_trade_date,
+            limit=resolved_limit,
+        )
     requested_limit = resolved_limit or FUTURES_MIN_HISTORY_BARS
     should_backfill = allow_backfill and market == "CRYPTO_FUTURES" and (
         not bars
@@ -905,6 +922,10 @@ def get_daily_bars_payload(
             for bar in bars
         ],
     }
+
+
+def _ensure_macro_daily_window(connection: sqlite3.Connection) -> None:
+    sync_macro_boards(connection)
 
 
 def get_intraday_bars_payload(

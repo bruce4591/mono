@@ -126,6 +126,7 @@ export function InstrumentDetailScreen({
     ? "标记"
     : "最新";
   const strategyMatch = findStrategyForInstrument(strategies, route.market, route.symbol);
+  const isMacro = isMacroInstrument(route.market);
 
   return (
     <View style={styles.root}>
@@ -146,16 +147,25 @@ export function InstrumentDetailScreen({
           <Text style={styles.refreshText}>{loading ? "刷新中" : "刷新"}</Text>
         </Pressable>
       </View>
-      <View style={styles.marketPanel}>
-        <SummaryCell label={priceLabel} value={formatNumber(payload?.snapshot.last_price ?? null)} />
-        <SummaryCell label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
-        <SummaryCell label="开" value={formatCompactPrice(displayBar?.open ?? null)} />
-        <SummaryCell label="高" value={formatCompactPrice(displayBar?.high ?? null)} />
-        <SummaryCell label="涨跌幅" value={formatPercent(payload?.snapshot.change_pct ?? null)} />
-        <View style={styles.summaryCell} />
-        <SummaryCell label="低" value={formatCompactPrice(displayBar?.low ?? null)} />
-        <SummaryCell label="收" value={formatCompactPrice(displayBar?.close ?? null)} />
-      </View>
+      {isMacro ? (
+        <View style={styles.marketPanel}>
+          <SummaryCell label={route.market === "MACRO_RATE" ? "收益率" : priceLabel} value={formatNumber(payload?.snapshot.last_price ?? null)} />
+          <SummaryCell label="涨跌幅" value={formatPercent(payload?.snapshot.change_pct ?? null)} />
+          <SummaryCell label="日期" value={displayTime} />
+          <SummaryCell label="收" value={formatCompactPrice(displayBar?.close ?? null)} />
+        </View>
+      ) : (
+        <View style={styles.marketPanel}>
+          <SummaryCell label={priceLabel} value={formatNumber(payload?.snapshot.last_price ?? null)} />
+          <SummaryCell label="成交额" value={formatMarketMetric(payload?.snapshot.turnover ?? null)} />
+          <SummaryCell label="开" value={formatCompactPrice(displayBar?.open ?? null)} />
+          <SummaryCell label="高" value={formatCompactPrice(displayBar?.high ?? null)} />
+          <SummaryCell label="涨跌幅" value={formatPercent(payload?.snapshot.change_pct ?? null)} />
+          <View style={styles.summaryCell} />
+          <SummaryCell label="低" value={formatCompactPrice(displayBar?.low ?? null)} />
+          <SummaryCell label="收" value={formatCompactPrice(displayBar?.close ?? null)} />
+        </View>
+      )}
       {strategyMatch ? (
         <Pressable style={styles.strategyBar} onPress={() => navigate({ name: "strategies" })}>
           <View style={styles.strategyBarHeader}>
@@ -210,6 +220,7 @@ export function InstrumentDetailScreen({
           bars={payload?.bars ?? []}
           alertMarkers={payload?.alert_markers ?? []}
           period={period}
+          mode={isMacro ? "trend" : "candles"}
           resetKey={`${route.market}:${route.symbol}:${period}`}
           onSelectedBarChange={setSelectedBar}
           onReachStart={loadMoreHistory}
@@ -296,6 +307,10 @@ function formatMarketMetric(value: number | null): string {
 
 function isCryptoContract(market: string, assetClass: string | null): boolean {
   return market.toUpperCase() === "CRYPTO" || assetClass?.toLowerCase().includes("crypto") === true;
+}
+
+function isMacroInstrument(market: string): boolean {
+  return market === "MACRO_RATE" || market === "FX";
 }
 
 function formatSelectedTime(value: string, period: string): string {

@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from typing import Callable
 
 from market.collectors.base import CollectorResult
-from market.models import Instrument, MarketSnapshot
-from market.repositories import InstrumentRepository, MarketSnapshotRepository
+from market.models import DailyBar, Instrument, MarketSnapshot
+from market.repositories import DailyBarRepository, InstrumentRepository, MarketSnapshotRepository
 
 
 @dataclass(frozen=True)
@@ -128,10 +128,17 @@ def sync_macro_boards(
 
     resolved_snapshot = snapshot_ts_utc or datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     items_synced = 0
+    bars_synced = 0
     instruments = InstrumentRepository(connection)
     snapshots = MarketSnapshotRepository(connection)
-    for config, trade_date, value, previous_value in _rate_values(bond_rate_frame):
+    daily_bars = DailyBarRepository(connection)
+    for config, series in _rate_series(bond_rate_frame):
+        if not series:
+            continue
         instrument_id = _upsert_macro_instrument(instruments, config)
+        bars_synced += _upsert_trend_bars(daily_bars, instrument_id, config, series)
+        trade_date, value = series[-1]
+        previous_value = series[-2][1] if len(series) >= 2 else None
         snapshots.upsert(
             _snapshot(
                 instrument_id=instrument_id,
@@ -145,8 +152,13 @@ def sync_macro_boards(
             )
         )
         items_synced += 1
-    for config, trade_date, value, previous_value in _fx_values(fx_safe_frame):
+    for config, series in _fx_series(fx_safe_frame):
+        if not series:
+            continue
         instrument_id = _upsert_macro_instrument(instruments, config)
+        bars_synced += _upsert_trend_bars(daily_bars, instrument_id, config, series)
+        trade_date, value = series[-1]
+        previous_value = series[-2][1] if len(series) >= 2 else None
         snapshots.upsert(
             _snapshot(
                 instrument_id=instrument_id,
@@ -167,24 +179,25 @@ def sync_macro_boards(
         metadata={
             "rates": len(RATE_INSTRUMENTS),
             "fx": len(FX_INSTRUMENTS),
+            "daily_bars": bars_synced,
             "snapshot_ts_utc": resolved_snapshot,
         },
     )
 
 
-def _rate_values(frame) -> list[tuple[MacroInstrumentConfig, str, float, float | None]]:
+def _rate_series(frame) -> list[tuple[MacroInstrumentConfig, list[tuple[str, float]]]]:
     records = _records_from_frame(frame)
     values = []
     for config in RATE_INSTRUMENTS:
         column = RATE_COLUMNS[config.symbol]
-        latest = _latest_two_values(records, lambda row, c=column: _optional_float(row.get(c)))
-        if latest is None:
+        series = _series_values(records, lambda row, c=column: _optional_float(row.get(c)))
+        if not series:
             continue
-        values.append((config, latest[0], latest[1], latest[2]))
+        values.append((config, series))
     return values
 
 
-def _fx_values(frame) -> list[tuple[MacroInstrumentConfig, str, float, float | None]]:
+def _fx_series(frame) -> list[tuple[MacroInstrumentConfig, list[tuple[str, float]]]]:
     records = _records_from_frame(frame)
     fx_formulas: dict[str, Callable[[dict[str, object]], float | None]] = {
         "USDJPY": lambda row: _ratio(row, "美元", "日元"),
@@ -196,17 +209,17 @@ def _fx_values(frame) -> list[tuple[MacroInstrumentConfig, str, float, float | N
     }
     values = []
     for config in FX_INSTRUMENTS:
-        latest = _latest_two_values(records, fx_formulas[config.symbol])
-        if latest is None:
+        series = _series_values(records, fx_formulas[config.symbol])
+        if not series:
             continue
-        values.append((config, latest[0], latest[1], latest[2]))
+        values.append((config, series))
     return values
 
 
-def _latest_two_values(
+def _series_values(
     records: list[dict[str, object]],
     value_fn: Callable[[dict[str, object]], float | None],
-) -> tuple[str, float, float | None] | None:
+) -> list[tuple[str, float]]:
     valid = [
         (str(row.get("日期") or row.get("date"))[:10], value)
         for row in records
@@ -214,12 +227,8 @@ def _latest_two_values(
         if row.get("日期") or row.get("date")
         if value is not None
     ]
-    if not valid:
-        return None
     valid.sort(key=lambda item: item[0])
-    trade_date, value = valid[-1]
-    previous_value = valid[-2][1] if len(valid) >= 2 else None
-    return trade_date, value, previous_value
+    return valid
 
 
 def _snapshot(
@@ -259,6 +268,30 @@ def _upsert_macro_instrument(repository: InstrumentRepository, config: MacroInst
             extra_meta={"sort_order": config.sort_order, "unit": config.unit},
         )
     )
+
+
+def _upsert_trend_bars(
+    repository: DailyBarRepository,
+    instrument_id: int,
+    config: MacroInstrumentConfig,
+    series: list[tuple[str, float]],
+) -> int:
+    for trade_date, value in series:
+        repository.upsert(
+            DailyBar(
+                instrument_id=instrument_id,
+                trade_date=trade_date,
+                open=value,
+                high=value,
+                low=value,
+                close=value,
+                volume_raw=None,
+                turnover_raw=None,
+                quote_currency=config.quote_currency,
+                source="macro_akshare",
+            )
+        )
+    return len(series)
 
 
 def _records_from_frame(frame) -> list[dict[str, object]]:
