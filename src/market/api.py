@@ -743,7 +743,11 @@ def _get_mobile_alert_markers(
     for row in rows:
         metadata = _parse_alert_metadata(row["alert_metadata"])
         condition_type = str(row["condition_type"])
-        if condition_type not in {"ma11_breakout_1d", "paper_strategy_pin"}:
+        if condition_type not in {
+            "ma11_breakout_1d",
+            "ma11_breakdown_1d",
+            "paper_strategy_pin",
+        }:
             continue
         triggered_at_utc = _format_mobile_alert_marker_timestamp(str(row["triggered_at_utc"]))
         marker_time = _mobile_alert_marker_time_for_chart(
@@ -790,7 +794,7 @@ def _mobile_alert_marker_time_for_chart(
 ) -> str | None:
     if marker_period == chart_period:
         return bar_time
-    if condition_type == "ma11_breakout_1d" and marker_period == "1d":
+    if condition_type in {"ma11_breakout_1d", "ma11_breakdown_1d"} and marker_period == "1d":
         return _format_mobile_alert_marker_timestamp(triggered_at_utc)
     return None
 
@@ -3238,6 +3242,8 @@ def _mobile_alert_title_suffix(condition_type: str) -> str:
         return "15m MA11 跌破"
     if condition_type == "ma11_breakout_1d":
         return "1d MA11 突破"
+    if condition_type == "ma11_breakdown_1d":
+        return "1d MA11 跌破"
     if condition_type.startswith("change_pct_"):
         return "涨跌幅提醒"
     return "价格提醒"

@@ -788,6 +788,84 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(second_messages, [])
         self.assertEqual(event_count, 1)
 
+    def test_evaluate_mobile_alert_rules_syncs_tradefi_daily_ma11_cross_rules(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                _insert_tradefi_ranking_alert_fixture(connection)
+
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-03T00:00:00Z",
+                )
+
+                enabled_conditions = {
+                    str(row["condition_type"])
+                    for row in connection.execute(
+                        """
+                        SELECT DISTINCT condition_type
+                        FROM mobile_alert_rule
+                        WHERE source_type = 'technical'
+                            AND created_by = 'system_tradefi_daily_ma11'
+                            AND enabled = 1
+                        """
+                    ).fetchall()
+                }
+
+        self.assertEqual(
+            enabled_conditions,
+            {"ma11_breakout_1d", "ma11_breakdown_1d"},
+        )
+
+    def test_evaluate_mobile_alert_rules_triggers_tradefi_daily_ma11_breakdown_once_per_day(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instrument_id = _insert_tradefi_ranking_alert_fixture(connection)
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-03T00:00:00Z",
+                )
+                _insert_daily_bars(
+                    connection,
+                    instrument_id=instrument_id,
+                    closes=[100.0] * 10 + [101.0, 97.0],
+                )
+
+                first_messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-05T00:01:00Z",
+                )
+                second_messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-05T00:30:00Z",
+                )
+                event_rows = connection.execute(
+                    """
+                    SELECT
+                        mobile_alert_event.message,
+                        mobile_alert_event.alert_metadata,
+                        mobile_alert_rule.condition_type
+                    FROM mobile_alert_event
+                    JOIN mobile_alert_rule
+                        ON mobile_alert_rule.mobile_alert_rule_id =
+                            mobile_alert_event.mobile_alert_rule_id
+                    """
+                ).fetchall()
+
+        self.assertEqual(len(first_messages), 1)
+        self.assertEqual(first_messages[0]["title"], "SPY 1d MA11 跌破")
+        self.assertEqual(first_messages[0]["data"]["period"], "1d")
+        self.assertEqual(second_messages, [])
+        self.assertEqual(len(event_rows), 1)
+        self.assertEqual(event_rows[0]["condition_type"], "ma11_breakdown_1d")
+        self.assertIn("1d MA11 跌破", event_rows[0]["message"])
+        self.assertIn('"direction":"down"', event_rows[0]["alert_metadata"])
+
 
 def _insert_mobile_alert_fixture(
     connection,
@@ -939,6 +1017,74 @@ def _insert_crypto_ranking_alert_fixture(
             1000000.0,
             "USDT",
             3.2,
+            "test",
+        ),
+    )
+    return instrument_id
+
+
+def _insert_tradefi_ranking_alert_fixture(
+    connection,
+    *,
+    market: str = "US",
+    symbol: str = "SPY",
+    board_name: str = "ETF_FOCUS20",
+    insert_push_device: bool = True,
+) -> int:
+    instrument_id = InstrumentRepository(connection).upsert(
+        Instrument(
+            market=market,
+            symbol=symbol,
+            display_name=symbol,
+            exchange="NYSEARCA",
+            instrument_type="etf",
+            quote_currency="USD",
+            timezone="America/New_York",
+        )
+    )
+    if insert_push_device:
+        connection.execute(
+            """
+            INSERT INTO push_device (
+                push_token,
+                platform,
+                device_label,
+                enabled,
+                created_at_utc,
+                updated_at_utc
+            )
+            VALUES (?, ?, ?, 1, ?, ?)
+            """,
+            (
+                "ExponentPushToken[test-token]",
+                "android",
+                "OnePlus 13T",
+                "2026-05-04T02:58:00Z",
+                "2026-05-04T02:58:00Z",
+            ),
+        )
+    connection.execute(
+        """
+        INSERT INTO ranking_snapshot (
+            board_name,
+            snapshot_ts_utc,
+            rank,
+            instrument_id,
+            turnover_raw,
+            quote_currency,
+            change_pct,
+            source
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            board_name,
+            "2026-05-04T05:30:00Z",
+            1,
+            instrument_id,
+            1000000.0,
+            "USD",
+            0.8,
             "test",
         ),
     )

@@ -9,6 +9,20 @@ import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { theme } from "../theme";
 
+function formatAlertTimestamp(value: string): string {
+  const trimmed = value.trim();
+  const normalized = trimmed.includes("T") ? trimmed : trimmed.replace(" ", "T");
+  const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/u.test(normalized) ? normalized : `${normalized}Z`;
+  const date = new Date(zoned);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  const pad = (part: number) => part.toString().padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
+    date.getMinutes()
+  )}:${pad(date.getSeconds())}`;
+}
+
 export function AlertEventsScreen({
   navigate,
   pushToken,
@@ -93,7 +107,7 @@ export function AlertEventsScreen({
               </View>
               <Text style={styles.itemBody}>{event.body}</Text>
               <Text style={styles.itemMeta}>
-                {event.market} {event.symbol}
+                {formatAlertTimestamp(event.triggered_at_utc)} · {event.market} {event.symbol}
                 {period ? ` · ${period}` : ""} · {event.delivery_status}
               </Text>
             </Pressable>

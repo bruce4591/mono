@@ -77,6 +77,32 @@ CRYPTO_RANKING_ALERT_CONDITIONS = (
         "operator": ">",
     },
 )
+TRADEFI_DAILY_ALERT_LIMIT = 20
+TRADEFI_DAILY_ALERT_CREATED_BY = "system_tradefi_daily_ma11"
+TRADEFI_DAILY_ALERT_BOARDS = (
+    "ETF_FOCUS20",
+    "HK_STOCK_FOCUS20",
+    "US_STOCK_FOCUS20",
+    "A_SHARE_FOCUS20",
+    "INDEX_FOCUS20",
+    "COMMODITY_FOCUS20",
+)
+TRADEFI_DAILY_ALERT_CONDITIONS = (
+    {
+        "condition_type": "ma11_breakout_1d",
+        "threshold": 0.0,
+        "cooldown_seconds": 24 * 60 * 60,
+        "metric_key": "ma11_cross",
+        "operator": ">",
+    },
+    {
+        "condition_type": "ma11_breakdown_1d",
+        "threshold": 0.0,
+        "cooldown_seconds": 24 * 60 * 60,
+        "metric_key": "ma11_cross",
+        "operator": "<",
+    },
+)
 PIN_PAPER_STRATEGY_ID = "crypto_pin_rebound_v1"
 PIN_PAPER_STRATEGY_CREATED_BY = "system_strategy_crypto_pin_rebound_v1"
 PIN_PAPER_STRATEGY_MARKET = "CRYPTO_FUTURES"
@@ -150,6 +176,7 @@ def evaluate_mobile_alert_rules(
 ) -> list[dict[str, object]]:
     _ensure_mobile_alert_event_dedupe_column(connection)
     _sync_crypto_ranking_mobile_alert_rules(connection, now_utc=now_utc)
+    _sync_tradefi_daily_mobile_alert_rules(connection, now_utc=now_utc)
     _sync_pin_paper_strategy_mobile_alert_rules(connection, now_utc=now_utc)
     rows = connection.execute(
         """
@@ -425,6 +452,103 @@ def _active_crypto_ranking_alert_devices(connection: sqlite3.Connection) -> list
     ).fetchall()
 
 
+def _sync_tradefi_daily_mobile_alert_rules(
+    connection: sqlite3.Connection,
+    *,
+    now_utc: str,
+) -> None:
+    devices = _active_crypto_ranking_alert_devices(connection)
+    if not devices:
+        return
+    instruments = _latest_tradefi_daily_alert_instruments(connection)
+    active_pairs = {(str(row["market"]), str(row["symbol"])) for row in instruments}
+    active_device_ids = {int(row["push_device_id"]) for row in devices}
+    active_conditions = {
+        str(condition["condition_type"])
+        for condition in TRADEFI_DAILY_ALERT_CONDITIONS
+    }
+    existing_system_rules = connection.execute(
+        """
+        SELECT mobile_alert_rule_id, push_device_id, market, symbol, condition_type
+        FROM mobile_alert_rule
+        WHERE source_type = 'technical'
+            AND created_by = ?
+        """,
+        (TRADEFI_DAILY_ALERT_CREATED_BY,),
+    ).fetchall()
+    existing_keys = {
+        (
+            int(row["push_device_id"]),
+            str(row["market"]),
+            str(row["symbol"]),
+            str(row["condition_type"]),
+        )
+        for row in existing_system_rules
+    }
+    for row in existing_system_rules:
+        should_enable = (
+            int(row["push_device_id"]) in active_device_ids
+            and (str(row["market"]), str(row["symbol"])) in active_pairs
+            and str(row["condition_type"]) in active_conditions
+        )
+        connection.execute(
+            """
+            UPDATE mobile_alert_rule
+            SET enabled = ?, updated_at_utc = ?
+            WHERE mobile_alert_rule_id = ?
+            """,
+            (
+                should_enable,
+                now_utc,
+                int(row["mobile_alert_rule_id"]),
+            ),
+        )
+    for device in devices:
+        push_device_id = int(device["push_device_id"])
+        for instrument in instruments:
+            market = str(instrument["market"])
+            symbol = str(instrument["symbol"])
+            for condition in TRADEFI_DAILY_ALERT_CONDITIONS:
+                condition_type = str(condition["condition_type"])
+                key = (push_device_id, market, symbol, condition_type)
+                if key in existing_keys:
+                    continue
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_rule (
+                        push_device_id,
+                        symbol,
+                        market,
+                        condition_type,
+                        source_type,
+                        metric_key,
+                        operator,
+                        threshold,
+                        cooldown_seconds,
+                        enabled,
+                        created_by,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES (?, ?, ?, ?, 'technical', ?, ?, ?, ?, TRUE, ?, ?, ?)
+                    """,
+                    (
+                        push_device_id,
+                        symbol,
+                        market,
+                        condition_type,
+                        str(condition["metric_key"]),
+                        str(condition["operator"]),
+                        float(condition["threshold"]),
+                        int(condition["cooldown_seconds"]),
+                        TRADEFI_DAILY_ALERT_CREATED_BY,
+                        now_utc,
+                        now_utc,
+                    ),
+                )
+                existing_keys.add(key)
+
+
 def _sync_pin_paper_strategy_mobile_alert_rules(
     connection: sqlite3.Connection,
     *,
@@ -539,6 +663,44 @@ def _latest_crypto_ranking_instruments(
         selected[symbol] = {
             "market": str(row["market"]),
             "symbol": symbol,
+        }
+    return list(selected.values())
+
+
+def _latest_tradefi_daily_alert_instruments(
+    connection: sqlite3.Connection,
+) -> list[dict[str, str]]:
+    board_placeholders = ",".join("?" for _ in TRADEFI_DAILY_ALERT_BOARDS)
+    rows = connection.execute(
+        f"""
+        SELECT
+            instrument.market,
+            instrument.symbol,
+            ranking_snapshot.board_name,
+            ranking_snapshot.rank
+        FROM ranking_snapshot
+        JOIN instrument
+            ON instrument.instrument_id = ranking_snapshot.instrument_id
+        WHERE ranking_snapshot.board_name IN ({board_placeholders})
+            AND ranking_snapshot.rank <= ?
+            AND ranking_snapshot.snapshot_ts_utc = (
+                SELECT MAX(latest_ranking.snapshot_ts_utc)
+                FROM ranking_snapshot AS latest_ranking
+                WHERE latest_ranking.board_name = ranking_snapshot.board_name
+            )
+            AND instrument.is_active = TRUE
+        ORDER BY ranking_snapshot.board_name, ranking_snapshot.rank, instrument.symbol
+        """,
+        (*TRADEFI_DAILY_ALERT_BOARDS, TRADEFI_DAILY_ALERT_LIMIT),
+    ).fetchall()
+    selected: dict[tuple[str, str], dict[str, str]] = {}
+    for row in rows:
+        key = (str(row["market"]), str(row["symbol"]))
+        if key in selected:
+            continue
+        selected[key] = {
+            "market": key[0],
+            "symbol": key[1],
         }
     return list(selected.values())
 
@@ -735,6 +897,34 @@ def _mobile_technical_signal_for_row(
                 "direction": "up",
                 "label": "1d MA11 突破",
                 "condition_label": "1d MA11 突破",
+                "ma11": signal["ma11"],
+            },
+        )
+    if condition_type == "ma11_breakdown_1d":
+        signal = _latest_daily_ma11_cross(
+            connection,
+            market=market,
+            symbol=symbol,
+            direction="down",
+        )
+        if signal is None:
+            return None
+        return MobileTechnicalSignal(
+            title_suffix="1d MA11 跌破",
+            metric="ma11_cross",
+            observed_value=signal["close"],
+            message=(
+                f"{symbol} 1d MA11 跌破 close {_format_float(signal['close'])} "
+                f"< MA11 {_format_float(signal['ma11'])}，交易日 {signal['bar_key']}"
+            ),
+            dedupe_key=f"{condition_type}:{market}:{symbol}:{signal['bar_key']}",
+            metadata={
+                "period": "1d",
+                "bar_time": signal["bar_key"],
+                "price": signal["close"],
+                "direction": "down",
+                "label": "1d MA11 跌破",
+                "condition_label": "1d MA11 跌破",
                 "ma11": signal["ma11"],
             },
         )
@@ -956,6 +1146,12 @@ def _latest_daily_ma11_cross(
     if direction == "up" and not (
         previous_close <= previous_ma11 and latest_close > latest_ma11
     ):
+        return None
+    if direction == "down" and not (
+        previous_close >= previous_ma11 and latest_close < latest_ma11
+    ):
+        return None
+    if direction not in {"up", "down"}:
         return None
     return {
         "close": latest_close,
