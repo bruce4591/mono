@@ -1832,6 +1832,25 @@ class ApiTests(unittest.TestCase):
                     snapshot_ts_utc="2026-04-24T20:00:00Z",
                     trade_date_local="2026-04-24",
                 )
+                instrument = get_instrument_payload(connection, "CRYPTO", "BTCUSDT")
+                assert instrument is not None
+                IntradayBarRepository(connection).upsert(
+                    IntradayBar(
+                        instrument_id=instrument["instrument_id"],
+                        interval="1h",
+                        bar_start_ts_utc="2026-04-24T19:00:00Z",
+                        bar_end_ts_utc="2026-04-24T20:00:00Z",
+                        trade_date_local="2026-04-24",
+                        open=64000.0,
+                        high=64500.0,
+                        low=63900.0,
+                        close=64250.0,
+                        volume_raw=42.0,
+                        turnover_raw=2_698_500.0,
+                        is_closed_bar=True,
+                        source="aggregate_1m",
+                    )
+                )
 
             response_status, response_body = _request_api(
                 db_path,
@@ -1843,6 +1862,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response_status, 200, response_body)
         payload = json.loads(response_body)
         self.assertEqual(payload["instrument"]["symbol"], "BTCUSDT")
+        self.assertIn("1h", payload["periods"])
         self.assertIn("15m", payload["periods"])
         self.assertIn("1d", payload["periods"])
         self.assertEqual(len(payload["bars"]), 5)
@@ -2623,7 +2643,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn(b"async function renderCandles", asset.body)
         self.assertIn(b"renderPeriodTabs", asset.body)
         self.assertIn(b"chartTimezone", asset.body)
-        self.assertIn(b'["1m", "5m", "15m", "8h"]', asset.body)
+        self.assertIn(b'["1m", "5m", "15m", "1h", "8h"]', asset.body)
         self.assertIn(b'market === "CRYPTO" || market === "CRYPTO_FUTURES"', asset.body)
         self.assertIn(b"DEFAULT_VISIBLE_CANDLES", asset.body)
         self.assertIn(b"LOAD_MORE_CANDLES", asset.body)

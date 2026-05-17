@@ -20,6 +20,7 @@ const PERIOD_TABS = [
   { label: "1分", value: "1m" },
   { label: "5分", value: "5m" },
   { label: "15分", value: "15m" },
+  { label: "1小时", value: "1h" },
   { label: "8小时", value: "8h" },
   { label: "1天", value: "1d" }
 ];

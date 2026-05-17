@@ -31,6 +31,7 @@ const DEFAULT_VISIBLE_CANDLES = {
   "1m": 90,
   "5m": 96,
   "15m": 96,
+  "1h": 90,
   "60m": 80,
   "8h": 90,
   "1d": 120,
@@ -40,6 +41,7 @@ const LOAD_MORE_CANDLES = {
   "1m": 90,
   "5m": 96,
   "15m": 96,
+  "1h": 60,
   "60m": 80,
   "8h": 60,
   "1d": 60,
@@ -352,7 +354,7 @@ async function loadLatestSnapshot() {
 async function loadInstrument() {
   title.textContent = `${market}:${symbol}`;
   const intradayIntervals =
-    market === "CRYPTO" || market === "CRYPTO_FUTURES" ? ["1m", "5m", "15m", "8h"] : ["60m"];
+    market === "CRYPTO" || market === "CRYPTO_FUTURES" ? ["1m", "5m", "15m", "1h", "8h"] : ["60m"];
   const detailResponse = await fetchInstrumentDetail(intradayIntervals);
 
   if (!detailResponse.ok) {

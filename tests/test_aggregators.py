@@ -211,10 +211,16 @@ class AggregatorTests(unittest.TestCase):
                     futures_id,
                     "5m",
                 )
+                futures_1h = IntradayBarRepository(connection).list_for_instrument(
+                    futures_id,
+                    "1h",
+                )
 
         self.assertGreater(result.bars_written, 0)
         self.assertEqual(spot_5m, [])
         self.assertEqual(futures_5m[0].source, "aggregate_1m")
+        self.assertEqual(futures_1h[0].bar_start_ts_utc, "2026-04-12T14:00:00Z")
+        self.assertEqual(futures_1h[0].interval, "1h")
 
 
 def _seed_btc_1m_bars(connection, *, minutes: int) -> int:

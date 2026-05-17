@@ -93,7 +93,7 @@ def aggregate_market_from_1m(
     intraday = aggregate_intraday_from_1m(
         connection,
         instrument_ids=instrument_ids,
-        target_intervals=["5m", "15m", "8h"],
+        target_intervals=["5m", "15m", "1h", "8h"],
     )
     daily = aggregate_daily_from_intraday(
         connection,

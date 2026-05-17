@@ -581,7 +581,7 @@ def get_instrument_detail_payload(
     resolved_intraday_intervals = (
         intraday_intervals
         if intraday_intervals is not None
-        else (["1m", "5m", "15m", "8h"] if market in {"CRYPTO", "CRYPTO_FUTURES"} else [])
+        else (["1m", "5m", "15m", "1h", "8h"] if market in {"CRYPTO", "CRYPTO_FUTURES"} else [])
     )
     intraday_bars = [
         payload
@@ -623,7 +623,7 @@ def get_mobile_instrument_detail_payload(
     intraday_limit: int = 96,
     allow_backfill: bool = True,
 ) -> dict[str, object] | None:
-    intraday_periods = ["1m", "5m", "15m", "8h"] if market in {"CRYPTO", "CRYPTO_FUTURES"} else []
+    intraday_periods = ["1m", "5m", "15m", "1h", "8h"] if market in {"CRYPTO", "CRYPTO_FUTURES"} else []
     detail = get_instrument_detail_payload(
         connection,
         market,
