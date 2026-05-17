@@ -116,6 +116,7 @@ class StaticAsset:
 
 
 MOBILE_HOME_BOARDS = (
+    ("BTC_ETF_FLOW_TOP5", "BTC ETF", "BTC_ETF_FLOW"),
     ("ETF_FOCUS20", "ETF", "US"),
     ("HK_STOCK_FOCUS20", "HK", "HK"),
     ("US_STOCK_FOCUS20", "US", "US"),

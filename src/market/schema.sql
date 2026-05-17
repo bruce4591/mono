@@ -136,6 +136,20 @@ CREATE TABLE IF NOT EXISTS source_health (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS btc_etf_flow (
+    flow_date TEXT NOT NULL,
+    fund_symbol TEXT NOT NULL,
+    fund_name TEXT NOT NULL,
+    net_flow_usd_m REAL NOT NULL,
+    btc_price_usd REAL,
+    estimated_btc REAL,
+    source TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (flow_date, fund_symbol, source)
+);
+
 CREATE TABLE IF NOT EXISTS board_refresh_state (
     board_name TEXT PRIMARY KEY,
     last_requested_at_utc TEXT,

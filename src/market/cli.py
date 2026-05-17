@@ -26,6 +26,7 @@ from market.binance_futures import (
     select_futures_tradefi_symbols,
     select_top_futures_usdt_symbols,
 )
+from market.btc_etf_flows import sync_farside_btc_etf_flows
 from market.collectors.alpaca import AlpacaCollector
 from market.collectors.alpaca import ALPACA_DEFAULT_REQUEST_TIMEOUT_SECONDS
 from market.collectors.akshare import AkshareCollector
@@ -498,6 +499,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evaluate_mobile_alerts.add_argument("--db-path", type=Path, default=None)
     evaluate_mobile_alerts.add_argument("--now-utc", default=None)
+
+    sync_btc_etf_flows = subparsers.add_parser(
+        "sync-btc-etf-flows",
+        help="Sync daily US spot BTC ETF flow data",
+    )
+    sync_btc_etf_flows.add_argument("--db-path", type=Path, default=None)
+    sync_btc_etf_flows.add_argument("--source-url", default=None)
+    sync_btc_etf_flows.add_argument("--fund-symbol", default=None)
+    sync_btc_etf_flows.add_argument("--limit-days", type=int, default=30)
+    sync_btc_etf_flows.add_argument("--dry-run", action="store_true")
     return parser
 
 
@@ -1264,6 +1275,37 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
+    if args.command == "sync-btc-etf-flows":
+        if args.dry_run:
+            print(
+                "btc etf flows sync ready: "
+                f"source={args.source_url or 'farside'} "
+                f"fund={args.fund_symbol or 'all'} "
+                f"limit_days={args.limit_days}"
+            )
+            return 0
+        now = datetime.now(tz=UTC)
+        started_at_utc = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        with open_database() as connection:
+            result = run_collector_job(
+                connection,
+                job_name="sync-btc-etf-flows",
+                source_name="farside_btc_etf_flows",
+                checkpoint=f"{args.fund_symbol or 'all'}:{args.limit_days}:{started_at_utc}",
+                started_at_utc=started_at_utc,
+                operation=lambda: _sync_btc_etf_flows_operation(
+                    connection,
+                    source_url=args.source_url,
+                    fund_symbol=args.fund_symbol,
+                    limit_days=args.limit_days,
+                ),
+            )
+        print(
+            "btc etf flows synced: "
+            f"{result.items_synced} rows, source=farside"
+        )
+        return 0
+
     return 0
 
 
@@ -1275,6 +1317,30 @@ def _handle_sqlite_count_report(args: argparse.Namespace) -> int:
         counts = sqlite_table_counts(connection, ONLINE_BACKFILL_TABLES)
     print(format_count_report(counts))
     return 0
+
+
+def _sync_btc_etf_flows_operation(
+    connection: sqlite3.Connection,
+    *,
+    source_url: str | None,
+    fund_symbol: str | None,
+    limit_days: int | None,
+) -> CollectorResult:
+    result = sync_farside_btc_etf_flows(
+        connection,
+        source_url=source_url or "https://farside.co.uk/btc/",
+        fund_symbol=fund_symbol,
+        limit_days=limit_days,
+    )
+    return CollectorResult(
+        source_name=result.source,
+        items_synced=result.rows_synced,
+        metadata={
+            "source_url": result.source_url,
+            "bars_synced": result.bars_synced,
+            "rankings_synced": result.rankings_synced,
+        },
+    )
 
 
 def _database_url_for_command(
