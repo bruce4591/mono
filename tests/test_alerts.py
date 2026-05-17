@@ -866,6 +866,157 @@ class AlertTests(unittest.TestCase):
         self.assertIn("1d MA11 跌破", event_rows[0]["message"])
         self.assertIn('"direction":"down"', event_rows[0]["alert_metadata"])
 
+    def test_evaluate_mobile_alert_rules_syncs_macro_fast_move_rules(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                _insert_macro_alert_fixture(connection)
+
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-03T00:00:00Z",
+                )
+
+                rows = connection.execute(
+                    """
+                    SELECT market, symbol, condition_type
+                    FROM mobile_alert_rule
+                    WHERE source_type = 'technical'
+                        AND created_by = 'system_macro_fast_moves'
+                        AND enabled = 1
+                    """
+                ).fetchall()
+
+        rules = {
+            (str(row["market"]), str(row["symbol"]), str(row["condition_type"]))
+            for row in rows
+        }
+        self.assertIn(("MACRO_RATE", "US10Y", "us_treasury_yield_fast_rise"), rules)
+        self.assertIn(("MACRO_RATE", "US10Y", "us_long_yield_above_5pct"), rules)
+        self.assertIn(("MACRO_RATE", "US30Y", "us_long_yield_above_5pct"), rules)
+        self.assertIn(("FX", "USDJPY", "jpy_fast_strengthen"), rules)
+        self.assertIn(("FX", "USDJPY", "jpy_fast_weaken"), rules)
+
+    def test_evaluate_mobile_alert_rules_triggers_us_long_yield_above_five_once_per_day(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instrument_id = _insert_macro_alert_fixture(
+                    connection,
+                    market="MACRO_RATE",
+                    symbol="US10Y",
+                    instrument_type="yield",
+                    quote_currency="PCT",
+                )
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-03T00:00:00Z",
+                )
+                _insert_macro_snapshots(
+                    connection,
+                    instrument_id=instrument_id,
+                    market="MACRO_RATE",
+                    symbol="US10Y",
+                    quote_currency="PCT",
+                    prices=[4.96, 5.03],
+                    start_time=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+                )
+
+                first_messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-05T00:01:00Z",
+                )
+                second_messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-05T00:30:00Z",
+                )
+                event_rows = connection.execute(
+                    """
+                    SELECT mobile_alert_rule.condition_type, mobile_alert_event.message
+                    FROM mobile_alert_event
+                    JOIN mobile_alert_rule
+                        ON mobile_alert_rule.mobile_alert_rule_id =
+                            mobile_alert_event.mobile_alert_rule_id
+                    WHERE mobile_alert_rule.symbol = 'US10Y'
+                    ORDER BY mobile_alert_rule.condition_type
+                    """
+                ).fetchall()
+
+        self.assertGreater(instrument_id, 0)
+        self.assertEqual(
+            {message["title"] for message in first_messages},
+            {"US10Y 收益率快速上升", "US10Y 收益率超过5%"},
+        )
+        self.assertEqual(second_messages, [])
+        self.assertEqual(
+            {str(row["condition_type"]) for row in event_rows},
+            {"us_treasury_yield_fast_rise", "us_long_yield_above_5pct"},
+        )
+        self.assertTrue(any("5.03%" in str(row["message"]) for row in event_rows))
+
+    def test_evaluate_mobile_alert_rules_triggers_jpy_fast_moves_once_per_direction_per_day(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                instrument_id = _insert_macro_alert_fixture(
+                    connection,
+                    market="FX",
+                    symbol="USDJPY",
+                    instrument_type="fx",
+                    quote_currency="JPY",
+                )
+                evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-03T00:00:00Z",
+                )
+                _insert_macro_snapshots(
+                    connection,
+                    instrument_id=instrument_id,
+                    market="FX",
+                    symbol="USDJPY",
+                    quote_currency="JPY",
+                    prices=[155.0, 154.0],
+                    start_time=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+                )
+
+                strengthen_messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-05T00:01:00Z",
+                )
+                repeated_strengthen_messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-05T00:30:00Z",
+                )
+                _insert_macro_snapshots(
+                    connection,
+                    instrument_id=instrument_id,
+                    market="FX",
+                    symbol="USDJPY",
+                    quote_currency="JPY",
+                    prices=[154.0, 155.0],
+                    start_time=datetime(2026, 5, 6, 0, 0, tzinfo=UTC),
+                )
+                weaken_messages = evaluate_mobile_alert_rules(
+                    connection,
+                    now_utc="2026-05-06T01:01:00Z",
+                )
+
+        self.assertEqual(
+            [message["title"] for message in strengthen_messages],
+            ["USDJPY 日元快速升值"],
+        )
+        self.assertEqual(repeated_strengthen_messages, [])
+        self.assertEqual(
+            [message["title"] for message in weaken_messages],
+            ["USDJPY 日元快速贬值"],
+        )
+
 
 def _insert_mobile_alert_fixture(
     connection,
@@ -1089,6 +1240,113 @@ def _insert_tradefi_ranking_alert_fixture(
         ),
     )
     return instrument_id
+
+
+def _insert_macro_alert_fixture(
+    connection,
+    *,
+    market: str = "MACRO_RATE",
+    symbol: str = "US10Y",
+    instrument_type: str = "yield",
+    quote_currency: str = "PCT",
+    prices: list[float] | None = None,
+    insert_push_device: bool = True,
+) -> int:
+    instrument_id = InstrumentRepository(connection).upsert(
+        Instrument(
+            market=market,
+            symbol=symbol,
+            display_name=symbol,
+            exchange="AKSHARE" if market == "MACRO_RATE" else "SAFE",
+            instrument_type=instrument_type,
+            quote_currency=quote_currency,
+            timezone="UTC" if market == "MACRO_RATE" else "Asia/Shanghai",
+        )
+    )
+    if insert_push_device:
+        connection.execute(
+            """
+            INSERT INTO push_device (
+                push_token,
+                platform,
+                device_label,
+                enabled,
+                created_at_utc,
+                updated_at_utc
+            )
+            VALUES (?, ?, ?, 1, ?, ?)
+            """,
+            (
+                "ExponentPushToken[test-token]",
+                "android",
+                "OnePlus 13T",
+                "2026-05-04T02:58:00Z",
+                "2026-05-04T02:58:00Z",
+            ),
+        )
+    if prices is not None:
+        _insert_macro_snapshots(
+            connection,
+            instrument_id=instrument_id,
+            market=market,
+            symbol=symbol,
+            quote_currency=quote_currency,
+            prices=prices,
+            start_time=datetime(2026, 5, 4, 0, 0, tzinfo=UTC),
+        )
+    if market == "MACRO_RATE" and symbol == "US10Y":
+        InstrumentRepository(connection).upsert(
+            Instrument(
+                market="MACRO_RATE",
+                symbol="US30Y",
+                display_name="US30Y",
+                exchange="AKSHARE",
+                instrument_type="yield",
+                quote_currency="PCT",
+                timezone="UTC",
+            )
+        )
+    if market != "FX":
+        InstrumentRepository(connection).upsert(
+            Instrument(
+                market="FX",
+                symbol="USDJPY",
+                display_name="USDJPY",
+                exchange="SAFE",
+                instrument_type="fx",
+                quote_currency="JPY",
+                timezone="Asia/Shanghai",
+            )
+        )
+    return instrument_id
+
+
+def _insert_macro_snapshots(
+    connection,
+    *,
+    instrument_id: int,
+    market: str,
+    symbol: str,
+    quote_currency: str,
+    prices: list[float],
+    start_time: datetime,
+) -> None:
+    snapshots = MarketSnapshotRepository(connection)
+    for index, price in enumerate(prices):
+        ts = start_time + timedelta(hours=index)
+        snapshots.upsert(
+            MarketSnapshot(
+                instrument_id=instrument_id,
+                snapshot_ts_utc=_format_test_utc(ts),
+                trade_date_local=ts.date().isoformat(),
+                last_price=price,
+                change_pct=None,
+                volume_raw=None,
+                turnover_raw=1.0,
+                quote_currency=quote_currency,
+                source="test_macro",
+            )
+        )
 
 
 def _insert_intraday_bars(

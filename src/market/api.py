@@ -3244,6 +3244,14 @@ def _mobile_alert_title_suffix(condition_type: str) -> str:
         return "1d MA11 突破"
     if condition_type == "ma11_breakdown_1d":
         return "1d MA11 跌破"
+    if condition_type == "us_treasury_yield_fast_rise":
+        return "收益率快速上升"
+    if condition_type == "us_long_yield_above_5pct":
+        return "收益率超过5%"
+    if condition_type == "jpy_fast_strengthen":
+        return "日元快速升值"
+    if condition_type == "jpy_fast_weaken":
+        return "日元快速贬值"
     if condition_type.startswith("change_pct_"):
         return "涨跌幅提醒"
     return "价格提醒"

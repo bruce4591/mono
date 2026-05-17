@@ -103,6 +103,54 @@ TRADEFI_DAILY_ALERT_CONDITIONS = (
         "operator": "<",
     },
 )
+MACRO_FAST_MOVE_ALERT_CREATED_BY = "system_macro_fast_moves"
+MACRO_RATE_FAST_RISE_BPS = 5.0
+JPY_FAST_MOVE_PCT = 0.5
+US_LONG_YIELD_THRESHOLD = 5.0
+MACRO_FAST_MOVE_ALERT_CONDITIONS = (
+    *(
+        {
+            "market": "MACRO_RATE",
+            "symbol": symbol,
+            "condition_type": "us_treasury_yield_fast_rise",
+            "threshold": MACRO_RATE_FAST_RISE_BPS,
+            "cooldown_seconds": 24 * 60 * 60,
+            "metric_key": "yield_bps_change",
+            "operator": ">=",
+        }
+        for symbol in ("US2Y", "US5Y", "US10Y", "US30Y")
+    ),
+    *(
+        {
+            "market": "MACRO_RATE",
+            "symbol": symbol,
+            "condition_type": "us_long_yield_above_5pct",
+            "threshold": US_LONG_YIELD_THRESHOLD,
+            "cooldown_seconds": 24 * 60 * 60,
+            "metric_key": "yield_level",
+            "operator": ">=",
+        }
+        for symbol in ("US10Y", "US30Y")
+    ),
+    {
+        "market": "FX",
+        "symbol": "USDJPY",
+        "condition_type": "jpy_fast_strengthen",
+        "threshold": JPY_FAST_MOVE_PCT,
+        "cooldown_seconds": 24 * 60 * 60,
+        "metric_key": "fx_pct_change",
+        "operator": "<=",
+    },
+    {
+        "market": "FX",
+        "symbol": "USDJPY",
+        "condition_type": "jpy_fast_weaken",
+        "threshold": JPY_FAST_MOVE_PCT,
+        "cooldown_seconds": 24 * 60 * 60,
+        "metric_key": "fx_pct_change",
+        "operator": ">=",
+    },
+)
 PIN_PAPER_STRATEGY_ID = "crypto_pin_rebound_v1"
 PIN_PAPER_STRATEGY_CREATED_BY = "system_strategy_crypto_pin_rebound_v1"
 PIN_PAPER_STRATEGY_MARKET = "CRYPTO_FUTURES"
@@ -177,6 +225,7 @@ def evaluate_mobile_alert_rules(
     _ensure_mobile_alert_event_dedupe_column(connection)
     _sync_crypto_ranking_mobile_alert_rules(connection, now_utc=now_utc)
     _sync_tradefi_daily_mobile_alert_rules(connection, now_utc=now_utc)
+    _sync_macro_fast_move_mobile_alert_rules(connection, now_utc=now_utc)
     _sync_pin_paper_strategy_mobile_alert_rules(connection, now_utc=now_utc)
     rows = connection.execute(
         """
@@ -549,6 +598,112 @@ def _sync_tradefi_daily_mobile_alert_rules(
                 existing_keys.add(key)
 
 
+def _sync_macro_fast_move_mobile_alert_rules(
+    connection: sqlite3.Connection,
+    *,
+    now_utc: str,
+) -> None:
+    devices = _active_crypto_ranking_alert_devices(connection)
+    if not devices:
+        return
+    instruments = _available_macro_fast_move_instruments(connection)
+    active_conditions = {
+        (
+            str(condition["market"]),
+            str(condition["symbol"]),
+            str(condition["condition_type"]),
+        )
+        for condition in MACRO_FAST_MOVE_ALERT_CONDITIONS
+        if (str(condition["market"]), str(condition["symbol"])) in instruments
+    }
+    active_device_ids = {int(row["push_device_id"]) for row in devices}
+    existing_system_rules = connection.execute(
+        """
+        SELECT mobile_alert_rule_id, push_device_id, market, symbol, condition_type
+        FROM mobile_alert_rule
+        WHERE source_type = 'technical'
+            AND created_by = ?
+        """,
+        (MACRO_FAST_MOVE_ALERT_CREATED_BY,),
+    ).fetchall()
+    existing_keys = {
+        (
+            int(row["push_device_id"]),
+            str(row["market"]),
+            str(row["symbol"]),
+            str(row["condition_type"]),
+        )
+        for row in existing_system_rules
+    }
+    for row in existing_system_rules:
+        rule_condition_key = (
+            str(row["market"]),
+            str(row["symbol"]),
+            str(row["condition_type"]),
+        )
+        should_enable = (
+            int(row["push_device_id"]) in active_device_ids
+            and rule_condition_key in active_conditions
+        )
+        connection.execute(
+            """
+            UPDATE mobile_alert_rule
+            SET enabled = ?, updated_at_utc = ?
+            WHERE mobile_alert_rule_id = ?
+            """,
+            (
+                should_enable,
+                now_utc,
+                int(row["mobile_alert_rule_id"]),
+            ),
+        )
+    for device in devices:
+        push_device_id = int(device["push_device_id"])
+        for condition in MACRO_FAST_MOVE_ALERT_CONDITIONS:
+            market = str(condition["market"])
+            symbol = str(condition["symbol"])
+            condition_type = str(condition["condition_type"])
+            if (market, symbol, condition_type) not in active_conditions:
+                continue
+            key = (push_device_id, market, symbol, condition_type)
+            if key in existing_keys:
+                continue
+            connection.execute(
+                """
+                INSERT INTO mobile_alert_rule (
+                    push_device_id,
+                    symbol,
+                    market,
+                    condition_type,
+                    source_type,
+                    metric_key,
+                    operator,
+                    threshold,
+                    cooldown_seconds,
+                    enabled,
+                    created_by,
+                    created_at_utc,
+                    updated_at_utc
+                )
+                VALUES (?, ?, ?, ?, 'technical', ?, ?, ?, ?, TRUE, ?, ?, ?)
+                """,
+                (
+                    push_device_id,
+                    symbol,
+                    market,
+                    condition_type,
+                    str(condition["metric_key"]),
+                    str(condition["operator"]),
+                    float(condition["threshold"]),
+                    int(condition["cooldown_seconds"]),
+                    MACRO_FAST_MOVE_ALERT_CREATED_BY,
+                    now_utc,
+                    now_utc,
+                ),
+            )
+            existing_keys.add(key)
+
+
 def _sync_pin_paper_strategy_mobile_alert_rules(
     connection: sqlite3.Connection,
     *,
@@ -703,6 +858,28 @@ def _latest_tradefi_daily_alert_instruments(
             "symbol": key[1],
         }
     return list(selected.values())
+
+
+def _available_macro_fast_move_instruments(
+    connection: sqlite3.Connection,
+) -> set[tuple[str, str]]:
+    desired_pairs = {
+        (str(condition["market"]), str(condition["symbol"]))
+        for condition in MACRO_FAST_MOVE_ALERT_CONDITIONS
+    }
+    rows = connection.execute(
+        """
+        SELECT market, symbol
+        FROM instrument
+        WHERE is_active = TRUE
+            AND market IN ('MACRO_RATE', 'FX')
+        """
+    ).fetchall()
+    return {
+        (str(row["market"]), str(row["symbol"]))
+        for row in rows
+        if (str(row["market"]), str(row["symbol"])) in desired_pairs
+    }
 
 
 def _latest_snapshot_for_rule(
@@ -926,6 +1103,109 @@ def _mobile_technical_signal_for_row(
                 "label": "1d MA11 跌破",
                 "condition_label": "1d MA11 跌破",
                 "ma11": signal["ma11"],
+            },
+        )
+    if condition_type == "us_treasury_yield_fast_rise":
+        signal = _latest_snapshot_change(
+            connection,
+            market=market,
+            symbol=symbol,
+        )
+        if signal is None:
+            return None
+        change_bps = (float(signal["latest"]) - float(signal["previous"])) * 100.0
+        if change_bps < float(row["threshold"]):
+            return None
+        latest = float(signal["latest"])
+        return MobileTechnicalSignal(
+            title_suffix="收益率快速上升",
+            metric="yield_bps_change",
+            observed_value=change_bps,
+            message=(
+                f"{symbol} 收益率快速上升 +{change_bps:.1f}bp，"
+                f"最新 {latest:.2f}%"
+            ),
+            dedupe_key=f"{condition_type}:{market}:{symbol}:{signal['trade_date']}",
+            metadata={
+                "period": "snapshot",
+                "bar_time": signal["snapshot_ts_utc"],
+                "price": latest,
+                "direction": "up",
+                "label": "收益率快速上升",
+                "condition_label": "美债收益率快速上升",
+                "change_bps": change_bps,
+                "previous": signal["previous"],
+            },
+        )
+    if condition_type == "us_long_yield_above_5pct":
+        signal = _latest_snapshot_level(
+            connection,
+            market=market,
+            symbol=symbol,
+        )
+        if signal is None:
+            return None
+        latest = float(signal["latest"])
+        if latest < float(row["threshold"]):
+            return None
+        return MobileTechnicalSignal(
+            title_suffix="收益率超过5%",
+            metric="yield_level",
+            observed_value=latest,
+            message=f"{symbol} 收益率超过5%，最新 {latest:.2f}%",
+            dedupe_key=f"{condition_type}:{market}:{symbol}:{signal['trade_date']}",
+            metadata={
+                "period": "snapshot",
+                "bar_time": signal["snapshot_ts_utc"],
+                "price": latest,
+                "direction": "up",
+                "label": "收益率超过5%",
+                "condition_label": "10年以上美债收益率超过5%",
+                "threshold": float(row["threshold"]),
+            },
+        )
+    if condition_type in {"jpy_fast_strengthen", "jpy_fast_weaken"}:
+        signal = _latest_snapshot_change(
+            connection,
+            market=market,
+            symbol=symbol,
+        )
+        if signal is None or float(signal["previous"]) == 0:
+            return None
+        previous = float(signal["previous"])
+        latest = float(signal["latest"])
+        change_pct = ((latest - previous) / previous) * 100.0
+        threshold = float(row["threshold"])
+        if condition_type == "jpy_fast_strengthen":
+            if change_pct > -threshold:
+                return None
+            title_suffix = "日元快速升值"
+            direction = "down"
+            condition_label = "日元快速升值"
+        else:
+            if change_pct < threshold:
+                return None
+            title_suffix = "日元快速贬值"
+            direction = "up"
+            condition_label = "日元快速贬值"
+        return MobileTechnicalSignal(
+            title_suffix=title_suffix,
+            metric="fx_pct_change",
+            observed_value=change_pct,
+            message=(
+                f"{symbol} {condition_label}，USDJPY {change_pct:+.2f}% "
+                f"({previous:.3f} -> {latest:.3f})"
+            ),
+            dedupe_key=f"{condition_type}:{market}:{symbol}:{signal['trade_date']}",
+            metadata={
+                "period": "snapshot",
+                "bar_time": signal["snapshot_ts_utc"],
+                "price": latest,
+                "direction": direction,
+                "label": condition_label,
+                "condition_label": condition_label,
+                "change_pct": change_pct,
+                "previous": previous,
             },
         )
     return None
@@ -1158,6 +1438,79 @@ def _latest_daily_ma11_cross(
         "ma11": latest_ma11,
         "volume_ratio": 0.0,
         "bar_key": _format_row_temporal_key(bars[-1]["trade_date"]),
+    }
+
+
+def _latest_snapshot_change(
+    connection: sqlite3.Connection,
+    *,
+    market: str,
+    symbol: str,
+) -> dict[str, float | str] | None:
+    rows = connection.execute(
+        """
+        SELECT
+            market_snapshot_history.snapshot_ts_utc,
+            market_snapshot_history.trade_date_local,
+            market_snapshot_history.last_price
+        FROM instrument
+        JOIN market_snapshot_history
+            ON market_snapshot_history.instrument_id = instrument.instrument_id
+        WHERE instrument.market = ?
+            AND instrument.symbol = ?
+            AND instrument.is_active = TRUE
+            AND market_snapshot_history.last_price IS NOT NULL
+        ORDER BY market_snapshot_history.snapshot_ts_utc DESC
+        LIMIT 2
+        """,
+        (market, symbol),
+    ).fetchall()
+    if len(rows) < 2:
+        return None
+    latest = _optional_float(rows[0]["last_price"])
+    previous = _optional_float(rows[1]["last_price"])
+    if latest is None or previous is None:
+        return None
+    return {
+        "latest": latest,
+        "previous": previous,
+        "snapshot_ts_utc": _format_row_temporal_key(rows[0]["snapshot_ts_utc"]),
+        "trade_date": _format_row_temporal_key(rows[0]["trade_date_local"]),
+    }
+
+
+def _latest_snapshot_level(
+    connection: sqlite3.Connection,
+    *,
+    market: str,
+    symbol: str,
+) -> dict[str, float | str] | None:
+    row = connection.execute(
+        """
+        SELECT
+            latest_market_snapshot.snapshot_ts_utc,
+            latest_market_snapshot.trade_date_local,
+            latest_market_snapshot.last_price
+        FROM instrument
+        JOIN latest_market_snapshot
+            ON latest_market_snapshot.instrument_id = instrument.instrument_id
+        WHERE instrument.market = ?
+            AND instrument.symbol = ?
+            AND instrument.is_active = TRUE
+            AND latest_market_snapshot.last_price IS NOT NULL
+        LIMIT 1
+        """,
+        (market, symbol),
+    ).fetchone()
+    if row is None:
+        return None
+    latest = _optional_float(row["last_price"])
+    if latest is None:
+        return None
+    return {
+        "latest": latest,
+        "snapshot_ts_utc": _format_row_temporal_key(row["snapshot_ts_utc"]),
+        "trade_date": _format_row_temporal_key(row["trade_date_local"]),
     }
 
 
