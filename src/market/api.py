@@ -744,12 +744,13 @@ def _get_mobile_alert_markers(
         condition_type = str(row["condition_type"])
         if condition_type not in {"ma11_breakout_1d", "paper_strategy_pin"}:
             continue
+        triggered_at_utc = _format_mobile_alert_marker_timestamp(str(row["triggered_at_utc"]))
         marker_time = _mobile_alert_marker_time_for_chart(
             condition_type=condition_type,
             marker_period=_optional_str(metadata.get("chart_period") or metadata.get("period")),
             chart_period=period,
             bar_time=_optional_str(metadata.get("bar_time")),
-            triggered_at_utc=str(row["triggered_at_utc"]),
+            triggered_at_utc=triggered_at_utc,
         )
         price = _optional_float(metadata.get("price"))
         if marker_time is None or price is None:
@@ -771,7 +772,7 @@ def _get_mobile_alert_markers(
                 or condition_type,
                 "ma11": _optional_float(metadata.get("ma11")),
                 "volume_ratio": _optional_float(metadata.get("volume_ratio")),
-                "triggered_at_utc": str(row["triggered_at_utc"]),
+                "triggered_at_utc": triggered_at_utc,
                 "body": str(row["message"]),
             }
         )
@@ -789,8 +790,15 @@ def _mobile_alert_marker_time_for_chart(
     if marker_period == chart_period:
         return bar_time
     if condition_type == "ma11_breakout_1d" and marker_period == "1d":
-        return triggered_at_utc
+        return _format_mobile_alert_marker_timestamp(triggered_at_utc)
     return None
+
+
+def _format_mobile_alert_marker_timestamp(value: str) -> str:
+    try:
+        return _format_utc(_parse_utc(value))
+    except ValueError:
+        return value
 
 
 def _mobile_daily_bar_payload(item: dict[str, object]) -> dict[str, object]:

@@ -1502,7 +1502,7 @@ class ApiTests(unittest.TestCase):
                     """,
                     (
                         rule_id,
-                        "2026-04-24T20:16:00Z",
+                        "2026-04-24 20:16:00+00:00",
                         65000.0,
                         "BTCUSDT 1d MA11 突破 close 65000 > MA11 64000，交易日 2026-04-24",
                         "ma11_breakout_1d:CRYPTO:BTCUSDT:2026-04-24",
@@ -1640,6 +1640,17 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(marker["condition_type"], "ma11_breakout_1d")
         self.assertEqual(marker["condition_label"], "1d MA11 突破")
         self.assertEqual(marker["ma11"], 64000.0)
+
+    def test_daily_ma11_intraday_marker_time_normalizes_postgres_timestamp(self):
+        marker_time = api_module._mobile_alert_marker_time_for_chart(
+            condition_type="ma11_breakout_1d",
+            marker_period="1d",
+            chart_period="15m",
+            bar_time="2026-05-17",
+            triggered_at_utc="2026-05-17 03:21:01+00:00",
+        )
+
+        self.assertEqual(marker_time, "2026-05-17T03:21:01Z")
 
     def test_get_mobile_instrument_detail_payload_returns_strategy_markers_on_chart_period(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
