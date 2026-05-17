@@ -1797,19 +1797,28 @@ class ApiTests(unittest.TestCase):
                     snapshot_ts_utc="2026-04-24T20:00:00Z",
                     trade_date_local="2026-04-24",
                 )
+                get_instrument_payload(
+                    connection,
+                    "CRYPTO",
+                    "BTCUSDT",
+                    instrument_metadata_fetcher=lambda _symbol: {
+                        "price_tick_size": "0.01000000",
+                    },
+                )
 
             response_status, response_body = _request_api(
                 db_path,
                 "GET",
-                "/api/mobile/instrument-detail?market=US&symbol=SPY&period=1d&daily_limit=5",
+                "/api/mobile/instrument-detail?market=CRYPTO&symbol=BTCUSDT&period=1d&daily_limit=5",
                 {},
             )
 
         self.assertEqual(response_status, 200, response_body)
         payload = json.loads(response_body)
-        self.assertEqual(payload["instrument"]["symbol"], "SPY")
+        self.assertEqual(payload["instrument"]["symbol"], "BTCUSDT")
+        self.assertEqual(payload["instrument"]["price_tick_size"], "0.01000000")
         self.assertIn("snapshot", payload)
-        self.assertEqual(payload["periods"], ["1d"])
+        self.assertIn("1d", payload["periods"])
         self.assertEqual(len(payload["bars"]), 5)
 
     def test_mobile_instrument_detail_endpoint_returns_available_intraday_periods_for_daily_request(self):

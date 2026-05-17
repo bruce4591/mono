@@ -139,6 +139,17 @@ def parse_binance_futures_funding_rate(payload: dict[str, object]) -> dict[str, 
 def binance_futures_symbol_to_instrument(symbol_info: dict[str, object]) -> Instrument:
     symbol = str(symbol_info.get("symbol", "")).upper()
     quote_asset = str(symbol_info.get("quoteAsset") or "USDT").upper()
+    filters = symbol_info.get("filters")
+    trading_meta: dict[str, object] = {}
+    if isinstance(filters, list):
+        for raw_filter in filters:
+            if not isinstance(raw_filter, dict):
+                continue
+            filter_type = raw_filter.get("filterType")
+            if filter_type == "PRICE_FILTER" and raw_filter.get("tickSize") is not None:
+                trading_meta["price_tick_size"] = str(raw_filter["tickSize"])
+            if filter_type == "LOT_SIZE" and raw_filter.get("stepSize") is not None:
+                trading_meta["quantity_step_size"] = str(raw_filter["stepSize"])
     return Instrument(
         market="CRYPTO_FUTURES",
         symbol=symbol,
@@ -152,6 +163,7 @@ def binance_futures_symbol_to_instrument(symbol_info: dict[str, object]) -> Inst
             "margin_asset": symbol_info.get("marginAsset"),
             "underlying_type": symbol_info.get("underlyingType"),
             "underlying_sub_type": symbol_info.get("underlyingSubType") or [],
+            **trading_meta,
         },
     )
 

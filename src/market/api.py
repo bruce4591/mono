@@ -684,6 +684,7 @@ def get_mobile_instrument_detail_payload(
             "symbol": instrument.get("symbol"),
             "name": instrument.get("display_name"),
             "asset_class": instrument.get("instrument_type"),
+            "price_tick_size": _price_tick_size(instrument.get("extra_meta")),
         },
         "snapshot": {
             "last_price": snapshot.get("last_price"),
@@ -2900,6 +2901,9 @@ def _percent_change(previous: float | None, current: float | None) -> float | No
 
 
 def _price_tick_size(extra_meta: object) -> str | None:
+    if isinstance(extra_meta, dict):
+        tick_size = extra_meta.get("price_tick_size")
+        return str(tick_size) if tick_size is not None else None
     try:
         metadata = json.loads(str(extra_meta))
     except json.JSONDecodeError:

@@ -47,6 +47,7 @@ export function NativeKLineChart({
   bars,
   alertMarkers,
   period,
+  priceTickSize,
   mode = "candles",
   resetKey,
   onSelectedBarChange,
@@ -55,6 +56,7 @@ export function NativeKLineChart({
   bars: MobileBar[];
   alertMarkers?: MobileAlertMarker[];
   period: string;
+  priceTickSize?: string | null;
   mode?: "candles" | "trend";
   resetKey?: string;
   onSelectedBarChange?: (bar: MobileBar | null) => void;
@@ -297,7 +299,7 @@ export function NativeKLineChart({
       <View style={styles.legendRow}>
         {movingAverages.map((item) => (
           <Text key={`ma:${item.period}`} style={[styles.legendText, { color: item.color }]}>
-            MA{item.period} {formatOptionalPrice(item.values[selectedValueIndex] ?? null)}
+            MA{item.period} {formatOptionalPrice(item.values[selectedValueIndex] ?? null, priceTickSize)}
           </Text>
         ))}
       </View>
@@ -952,17 +954,35 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-function formatOptionalPrice(value: number | null): string {
-  return value === null ? "--" : formatPrice(value);
+function formatOptionalPrice(value: number | null, tickSize?: string | null): string {
+  return value === null ? "--" : formatPrice(value, tickSize);
 }
 
-function formatPrice(value: number): string {
+function formatPrice(value: number, tickSize?: string | null): string {
+  const tickPrecision = pricePrecisionFromTickSize(tickSize);
+  if (tickPrecision !== null) return value.toFixed(tickPrecision);
   const abs = Math.abs(value);
   if (abs > 0 && abs < 0.0001) return value.toFixed(8);
   if (abs > 0 && abs < 1) return value.toFixed(6);
   return value.toLocaleString(undefined, {
     maximumFractionDigits: abs >= 100 ? 2 : 4
   });
+}
+
+function pricePrecisionFromTickSize(tickSize?: string | null): number | null {
+  if (!tickSize) return null;
+  const normalized = tickSize.trim();
+  if (normalized.length === 0) return null;
+  const [mantissa, exponentText] = normalized.toLowerCase().split("e");
+  if (exponentText !== undefined) {
+    const exponent = Number.parseInt(exponentText, 10);
+    if (!Number.isFinite(exponent)) return null;
+    return Math.max(0, -exponent);
+  }
+  const decimalIndex = mantissa.indexOf(".");
+  if (decimalIndex < 0) return 0;
+  const decimals = mantissa.slice(decimalIndex + 1).replace(/0+$/, "");
+  return decimals.length;
 }
 
 function formatMetric(value: number | null): string {

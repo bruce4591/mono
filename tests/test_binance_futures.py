@@ -41,6 +41,27 @@ class BinanceFuturesTests(unittest.TestCase):
         self.assertEqual(instrument.extra_meta["contract_type"], "PERPETUAL")
         self.assertEqual(instrument.extra_meta["underlying_sub_type"], ["PoW"])
 
+    def test_futures_instrument_extracts_tick_size_metadata(self):
+        instrument = binance_futures_symbol_to_instrument(
+            {
+                "symbol": "LABUSDT",
+                "quoteAsset": "USDT",
+                "filters": [
+                    {
+                        "filterType": "PRICE_FILTER",
+                        "tickSize": "0.0001000",
+                    },
+                    {
+                        "filterType": "LOT_SIZE",
+                        "stepSize": "0.1",
+                    },
+                ],
+            }
+        )
+
+        self.assertEqual(instrument.extra_meta["price_tick_size"], "0.0001000")
+        self.assertEqual(instrument.extra_meta["quantity_step_size"], "0.1")
+
     def test_futures_instrument_does_not_collide_with_spot_symbol(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

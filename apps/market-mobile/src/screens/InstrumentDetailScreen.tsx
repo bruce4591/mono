@@ -220,6 +220,7 @@ export function InstrumentDetailScreen({
           bars={payload?.bars ?? []}
           alertMarkers={payload?.alert_markers ?? []}
           period={period}
+          priceTickSize={payload?.instrument.price_tick_size ?? null}
           mode={isMacro ? "trend" : "candles"}
           resetKey={`${route.market}:${route.symbol}:${period}`}
           onSelectedBarChange={setSelectedBar}

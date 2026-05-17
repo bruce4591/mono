@@ -56,6 +56,7 @@ export type MobileInstrumentDetailPayload = {
     symbol: string;
     name: string;
     asset_class: string | null;
+    price_tick_size: string | null;
   };
   snapshot: {
     last_price: number | null;
