@@ -1550,6 +1550,97 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(marker["ma11"], 64000.0)
         self.assertIsNone(marker["volume_ratio"])
 
+    def test_get_mobile_instrument_detail_payload_projects_daily_ma11_markers_to_intraday_periods(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "market.sqlite3"
+            init_database(db_path)
+
+            with connect(db_path) as connection:
+                seed_sample_data(
+                    connection,
+                    snapshot_ts_utc="2026-04-24T20:00:00Z",
+                    trade_date_local="2026-04-24",
+                )
+                push_device_id = _insert_push_device(connection)
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_rule (
+                        push_device_id,
+                        symbol,
+                        market,
+                        condition_type,
+                        source_type,
+                        metric_key,
+                        operator,
+                        threshold,
+                        cooldown_seconds,
+                        enabled,
+                        created_by,
+                        created_at_utc,
+                        updated_at_utc
+                    )
+                    VALUES (?, 'BTCUSDT', 'CRYPTO', 'ma11_breakout_1d',
+                        'technical', 'ma11_cross', '>', 0.0, 86400, 1,
+                        'system_crypto_ranking_ma11', ?, ?)
+                    """,
+                    (
+                        push_device_id,
+                        "2026-04-24T20:00:00Z",
+                        "2026-04-24T20:00:00Z",
+                    ),
+                )
+                rule_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+                connection.execute(
+                    """
+                    INSERT INTO mobile_alert_event (
+                        mobile_alert_rule_id,
+                        triggered_at_utc,
+                        observed_value,
+                        message,
+                        dedupe_key,
+                        alert_metadata,
+                        delivery_status
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 'sent')
+                    """,
+                    (
+                        rule_id,
+                        "2026-04-24T20:16:00Z",
+                        65000.0,
+                        "BTCUSDT 1d MA11 突破 close 65000 > MA11 64000，交易日 2026-04-24",
+                        "ma11_breakout_1d:CRYPTO:BTCUSDT:2026-04-24",
+                        json.dumps(
+                            {
+                                "period": "1d",
+                                "bar_time": "2026-04-24",
+                                "price": 65000.0,
+                                "direction": "up",
+                                "label": "1d MA11 突破",
+                                "condition_label": "1d MA11 突破",
+                                "ma11": 64000.0,
+                            }
+                        ),
+                    ),
+                )
+
+                payload = api_module.get_mobile_instrument_detail_payload(
+                    connection,
+                    market="CRYPTO",
+                    symbol="BTCUSDT",
+                    period="15m",
+                    intraday_limit=10,
+                    allow_backfill=False,
+                )
+
+        self.assertEqual(len(payload["alert_markers"]), 1)
+        marker = payload["alert_markers"][0]
+        self.assertEqual(marker["time"], "2026-04-24T20:16:00Z")
+        self.assertEqual(marker["price"], 65000.0)
+        self.assertEqual(marker["direction"], "up")
+        self.assertEqual(marker["condition_type"], "ma11_breakout_1d")
+        self.assertEqual(marker["condition_label"], "1d MA11 突破")
+        self.assertEqual(marker["ma11"], 64000.0)
+
     def test_get_mobile_instrument_detail_payload_returns_strategy_markers_on_chart_period(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / "market.sqlite3"

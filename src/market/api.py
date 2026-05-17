@@ -741,30 +741,34 @@ def _get_mobile_alert_markers(
     seen_marker_keys: set[tuple[str, str, str]] = set()
     for row in rows:
         metadata = _parse_alert_metadata(row["alert_metadata"])
-        marker_period = metadata.get("chart_period") or metadata.get("period")
-        if marker_period != period:
+        condition_type = str(row["condition_type"])
+        if condition_type not in {"ma11_breakout_1d", "paper_strategy_pin"}:
             continue
-        if str(row["condition_type"]) not in {"ma11_breakout_1d", "paper_strategy_pin"}:
-            continue
-        bar_time = _optional_str(metadata.get("bar_time"))
+        marker_time = _mobile_alert_marker_time_for_chart(
+            condition_type=condition_type,
+            marker_period=_optional_str(metadata.get("chart_period") or metadata.get("period")),
+            chart_period=period,
+            bar_time=_optional_str(metadata.get("bar_time")),
+            triggered_at_utc=str(row["triggered_at_utc"]),
+        )
         price = _optional_float(metadata.get("price"))
-        if bar_time is None or price is None:
+        if marker_time is None or price is None:
             continue
-        marker_key = (period, bar_time, str(row["condition_type"]))
+        marker_key = (period, marker_time, condition_type)
         if marker_key in seen_marker_keys:
             continue
         seen_marker_keys.add(marker_key)
         markers.append(
             {
                 "mobile_alert_event_id": int(row["mobile_alert_event_id"]),
-                "time": bar_time,
+                "time": marker_time,
                 "price": price,
                 "direction": _optional_str(metadata.get("direction")) or "up",
                 "label": _optional_str(metadata.get("label"))
-                or _mobile_alert_title_suffix(str(row["condition_type"])),
-                "condition_type": str(row["condition_type"]),
+                or _mobile_alert_title_suffix(condition_type),
+                "condition_type": condition_type,
                 "condition_label": _optional_str(metadata.get("condition_label"))
-                or str(row["condition_type"]),
+                or condition_type,
                 "ma11": _optional_float(metadata.get("ma11")),
                 "volume_ratio": _optional_float(metadata.get("volume_ratio")),
                 "triggered_at_utc": str(row["triggered_at_utc"]),
@@ -772,6 +776,21 @@ def _get_mobile_alert_markers(
             }
         )
     return list(reversed(markers))
+
+
+def _mobile_alert_marker_time_for_chart(
+    *,
+    condition_type: str,
+    marker_period: str | None,
+    chart_period: str,
+    bar_time: str | None,
+    triggered_at_utc: str,
+) -> str | None:
+    if marker_period == chart_period:
+        return bar_time
+    if condition_type == "ma11_breakout_1d" and marker_period == "1d":
+        return triggered_at_utc
+    return None
 
 
 def _mobile_daily_bar_payload(item: dict[str, object]) -> dict[str, object]:
